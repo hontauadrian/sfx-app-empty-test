@@ -1,0 +1,68 @@
+{
+  "schemaRef": "packages/validation/src/schemas/user.schema.ts:loginSchema",
+  "fields": [
+    {
+      "name": "email",
+      "type": "string",
+      "required": true,
+      "constraints": {
+        "format": "email"
+      },
+      "samples": {
+        "valid": "gen-607e5a82@example.com",
+        "invalidators": [
+          {
+            "kind": "missing",
+            "expectedErrorField": "email"
+          },
+          {
+            "kind": "wrong-type",
+            "value": 12345,
+            "expectedErrorField": "email"
+          },
+          {
+            "kind": "format-violation",
+            "value": "not-an-email",
+            "expectedErrorField": "email"
+          }
+        ]
+      }
+    },
+    {
+      "name": "password",
+      "type": "string",
+      "required": true,
+      "constraints": {
+        "min": 8
+      },
+      "samples": {
+        "valid": "zmwkeauq",
+        "invalidators": [
+          {
+            "kind": "missing",
+            "expectedErrorField": "password"
+          },
+          {
+            "kind": "wrong-type",
+            "value": 12345,
+            "expectedErrorField": "password"
+          },
+          {
+            "kind": "empty-string",
+            "value": "",
+            "expectedErrorField": "password"
+          },
+          {
+            "kind": "below-min",
+            "value": "zmwkeau",
+            "expectedErrorField": "password"
+          }
+        ]
+      }
+    }
+  ],
+  "sampleValid": {
+    "email": "gen-607e5a82@example.com",
+    "password": "zmwkeauq"
+  }
+}

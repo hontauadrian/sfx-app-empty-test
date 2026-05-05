@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "task_id": "task-cycle-a",
+  "owns": [
+    {
+      "resource": "cycle-a"
+    }
+  ],
+  "extends": [
+    {
+      "resource": "cycle-b"
+    }
+  ],
+  "resources": [
+    {
+      "name": "cycle-a",
+      "create": {
+        "method": "POST",
+        "path": "/api/v1/a"
+      },
+      "capture": {
+        "bindings": {
+          "id": "$.id"
+        }
+      },
+      "parents": [
+        "cycle-b"
+      ]
+    }
+  ]
+}

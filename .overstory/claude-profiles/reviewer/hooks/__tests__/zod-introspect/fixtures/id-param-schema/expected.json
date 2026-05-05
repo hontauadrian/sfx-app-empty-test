@@ -1,0 +1,35 @@
+{
+  "schemaRef": "packages/validation/src/schemas/common.schema.ts:idParamSchema",
+  "fields": [
+    {
+      "name": "id",
+      "type": "string",
+      "required": true,
+      "constraints": {
+        "min": 1
+      },
+      "samples": {
+        "valid": "mgwsq",
+        "invalidators": [
+          {
+            "kind": "missing",
+            "expectedErrorField": "id"
+          },
+          {
+            "kind": "wrong-type",
+            "value": 12345,
+            "expectedErrorField": "id"
+          },
+          {
+            "kind": "empty-string",
+            "value": "",
+            "expectedErrorField": "id"
+          }
+        ]
+      }
+    }
+  ],
+  "sampleValid": {
+    "id": "mgwsq"
+  }
+}

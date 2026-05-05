@@ -1,0 +1,10 @@
+{
+  "version": "1",
+  "coverage": "partial",
+  "routes": {},
+  "endpoints": {},
+  "flows": [],
+  "ignore": [
+    { "path": "/admin/**" }
+  ]
+}

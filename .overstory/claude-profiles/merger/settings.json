@@ -1,0 +1,681 @@
+{
+	"permissions": {
+		"allow": [
+			"Read",
+			"Edit",
+			"Write",
+			"Glob",
+			"Grep",
+			"Bash",
+			"Agent",
+			"Skill",
+			"Read(.runtime-contract.overlay.json)",
+			"Edit(.runtime-contract.overlay.json)",
+			"Write(.runtime-contract.overlay.json)",
+			"Read(.claude/hook-reports/**)",
+			"Glob(.claude/hook-reports/**)"
+		],
+		"deny": [
+			"Read(.claude/hooks/**)",
+			"Edit(.claude/hooks/**)",
+			"Write(.claude/hooks/**)",
+			"Glob(.claude/hooks/**)",
+			"Grep(.claude/hooks/**)",
+			"MultiEdit(.claude/hooks/**)",
+			"Read(.claude/hooks/.matrix.json)",
+			"Read(.claude/hooks/.*)",
+			"Glob(.claude/hooks/.*)",
+			"Grep(.claude/hooks/.*)",
+			"Read(.overstory/claude-profiles/**)",
+			"Edit(.overstory/claude-profiles/**)",
+			"Write(.overstory/claude-profiles/**)",
+			"Glob(.overstory/claude-profiles/**)",
+			"Grep(.overstory/claude-profiles/**)",
+			"MultiEdit(.overstory/claude-profiles/**)",
+			"Read(.overstory/mail/**)",
+			"Edit(.overstory/mail/**)",
+			"Write(.overstory/mail/**)",
+			"Glob(.overstory/mail/**)",
+			"Grep(.overstory/mail/**)",
+			"MultiEdit(.overstory/mail/**)",
+			"Read(.overstory/hooks/**)",
+			"Edit(.overstory/hooks/**)",
+			"Write(.overstory/hooks/**)",
+			"Glob(.overstory/hooks/**)",
+			"Grep(.overstory/hooks/**)",
+			"Read(.claude/settings.local.json)",
+			"Edit(.claude/settings.local.json)",
+			"Write(.claude/settings.local.json)",
+			"MultiEdit(.claude/settings.local.json)",
+			"Read(scripts/git-hooks/**)",
+			"Edit(scripts/git-hooks/**)",
+			"Write(scripts/git-hooks/**)",
+			"mcp__plugin_context-mode_context-mode__execute_file",
+			"mcp__plugin_context-mode_context-mode__execute",
+			"Read(**/.claude/hooks/**)",
+			"Read(/**/.claude/hooks/**)",
+			"Edit(**/.claude/hooks/**)",
+			"Edit(/**/.claude/hooks/**)",
+			"Write(**/.claude/hooks/**)",
+			"Write(/**/.claude/hooks/**)",
+			"Glob(**/.claude/hooks/**)",
+			"Glob(/**/.claude/hooks/**)",
+			"Grep(**/.claude/hooks/**)",
+			"Grep(/**/.claude/hooks/**)",
+			"MultiEdit(**/.claude/hooks/**)",
+			"MultiEdit(/**/.claude/hooks/**)",
+			"NotebookEdit(**/.claude/hooks/**)",
+			"NotebookEdit(/**/.claude/hooks/**)",
+			"Read(**/.claude/settings.json)",
+			"Read(/**/.claude/settings.json)",
+			"Edit(**/.claude/settings.json)",
+			"Edit(/**/.claude/settings.json)",
+			"Write(**/.claude/settings.json)",
+			"Write(/**/.claude/settings.json)",
+			"Glob(**/.claude/settings.json)",
+			"Glob(/**/.claude/settings.json)",
+			"Grep(**/.claude/settings.json)",
+			"Grep(/**/.claude/settings.json)",
+			"MultiEdit(**/.claude/settings.json)",
+			"MultiEdit(/**/.claude/settings.json)",
+			"NotebookEdit(**/.claude/settings.json)",
+			"NotebookEdit(/**/.claude/settings.json)",
+			"Read(**/.claude/settings.local.json)",
+			"Read(/**/.claude/settings.local.json)",
+			"Edit(**/.claude/settings.local.json)",
+			"Edit(/**/.claude/settings.local.json)",
+			"Write(**/.claude/settings.local.json)",
+			"Write(/**/.claude/settings.local.json)",
+			"Glob(**/.claude/settings.local.json)",
+			"Glob(/**/.claude/settings.local.json)",
+			"Grep(**/.claude/settings.local.json)",
+			"Grep(/**/.claude/settings.local.json)",
+			"MultiEdit(**/.claude/settings.local.json)",
+			"MultiEdit(/**/.claude/settings.local.json)",
+			"NotebookEdit(**/.claude/settings.local.json)",
+			"NotebookEdit(/**/.claude/settings.local.json)",
+			"Read(**/.overstory/claude-profiles/**)",
+			"Read(/**/.overstory/claude-profiles/**)",
+			"Edit(**/.overstory/claude-profiles/**)",
+			"Edit(/**/.overstory/claude-profiles/**)",
+			"Write(**/.overstory/claude-profiles/**)",
+			"Write(/**/.overstory/claude-profiles/**)",
+			"Glob(**/.overstory/claude-profiles/**)",
+			"Glob(/**/.overstory/claude-profiles/**)",
+			"Grep(**/.overstory/claude-profiles/**)",
+			"Grep(/**/.overstory/claude-profiles/**)",
+			"MultiEdit(**/.overstory/claude-profiles/**)",
+			"MultiEdit(/**/.overstory/claude-profiles/**)",
+			"NotebookEdit(**/.overstory/claude-profiles/**)",
+			"NotebookEdit(/**/.overstory/claude-profiles/**)",
+			"Read(**/.overstory/hooks/**)",
+			"Read(/**/.overstory/hooks/**)",
+			"Edit(**/.overstory/hooks/**)",
+			"Edit(/**/.overstory/hooks/**)",
+			"Write(**/.overstory/hooks/**)",
+			"Write(/**/.overstory/hooks/**)",
+			"Glob(**/.overstory/hooks/**)",
+			"Glob(/**/.overstory/hooks/**)",
+			"Grep(**/.overstory/hooks/**)",
+			"Grep(/**/.overstory/hooks/**)",
+			"MultiEdit(**/.overstory/hooks/**)",
+			"MultiEdit(/**/.overstory/hooks/**)",
+			"NotebookEdit(**/.overstory/hooks/**)",
+			"NotebookEdit(/**/.overstory/hooks/**)",
+			"Read(**/.overstory/mail/**)",
+			"Read(/**/.overstory/mail/**)",
+			"Edit(**/.overstory/mail/**)",
+			"Edit(/**/.overstory/mail/**)",
+			"Write(**/.overstory/mail/**)",
+			"Write(/**/.overstory/mail/**)",
+			"Glob(**/.overstory/mail/**)",
+			"Glob(/**/.overstory/mail/**)",
+			"Grep(**/.overstory/mail/**)",
+			"Grep(/**/.overstory/mail/**)",
+			"MultiEdit(**/.overstory/mail/**)",
+			"MultiEdit(/**/.overstory/mail/**)",
+			"NotebookEdit(**/.overstory/mail/**)",
+			"NotebookEdit(/**/.overstory/mail/**)",
+			"Read(**/.overstory/agent-defs/**)",
+			"Read(/**/.overstory/agent-defs/**)",
+			"Edit(**/.overstory/agent-defs/**)",
+			"Edit(/**/.overstory/agent-defs/**)",
+			"Write(**/.overstory/agent-defs/**)",
+			"Write(/**/.overstory/agent-defs/**)",
+			"Glob(**/.overstory/agent-defs/**)",
+			"Glob(/**/.overstory/agent-defs/**)",
+			"Grep(**/.overstory/agent-defs/**)",
+			"Grep(/**/.overstory/agent-defs/**)",
+			"MultiEdit(**/.overstory/agent-defs/**)",
+			"MultiEdit(/**/.overstory/agent-defs/**)",
+			"NotebookEdit(**/.overstory/agent-defs/**)",
+			"NotebookEdit(/**/.overstory/agent-defs/**)",
+			"Read(**/scripts/git-hooks/**)",
+			"Read(/**/scripts/git-hooks/**)",
+			"Edit(**/scripts/git-hooks/**)",
+			"Edit(/**/scripts/git-hooks/**)",
+			"Write(**/scripts/git-hooks/**)",
+			"Write(/**/scripts/git-hooks/**)",
+			"Glob(**/scripts/git-hooks/**)",
+			"Glob(/**/scripts/git-hooks/**)",
+			"Grep(**/scripts/git-hooks/**)",
+			"Grep(/**/scripts/git-hooks/**)",
+			"MultiEdit(**/scripts/git-hooks/**)",
+			"MultiEdit(/**/scripts/git-hooks/**)",
+			"NotebookEdit(**/scripts/git-hooks/**)",
+			"NotebookEdit(/**/scripts/git-hooks/**)"
+		]
+	},
+	"hooks": {
+		"Stop": [
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/pre-completion-verification.js"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/require-tests-for-changes.js"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/require-integration-tests.js"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/probes/derive-test-matrix.js --full"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/require-runtime-contract.js"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "pnpm exec tsx .claude/hooks/probes/http-smoke.ts --full --matrix .claude/hooks/.matrix.json --report .claude/hooks/.http-smoke.json"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/e2e-test-on-stop.js"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/verify-full-contract.js"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-ignore-for-changed-paths.js"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/probe-covers-diff.js"
+					}
+				]
+			}
+		],
+		"PreToolUse": [
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/bash-allowlist.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-hook-introspection.js"
+					}
+				]
+			},
+			{
+				"matcher": "mcp__.*",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-hook-introspection.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/pre-close-gate.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/block-commit-if-missing.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/verify-full-contract.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/track-session-files.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write|MultiEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/skill-gate-block-edit.js"
+					}
+				]
+			},
+			{
+				"matcher": "Write|Edit|MultiEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/track-pending-tests.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-router-in-hooks.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-hardcoded-hex-colors.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-logic-in-pages.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-direct-fetch-axios.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-cross-app-imports.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/pinned-versions-only.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-single-letter-vars.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-inline-i18n.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-isDark-in-jsx.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-zod-in-apps.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-dependency-injection-params.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-unwrapped-hook-returns.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/mobile/no-keyboard-avoiding-view.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/web/no-raw-img-tags.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/web/no-useEffect-fetch.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/web/no-use-client-in-layout.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/shared/domain-layer-purity.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/shared/no-platform-imports-in-shared.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-silent-catch.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-generic-skeletons.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write|MultiEdit|NotebookEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-hook-author.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write|MultiEdit|NotebookEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-node-modules-write.js"
+					}
+				]
+			},
+			{
+				"matcher": "Write|Edit|MultiEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-generated-write.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-co-mingled-overlay-commit.js"
+					}
+				]
+			},
+			{
+				"matcher": "Read|Edit|Write|Glob|Grep|MultiEdit|NotebookEdit|NotebookRead",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-hook-introspection-fs.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/flows-pre-sling.js"
+					}
+				]
+			},
+			{
+				"matcher": "Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/flows-path-boundary.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/flows-path-boundary.js"
+					}
+				]
+			},
+			{
+				"matcher": "MultiEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/flows-path-boundary.js"
+					}
+				]
+			},
+			{
+				"matcher": "NotebookEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/flows-path-boundary.js"
+					}
+				]
+			},
+			{
+				"matcher": "Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-api-exclude-endpoint.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-api-exclude-endpoint.js"
+					}
+				]
+			},
+			{
+				"matcher": "MultiEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-api-exclude-endpoint.js"
+					}
+				]
+			},
+			{
+				"matcher": "NotebookEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-api-exclude-endpoint.js"
+					}
+				]
+			}
+		],
+		"PostToolUse": [
+			{
+				"matcher": "mcp__playwright__.*",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/mcp-evidence-recorder.js"
+					}
+				]
+			},
+			{
+				"matcher": "Skill",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/skill-gate-track-skill.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/skill-gate-track-probe.js"
+					}
+				]
+			}
+		]
+	}
+}

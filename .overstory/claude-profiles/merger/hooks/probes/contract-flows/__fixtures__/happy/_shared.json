@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "task_id": "_shared",
+  "owns": [
+    {
+      "actor": "anonymous"
+    },
+    {
+      "actor": "actor-A"
+    },
+    {
+      "actor": "actor-B"
+    }
+  ],
+  "actors": [
+    {
+      "name": "anonymous",
+      "auth": {}
+    },
+    {
+      "name": "actor-A",
+      "auth": {
+        "kind": "bearer",
+        "token": "token-for-actor-A"
+      }
+    },
+    {
+      "name": "actor-B",
+      "auth": {
+        "kind": "bearer",
+        "token": "token-for-actor-B"
+      }
+    }
+  ],
+  "config": {
+    "reservedActors": {
+      "anonymous": {
+        "auth": {}
+      }
+    },
+    "clockAdvanceEndpoint": "/__test/clock/advance",
+    "fixturesRoot": "fixtures"
+  }
+}

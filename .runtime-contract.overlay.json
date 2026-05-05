@@ -1,0 +1,13 @@
+{
+  "version": "1",
+  "coverage": "partial",
+  "routes": {},
+  "endpoints": {},
+  "ignore": [
+    { "path": "/_next/**", "reason": "Next.js framework internals" },
+    { "path": "/api/health", "reason": "liveness probe, no contract" }
+  ],
+  "global": {
+    "mustNotContain": []
+  }
+}

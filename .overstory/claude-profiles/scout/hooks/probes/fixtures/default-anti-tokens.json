@@ -1,0 +1,20 @@
+{
+  "$schema": "default anti-token markers — substring match, case-sensitive unless noted",
+  "antiTokens": [
+    "Application error: a server-side exception has occurred",
+    "Application error: a client-side exception has occurred",
+    "Unhandled Runtime Error",
+    "__next_error__",
+    "TypeError",
+    "Cannot read propert",
+    "Cannot read properties of undefined",
+    "ReferenceError",
+    "SyntaxError",
+    "id=\"vite-error-overlay\"",
+    "<title>Error</title>",
+    "Internal Server Error",
+    "PrismaClientKnownRequestError",
+    "PrismaClientValidationError",
+    "500 Internal Server Error"
+  ]
+}

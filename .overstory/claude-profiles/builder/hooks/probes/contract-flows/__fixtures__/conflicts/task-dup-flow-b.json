@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "task_id": "task-dup-flow-b",
+  "owns": [],
+  "extends": [
+    {
+      "resource": "dup-resource"
+    }
+  ],
+  "special_flows": [
+    {
+      "id": "task-dup:scenario",
+      "contract": {
+        "kind": "http",
+        "source": "plan §2"
+      },
+      "steps": [
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/api/v1/dup"
+        },
+        {
+          "kind": "expect",
+          "status": 200
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "_note": "Flows are generated from code annotations (Zod schemas, @UseGuards, @ApiResponse, Next.js metadata). Do NOT add a flows key here. Use this overlay only for non-code hints: route tokens, endpoint samples, ignore entries for framework internals, and global mustNotContain patterns.",
+  "version": "1",
+  "coverage": "partial",
+  "routes": {
+    "/dashboard": {
+      "tokens": { "mustContain": ["Welcome"] },
+      "successStatus": 200
+    }
+  },
+  "endpoints": {
+    "POST /api/auth/login": {
+      "sampleValid": { "email": "user@example.com", "password": "Smoke!Password1" },
+      "successStatus": 200
+    },
+    "POST /api/example": {
+      "sampleValid": { "name": "demo" },
+      "successStatus": 201
+    }
+  },
+  "ignore": [
+    { "path": "/_next/**", "reason": "Next.js framework internals" },
+    { "path": "/api/health", "reason": "liveness probe, no contract" }
+  ],
+  "global": {
+    "mustNotContain": []
+  }
+}

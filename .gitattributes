@@ -1,0 +1,12 @@
+.mulch/expertise/*.jsonl merge=union
+
+# Mulch config: always keep main's version on conflict. Protects
+# version/governance/classification_defaults from silent reversion.
+# The post-merge hook runs `mulch sync` to restore any domains the agent
+# branch added (re-derived from .mulch/expertise/*.jsonl).
+.mulch/mulch.config.yaml merge=ours
+
+.seeds/issues.jsonl merge=union
+.seeds/templates.jsonl merge=union
+.canopy/prompts.jsonl merge=union
+.canopy/schemas.jsonl merge=union

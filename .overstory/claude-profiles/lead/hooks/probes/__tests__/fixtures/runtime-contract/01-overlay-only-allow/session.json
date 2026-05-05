@@ -1,0 +1,5 @@
+{
+  "files": [
+    { "path": "apps/web/src/app/dashboard/page.tsx" }
+  ]
+}

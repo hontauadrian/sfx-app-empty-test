@@ -1,0 +1,132 @@
+{
+  "commands": [
+    "git",
+    "pnpm",
+    "npm",
+    "yarn",
+    "bun",
+    "node",
+    "tsx",
+    "vitest",
+    "jest",
+    "playwright",
+    "ov",
+    "sd",
+    "bd",
+    "mulch",
+    "ml",
+    "cn",
+    "pwd",
+    "cd",
+    "ls",
+    "echo",
+    "cat",
+    "mkdir",
+    "rm",
+    "mv",
+    "touch",
+    "curl",
+    "wget",
+    "bash",
+    "sh",
+    "pg_ctl",
+    "pg_isready",
+    "psql",
+    "postgres",
+    "initdb",
+    "createdb",
+    "dropdb",
+    "tail",
+    "head",
+    "grep",
+    "rg",
+    "wc",
+    "sort",
+    "uniq",
+    "cut",
+    "awk",
+    "sed",
+    "tr",
+    "jq",
+    "find",
+    "xargs",
+    "basename",
+    "dirname",
+    "printf",
+    "date",
+    "sleep",
+    "tee",
+    "diff",
+    "file",
+    "stat",
+    "readlink",
+    "which",
+    "type",
+    "true",
+    "false",
+    "test",
+    "tree",
+    "env",
+    "ps",
+    "lsof",
+    "kill",
+    "worktree-stack.sh",
+    "turbo"
+  ],
+  "subcommand_restrictions": {
+    "git": [
+      "status",
+      "log",
+      "diff",
+      "show",
+      "blame",
+      "branch",
+      "add",
+      "commit",
+      "checkout",
+      "restore",
+      "stash",
+      "rev-parse",
+      "ls-files",
+      "reflog"
+    ],
+    "node": [
+      {
+        "_no_eval_flags": true
+      }
+    ],
+    "bun": [
+      {
+        "_no_eval_flags": true
+      }
+    ],
+    "bash": [
+      {
+        "_no_inline_scripts": true
+      }
+    ],
+    "sh": [
+      {
+        "_no_inline_scripts": true
+      }
+    ],
+    "curl": [
+      {
+        "_host_allowlist": [
+          "localhost",
+          "127.0.0.1",
+          "::1"
+        ]
+      }
+    ],
+    "wget": [
+      {
+        "_host_allowlist": [
+          "localhost",
+          "127.0.0.1",
+          "::1"
+        ]
+      }
+    ]
+  }
+}

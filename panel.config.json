@@ -1,0 +1,38 @@
+{
+  "name": "sfx-webapp",
+  "composeProject": "app-dev-host",
+  "bridge": {
+    "command": ["node", "scripts/panel-bridge.mjs"],
+    "cwd": ".",
+    "env": { "PANEL_BRIDGE_VERSION": "1" }
+  },
+  "migrations": {
+    "type": "prisma",
+    "schemaPaths": ["packages/database/prisma/schema.prisma"],
+    "applyCommand": "set -e; cd /app/${packageDir}; if command -v pnpm >/dev/null 2>&1; then pnpm exec prisma migrate deploy --schema /app/${schema}; else npx --yes prisma migrate deploy --schema /app/${schema}; fi",
+    "service": "api"
+  },
+  "env": {
+    "files": [
+      { "path": ".env", "applyCommand": "PROJECT_NAME=app-dev-host PG_PORT=5432 API_PORT=3001 NEXT_PORT=3000 bash scripts/stack-up-docker.sh --env-recreate" },
+      { "path": "apps/api/.env", "services": ["api"] },
+      { "path": "apps/web/.env.local", "services": ["web"] }
+    ],
+    "restartService": "api"
+  },
+  "envRequests": {
+    "dir": ".overstory/env-requests",
+    "targetEnvFile": "apps/api/.env"
+  },
+  "rebuild": {
+    "watch": ["package.json", "pnpm-lock.yaml"],
+    "command": "PROJECT_NAME=app-dev-host PG_PORT=5432 API_PORT=3001 NEXT_PORT=3000 bash scripts/stack-up-docker.sh --rebuild"
+  },
+  "preview": {
+    "domain": "localhost",
+    "services": [
+      { "name": "web", "subdomain": "app", "containerPort": 3000 },
+      { "name": "api", "subdomain": "api", "containerPort": 3001 }
+    ]
+  }
+}

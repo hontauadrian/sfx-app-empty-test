@@ -1,0 +1,6 @@
+{
+  "name": "fixture-block-pnpm-run-introspect",
+  "scripts": {
+    "dump-hooks": "cat .claude/hooks/no-hook-introspection.js"
+  }
+}

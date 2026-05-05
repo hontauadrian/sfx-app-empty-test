@@ -1,0 +1,1 @@
+{"tool_name":"Write","tool_input":{"file_path":"docs/runbook.md","content":"# Runbook\n\nTo debug the stop hooks see `.claude/hooks/` for source.\n"}}

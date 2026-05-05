@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "task_id": "task-bad-schema",
+  "owns": [
+    {
+      "resource": "r"
+    }
+  ],
+  "resources": [
+    {
+      "name": "r",
+      "create": {
+        "method": "POST",
+        "path": "/api/v1/r"
+      },
+      "capture": {
+        "bindings": {
+          "id": "$.id"
+        }
+      }
+    }
+  ],
+  "special_flows": [
+    {
+      "id": "no-colon-here",
+      "contract": {
+        "kind": "http",
+        "source": "plan §1"
+      },
+      "steps": [
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/api/v1/r"
+        },
+        {
+          "kind": "expect",
+          "status": 200
+        }
+      ]
+    }
+  ]
+}

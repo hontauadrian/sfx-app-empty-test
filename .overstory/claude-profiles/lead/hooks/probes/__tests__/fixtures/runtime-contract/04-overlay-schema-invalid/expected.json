@@ -1,0 +1,5 @@
+{
+  "decision": "block",
+  "categoryContains": "RUNTIME_CONTRACT_VIOLATION",
+  "reasonsContain": ["OVERLAY_SCHEMA_INVALID"]
+}

@@ -1,0 +1,23 @@
+{
+  "version": "1",
+  "rows": [
+    {
+      "id": "unauth-public-api",
+      "actor": "unauthenticated",
+      "surfaceType": "public-api",
+      "expectation": { "statusRange": "2xx-happy-or-4xx-bad-input", "forbidden": ["5xx"] }
+    },
+    {
+      "id": "unauth-protected-api",
+      "actor": "unauthenticated",
+      "surfaceType": "protected-api",
+      "expectation": { "status": 401 }
+    },
+    {
+      "id": "authed-refresh-persists",
+      "actor": "authenticated+refresh",
+      "surfaceType": "any-previously-accessed-page",
+      "expectation": { "status": "2xx", "sessionPersisted": true }
+    }
+  ]
+}

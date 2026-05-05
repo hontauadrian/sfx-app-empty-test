@@ -1,0 +1,4 @@
+{
+  "decision": "block",
+  "reasonContains": ["EVIDENCE_MISMATCH", "/tasks/:id"]
+}

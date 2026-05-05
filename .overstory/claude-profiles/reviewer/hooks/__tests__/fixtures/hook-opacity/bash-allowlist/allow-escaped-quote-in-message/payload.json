@@ -1,0 +1,1 @@
+{"tool_name":"Bash","tool_input":{"command":"git commit -m \"msg with \\\" inside; still one arg\""}}

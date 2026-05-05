@@ -1,0 +1,1 @@
+{"tool_name":"Write","tool_input":{"file_path":"package.json","content":"{\"name\":\"x\",\"scripts\":{\"leak\":\"cat .claude/hooks/foo.js\"}}"}}

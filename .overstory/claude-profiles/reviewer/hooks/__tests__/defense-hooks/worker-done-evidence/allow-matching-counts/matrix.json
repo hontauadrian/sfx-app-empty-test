@@ -1,0 +1,7 @@
+{
+  "apiEndpoints": [
+    { "path": "/api/v1/users", "method": "POST", "changed": true },
+    { "path": "/api/v1/users/:id", "method": "PUT", "changed": true },
+    { "path": "/api/v1/users", "method": "GET", "changed": true }
+  ]
+}

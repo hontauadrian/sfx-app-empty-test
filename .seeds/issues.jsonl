@@ -1,0 +1,2 @@
+{"id":"sfx-webapp-boilerplate-f7be","title":"probe-runner: run probe:smoke against chunk2-lead branch","status":"open","type":"task","priority":2,"createdAt":"2026-04-27T20:11:39.548Z","updatedAt":"2026-04-27T20:11:39.548Z"}
+{"id":"sfx-webapp-boilerplate-3337","title":"Builder: probe-runner","status":"in_progress","type":"task","priority":2,"createdAt":"2026-04-27T20:11:49.301Z","updatedAt":"2026-04-27T20:11:49.356Z","description":"Sub-task of sfx-webapp-boilerplate-f7be. Agent: probe-runner (builder). Parent agent: coordinator."}

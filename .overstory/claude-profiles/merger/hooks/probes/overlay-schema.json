@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://overstory.local/runtime-contract.overlay.json",
+  "title": "RuntimeContractOverlay",
+  "type": "object",
+  "required": ["version", "coverage"],
+  "additionalProperties": false,
+  "properties": {
+    "_note": { "type": "string" },
+    "version": { "const": "1" },
+    "coverage": { "type": "string", "enum": ["partial", "complete"] },
+    "global": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mustNotContain": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "routes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tokens": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "mustContain": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              },
+              "mustNotContain": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              }
+            }
+          },
+          "successStatus": { "type": "integer", "minimum": 100, "maximum": 599 },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "endpoints": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sampleValid": {},
+          "sampleInvalid": { "type": "array" },
+          "successStatus": { "type": "integer", "minimum": 100, "maximum": 599 },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "loginPage": { "type": "string", "minLength": 1 },
+        "registerPage": { "type": "string", "minLength": 1 },
+        "postLoginDestination": { "type": "string", "minLength": 1 }
+      }
+    },
+    "ignore": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

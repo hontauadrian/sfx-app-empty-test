@@ -1,0 +1,131 @@
+{
+  "version": "1",
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "projectDir": "/test",
+  "scope": "full",
+  "detectedFrameworks": { "web": [], "api": ["nest"], "monorepo": "none", "auth": [], "appRouter": false },
+  "bootPlan": { "driver": "framework-defaults", "driverPath": null, "startCmd": "npx nest start", "stopCmd": null, "portsCmd": null, "alreadyRunning": false, "envFiles": [], "ports": { "api": 3000 } },
+  "pages": [],
+  "apiEndpoints": [
+    {
+      "file": "src/auth/auth.controller.ts",
+      "method": "POST",
+      "path": "/api/v1/auth/register",
+      "operationId": "authRegister",
+      "framework": "nest",
+      "guard": "public",
+      "inputSchemaRef": null,
+      "sampleValid": null,
+      "sampleInvalid": [],
+      "successStatus": 201,
+      "errorStatuses": [400],
+      "changed": true,
+      "routeParams": [],
+      "zodContract": {
+        "schemaRef": "src/auth/auth.schema.ts:RegisterSchema",
+        "fields": [
+          {
+            "name": "email",
+            "type": "string",
+            "required": true,
+            "constraints": { "format": "email", "min": 1 },
+            "samples": {
+              "valid": "gen-abcd1234@example.com",
+              "invalidators": [
+                { "kind": "missing", "expectedErrorField": "email" },
+                { "kind": "wrong-type", "value": 12345, "expectedErrorField": "email" },
+                { "kind": "format-violation", "value": "not-an-email", "expectedErrorField": "email" }
+              ]
+            }
+          },
+          {
+            "name": "password",
+            "type": "string",
+            "required": true,
+            "constraints": { "min": 8, "max": 128 },
+            "samples": {
+              "valid": "validpass",
+              "invalidators": [
+                { "kind": "missing", "expectedErrorField": "password" },
+                { "kind": "wrong-type", "value": 12345, "expectedErrorField": "password" },
+                { "kind": "below-min", "value": "short", "expectedErrorField": "password" }
+              ]
+            }
+          }
+        ],
+        "sampleValid": { "email": "gen-abcd1234@example.com", "password": "validpass" }
+      },
+      "authDecorators": {
+        "authRequired": false,
+        "isPublic": true,
+        "guards": [],
+        "rolesRequired": [],
+        "bearerAuth": false
+      },
+      "swaggerDeclared": {
+        "tags": ["auth"],
+        "statuses": [201, 400]
+      }
+    },
+    {
+      "file": "src/auth/auth.controller.ts",
+      "method": "POST",
+      "path": "/api/v1/auth/login",
+      "operationId": "authLogin",
+      "framework": "nest",
+      "guard": "public",
+      "inputSchemaRef": null,
+      "sampleValid": null,
+      "sampleInvalid": [],
+      "successStatus": 200,
+      "errorStatuses": [400, 401],
+      "changed": true,
+      "routeParams": [],
+      "zodContract": null,
+      "authDecorators": {
+        "authRequired": false,
+        "isPublic": true,
+        "guards": [],
+        "rolesRequired": [],
+        "bearerAuth": false
+      },
+      "swaggerDeclared": {
+        "tags": ["auth"],
+        "statuses": [200]
+      }
+    },
+    {
+      "file": "src/auth/auth.controller.ts",
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "operationId": "authMe",
+      "framework": "nest",
+      "guard": "authenticated",
+      "inputSchemaRef": null,
+      "sampleValid": null,
+      "sampleInvalid": [],
+      "successStatus": 200,
+      "errorStatuses": [401],
+      "changed": true,
+      "routeParams": [],
+      "zodContract": null,
+      "authDecorators": {
+        "authRequired": true,
+        "isPublic": false,
+        "guards": ["JwtAuthGuard"],
+        "rolesRequired": [],
+        "bearerAuth": true
+      },
+      "swaggerDeclared": {
+        "tags": ["auth"],
+        "statuses": [200, 401]
+      }
+    }
+  ],
+  "forms": [],
+  "middleware": [],
+  "authDetection": { "loginSurface": null, "registerSurface": null, "logoutSurface": null, "sessionMechanism": "unknown", "tokenStorage": "unknown", "persistsAcrossRefresh": false },
+  "diagnostics": { "missingGuardHeaders": [], "pagesProtectedByConvention": [], "unreachablePages": [], "orphanEndpoints": [], "unknownFrameworks": [], "detectorErrors": [], "orphanOverlayRoutes": [] },
+  "flows": [],
+  "manifest": { "compiledPresent": false, "overlayPresent": false, "overlayCoverage": null }
+}

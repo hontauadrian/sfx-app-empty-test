@@ -1,0 +1,4 @@
+{
+  "symbolName": "paginationSchema",
+  "schemaPath": "packages/validation/src/schemas/common.schema.ts"
+}

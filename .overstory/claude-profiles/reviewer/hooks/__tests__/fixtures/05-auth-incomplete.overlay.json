@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "coverage": "partial",
+  "routes": {
+    "/dashboard": { "tokens": ["welcome"], "unauthBehavior": "redirect" }
+  },
+  "flows": [],
+  "ignore": []
+}

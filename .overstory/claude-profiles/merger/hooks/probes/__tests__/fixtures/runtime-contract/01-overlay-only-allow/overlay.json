@@ -1,0 +1,15 @@
+{
+  "version": "1",
+  "coverage": "partial",
+  "routes": {
+    "/dashboard": {
+      "tokens": ["Dashboard"],
+      "notes": "overlay-only declaration — phase A fabricates a route entry"
+    }
+  },
+  "endpoints": {},
+  "flows": [],
+  "ignore": [
+    { "path": "/legal/**", "reason": "static marketing pages" }
+  ]
+}

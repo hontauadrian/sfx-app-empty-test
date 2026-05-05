@@ -1,0 +1,16 @@
+{
+  "version": "1",
+  "pages": [
+    {
+      "route": "/login",
+      "files": ["apps/web/src/app/login/page.tsx"],
+      "tokens": ["sign in", "email"],
+      "changed": true,
+      "guard": "public",
+      "interactive": false
+    }
+  ],
+  "apiEndpoints": [],
+  "forms": [],
+  "middleware": []
+}

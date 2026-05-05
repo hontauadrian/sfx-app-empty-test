@@ -1,0 +1,56 @@
+{
+  "schemaRef": "test/fixtures/union-passthrough.ts:flexInputSchema",
+  "fields": [
+    {
+      "name": "value",
+      "type": "union",
+      "required": true,
+      "constraints": {},
+      "samples": {
+        "valid": "gen-91e5a7e7",
+        "invalidators": [
+          {
+            "kind": "missing",
+            "expectedErrorField": "value"
+          },
+          {
+            "kind": "wrong-type",
+            "value": null,
+            "expectedErrorField": "value"
+          }
+        ]
+      }
+    },
+    {
+      "name": "label",
+      "type": "string",
+      "required": true,
+      "constraints": {
+        "min": 1
+      },
+      "samples": {
+        "valid": "ukgmc",
+        "invalidators": [
+          {
+            "kind": "missing",
+            "expectedErrorField": "label"
+          },
+          {
+            "kind": "wrong-type",
+            "value": 12345,
+            "expectedErrorField": "label"
+          },
+          {
+            "kind": "empty-string",
+            "value": "",
+            "expectedErrorField": "label"
+          }
+        ]
+      }
+    }
+  ],
+  "sampleValid": {
+    "value": "gen-91e5a7e7",
+    "label": "ukgmc"
+  }
+}

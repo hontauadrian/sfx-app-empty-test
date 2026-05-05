@@ -1,0 +1,93 @@
+{
+  "schemaRef": "packages/validation/src/schemas/user.schema.ts:createUserSchema",
+  "fields": [
+    {
+      "name": "email",
+      "type": "string",
+      "required": true,
+      "constraints": {
+        "format": "email"
+      },
+      "samples": {
+        "valid": "gen-2650d21f@example.com",
+        "invalidators": [
+          {
+            "kind": "missing",
+            "expectedErrorField": "email"
+          },
+          {
+            "kind": "wrong-type",
+            "value": 12345,
+            "expectedErrorField": "email"
+          },
+          {
+            "kind": "format-violation",
+            "value": "not-an-email",
+            "expectedErrorField": "email"
+          }
+        ]
+      }
+    },
+    {
+      "name": "name",
+      "type": "string",
+      "required": true,
+      "constraints": {
+        "min": 1,
+        "max": 255
+      },
+      "samples": {
+        "valid": "ekeew",
+        "invalidators": [
+          {
+            "kind": "missing",
+            "expectedErrorField": "name"
+          },
+          {
+            "kind": "wrong-type",
+            "value": 12345,
+            "expectedErrorField": "name"
+          },
+          {
+            "kind": "empty-string",
+            "value": "",
+            "expectedErrorField": "name"
+          },
+          {
+            "kind": "above-max",
+            "value": "ekeewyoswmwwkwykkgoykgcgiguiwamyiqwyyiigyaciugiokqymiywoskowkoueomcwaqamcacamyioeasgeccaiwgsgikueqkmmcouiyuossgyeqyoekkskaqysiyyskousosiseiiwiqmkemwomaiagqqayquesyewsycuoqmaeociikqweiewmsiaemwkggkygiamkyiicscccoiekmqeowyisamugkqucyyiiwmmmemoayiiaugggucscqi",
+            "expectedErrorField": "name"
+          }
+        ]
+      }
+    },
+    {
+      "name": "avatarUrl",
+      "type": "string",
+      "required": false,
+      "constraints": {
+        "format": "url"
+      },
+      "samples": {
+        "valid": "https://example.com/gen-26510ffd",
+        "invalidators": [
+          {
+            "kind": "wrong-type",
+            "value": 12345,
+            "expectedErrorField": "avatarUrl"
+          },
+          {
+            "kind": "format-violation",
+            "value": "not-a-url",
+            "expectedErrorField": "avatarUrl"
+          }
+        ]
+      }
+    }
+  ],
+  "sampleValid": {
+    "email": "gen-2650d21f@example.com",
+    "name": "ekeew",
+    "avatarUrl": "https://example.com/gen-26510ffd"
+  }
+}

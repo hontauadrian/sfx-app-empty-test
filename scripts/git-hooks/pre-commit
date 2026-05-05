@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Prevent commits that delete tracked project skill files. These are
+# whitelisted in .gitignore (see the .claude/skills/*-plan entries) and must
+# survive agent worktree runs that routinely do `git add -A` / `commit -a`.
+#
+# Escape hatch (only if you truly mean it): git commit --no-verify
+
+set -euo pipefail
+
+PROTECTED_PATHS_REGEX='^\.claude/skills/(feature-plan|product-plan)/'
+
+deleted=$(git diff --cached --name-only --diff-filter=D | grep -E "$PROTECTED_PATHS_REGEX" || true)
+
+if [ -n "$deleted" ]; then
+  echo "✖ pre-commit blocked: refusing to delete protected skill files:" >&2
+  echo "$deleted" | sed 's/^/   - /' >&2
+  echo "" >&2
+  echo "  These files are intentionally tracked under .claude/skills/." >&2
+  echo "  If your worktree is missing them, restore from main:" >&2
+  echo "    git checkout origin/main -- .claude/skills/feature-plan .claude/skills/product-plan" >&2
+  echo "" >&2
+  echo "  To intentionally bypass: git commit --no-verify" >&2
+  exit 1
+fi
+
+exit 0

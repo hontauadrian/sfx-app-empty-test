@@ -1,0 +1,4 @@
+{
+  "decision": "block",
+  "reasonContains": ["RUNTIME_UNVERIFIED", "ERR_CONNECTION_REFUSED"]
+}

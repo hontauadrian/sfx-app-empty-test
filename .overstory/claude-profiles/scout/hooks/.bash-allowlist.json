@@ -1,0 +1,63 @@
+{
+  "commands": [
+    "git",
+    "ov",
+    "sd",
+    "bd",
+    "mulch",
+    "ml",
+    "cn",
+    "pwd",
+    "cd",
+    "ls",
+    "echo",
+    "cat",
+    "pnpm",
+    "tail",
+    "head",
+    "grep",
+    "rg",
+    "wc",
+    "sort",
+    "uniq",
+    "cut",
+    "awk",
+    "sed",
+    "tr",
+    "jq",
+    "find",
+    "xargs",
+    "basename",
+    "dirname",
+    "printf",
+    "date",
+    "sleep",
+    "tee",
+    "diff",
+    "file",
+    "stat",
+    "readlink",
+    "which",
+    "type",
+    "true",
+    "false",
+    "test",
+    "tree",
+    "turbo"
+  ],
+  "subcommand_restrictions": {
+    "git": [
+      "status",
+      "log",
+      "diff",
+      "show",
+      "blame",
+      "branch"
+    ],
+    "pnpm": [
+      "list",
+      "ls",
+      "why"
+    ]
+  }
+}

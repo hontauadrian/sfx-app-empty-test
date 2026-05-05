@@ -1,0 +1,16 @@
+{
+  "version": "1",
+  "pages": [
+    {
+      "route": "/dashboard",
+      "files": ["apps/web/src/app/dashboard/page.tsx"],
+      "tokens": ["welcome"],
+      "changed": true,
+      "guard": "authenticated",
+      "interactive": false
+    }
+  ],
+  "apiEndpoints": [],
+  "forms": [],
+  "middleware": []
+}

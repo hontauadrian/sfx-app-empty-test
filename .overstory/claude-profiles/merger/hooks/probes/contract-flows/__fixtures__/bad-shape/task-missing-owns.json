@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "task_id": "task-missing-owns",
+  "owns": [],
+  "actors": [
+    {
+      "name": "orphan-actor",
+      "auth": {}
+    }
+  ]
+}

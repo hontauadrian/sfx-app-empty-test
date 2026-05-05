@@ -1,0 +1,89 @@
+{
+  "schemaRef": "test/fixtures/optional-field.ts:profileUpdateSchema",
+  "fields": [
+    {
+      "name": "displayName",
+      "type": "string",
+      "required": true,
+      "constraints": {
+        "min": 1,
+        "max": 100
+      },
+      "samples": {
+        "valid": "mykuk",
+        "invalidators": [
+          {
+            "kind": "missing",
+            "expectedErrorField": "displayName"
+          },
+          {
+            "kind": "wrong-type",
+            "value": 12345,
+            "expectedErrorField": "displayName"
+          },
+          {
+            "kind": "empty-string",
+            "value": "",
+            "expectedErrorField": "displayName"
+          },
+          {
+            "kind": "above-max",
+            "value": "mykukuguacosegmikiwuymqysgeeykeoykeqceseowgccmqwwwmgwuwakqquecokksqkyacsoskqwoekgqaemwgiioqgoukwcoqcm",
+            "expectedErrorField": "displayName"
+          }
+        ]
+      }
+    },
+    {
+      "name": "bio",
+      "type": "string",
+      "required": false,
+      "constraints": {
+        "max": 500
+      },
+      "samples": {
+        "valid": "bwyeu",
+        "invalidators": [
+          {
+            "kind": "wrong-type",
+            "value": 12345,
+            "expectedErrorField": "bio"
+          },
+          {
+            "kind": "above-max",
+            "value": "bwyeuimiqiguaicyqsiumemqamiewcaquamsygkayycugwaywmcyauyqamcckqiuagweuyyuegyaykqcsqkeisamocsgcyqcgcsukeqgukskmqzwqcysogsaaioscuwcwqqaoekuocoeoecggimccoumyqgscqmwsukeqiomswiswcgmkwcoyeesoomkgcsuisogasooyistkyuacwuaewooqseowoouukscsgaowsywkuqwiocgqkqmkwkeuayuwuaqguoeeeowmimmogmmseseywkeqoygkuqqyfwsqskymyuoaakksgoyuqguqamaeauiuyeaaoewmqwmqsimoguyguwyokwgcwuwigekwmmimgmmiuswimaooseokicaomakkauamcsquscocyuumqiqeacmiqcmgisemwcyqieikweesuqsmsgouwmwamoiusyimmyoaieuoqiecekmikouvwkqcsgwwooaccogacsmwcuqyquca",
+            "expectedErrorField": "bio"
+          }
+        ]
+      }
+    },
+    {
+      "name": "website",
+      "type": "string",
+      "required": false,
+      "constraints": {
+        "format": "url"
+      },
+      "samples": {
+        "valid": "https://example.com/gen-f8564680",
+        "invalidators": [
+          {
+            "kind": "wrong-type",
+            "value": 12345,
+            "expectedErrorField": "website"
+          },
+          {
+            "kind": "format-violation",
+            "value": "not-a-url",
+            "expectedErrorField": "website"
+          }
+        ]
+      }
+    }
+  ],
+  "sampleValid": {
+    "displayName": "mykuk",
+    "bio": "bwyeu",
+    "website": "https://example.com/gen-f8564680"
+  }
+}

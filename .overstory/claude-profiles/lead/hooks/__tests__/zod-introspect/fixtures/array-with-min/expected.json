@@ -1,0 +1,96 @@
+{
+  "schemaRef": "test/fixtures/array-with-min.ts:tagListSchema",
+  "fields": [
+    {
+      "name": "tags",
+      "type": "array",
+      "required": true,
+      "constraints": {
+        "min": 1,
+        "max": 10
+      },
+      "samples": {
+        "valid": [
+          "item-0"
+        ],
+        "invalidators": [
+          {
+            "kind": "missing",
+            "expectedErrorField": "tags"
+          },
+          {
+            "kind": "wrong-type",
+            "value": "not-an-array",
+            "expectedErrorField": "tags"
+          },
+          {
+            "kind": "below-min",
+            "value": [],
+            "expectedErrorField": "tags"
+          },
+          {
+            "kind": "above-max",
+            "value": [
+              "item-0",
+              "item-1",
+              "item-2",
+              "item-3",
+              "item-4",
+              "item-5",
+              "item-6",
+              "item-7",
+              "item-8",
+              "item-9",
+              "item-10"
+            ],
+            "expectedErrorField": "tags"
+          }
+        ]
+      }
+    },
+    {
+      "name": "title",
+      "type": "string",
+      "required": true,
+      "constraints": {
+        "min": 3,
+        "max": 50
+      },
+      "samples": {
+        "valid": "baieg",
+        "invalidators": [
+          {
+            "kind": "missing",
+            "expectedErrorField": "title"
+          },
+          {
+            "kind": "wrong-type",
+            "value": 12345,
+            "expectedErrorField": "title"
+          },
+          {
+            "kind": "empty-string",
+            "value": "",
+            "expectedErrorField": "title"
+          },
+          {
+            "kind": "below-min",
+            "value": "ba",
+            "expectedErrorField": "title"
+          },
+          {
+            "kind": "above-max",
+            "value": "baiegqegiemqssyywiwioeieiwumiucouikcueyqkumgusqwocm",
+            "expectedErrorField": "title"
+          }
+        ]
+      }
+    }
+  ],
+  "sampleValid": {
+    "tags": [
+      "item-0"
+    ],
+    "title": "baieg"
+  }
+}

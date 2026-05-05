@@ -1,0 +1,28 @@
+{
+  "name": "@sfx/validation",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@anatine/zod-openapi": "2.2.6",
+    "@sfx/domain": "workspace:*",
+    "@sfx/shared": "workspace:*",
+    "openapi3-ts": "4.4.0",
+    "zod": "3.24.2"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3",
+    "vitest": "2.1.8",
+    "@vitest/coverage-v8": "2.1.8",
+    "ts-node": "10.9.2"
+  }
+}

@@ -1,0 +1,160 @@
+{
+  "version": 1,
+  "task_id": "task-001",
+  "owns": [
+    {
+      "resource": "parent-resource"
+    }
+  ],
+  "extends": [
+    {
+      "actor": "actor-A"
+    },
+    {
+      "actor": "actor-B"
+    },
+    {
+      "actor": "anonymous"
+    }
+  ],
+  "resources": [
+    {
+      "name": "parent-resource",
+      "create": {
+        "method": "POST",
+        "path": "/api/v1/parent",
+        "bodyKind": "json",
+        "body": {
+          "name": "example-parent"
+        }
+      },
+      "capture": {
+        "bindings": {
+          "id": "$.id"
+        },
+        "headerBindings": {
+          "revision": "ETag"
+        }
+      },
+      "idempotency": {
+        "keyHeader": "Idempotency-Key",
+        "scope": "route",
+        "conflictStatus": 409
+      },
+      "pagination": {
+        "shape": "cursor",
+        "pageParam": "cursor",
+        "limitParam": "limit",
+        "defaultLimit": 20,
+        "maxLimit": 100,
+        "itemsPath": "$.items",
+        "nextCursorPath": "$.nextCursor",
+        "emptyResultAllowed": true
+      },
+      "ttl": {
+        "durationMs": 60000,
+        "expiredStatus": 410
+      },
+      "optimisticConcurrency": {
+        "responseHeader": "ETag",
+        "requestHeader": "If-Match",
+        "staleStatus": 412
+      },
+      "immutableFields": [
+        "parentId"
+      ],
+      "tenantScopedBy": "tenant-id",
+      "transitions": [
+        {
+          "from": "open",
+          "to": "closed",
+          "trigger": {
+            "method": "POST",
+            "pathSuffix": "/close"
+          },
+          "expectStatus": 200,
+          "reverseAllowed": false
+        }
+      ],
+      "bulkOperations": [
+        {
+          "routeSuffix": "/bulk",
+          "shape": "multi-status",
+          "multiStatusCode": 207
+        }
+      ],
+      "concurrencyChecks": [
+        {
+          "op": "create",
+          "expectedStatusCounts": {
+            "201": 1,
+            "409": 2
+          }
+        }
+      ]
+    }
+  ],
+  "special_flows": [
+    {
+      "id": "task-001:happy-create",
+      "description": "happy POST /parent creates resource and emits audit-log",
+      "contract": {
+        "kind": "http",
+        "source": "plan-task-001 §1"
+      },
+      "setup": [],
+      "steps": [
+        {
+          "kind": "api",
+          "stepId": "do-create",
+          "transport": "http",
+          "method": "POST",
+          "path": "/api/v1/parent",
+          "body": {
+            "name": "example-parent"
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 201,
+          "bodyHas": {
+            "$.id": {
+              "present": true
+            }
+          },
+          "headerHas": {
+            "ETag": {
+              "matches": "^\"[a-f0-9]+\"$"
+            }
+          }
+        },
+        {
+          "kind": "capture",
+          "bindings": {
+            "parentId": "$.id"
+          },
+          "headerBindings": {
+            "parentEtag": "ETag"
+          }
+        }
+      ],
+      "sideEffects": [
+        {
+          "kind": "audit-log",
+          "polarity": "expected",
+          "description": "parent-create logged",
+          "verifiedBy": "http-probe"
+        }
+      ],
+      "invariants": [
+        {
+          "kind": "replay-equality",
+          "steps": [
+            "do-create"
+          ]
+        }
+      ],
+      "coverageTemplate": "idempotency-replay-same"
+    }
+  ]
+}

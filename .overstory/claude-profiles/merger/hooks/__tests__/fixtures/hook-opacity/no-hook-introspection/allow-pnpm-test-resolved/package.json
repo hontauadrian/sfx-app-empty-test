@@ -1,0 +1,6 @@
+{
+  "name": "fixture-allow-pnpm-test-resolved",
+  "scripts": {
+    "test": "vitest run"
+  }
+}

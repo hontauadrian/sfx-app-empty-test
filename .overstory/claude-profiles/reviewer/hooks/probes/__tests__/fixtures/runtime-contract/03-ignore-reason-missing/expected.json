@@ -1,0 +1,5 @@
+{
+  "decision": "block",
+  "categoryContains": "RUNTIME_CONTRACT_VIOLATION",
+  "reasonsContain": ["IGNORE_REASON_MISSING"]
+}

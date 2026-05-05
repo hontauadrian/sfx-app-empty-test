@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "task_id": "task-conflict-actor",
+  "owns": [
+    {
+      "actor": "actor-A"
+    }
+  ],
+  "actors": [
+    {
+      "name": "actor-A",
+      "auth": {
+        "kind": "bearer",
+        "token": "token-A-CONFLICT"
+      }
+    }
+  ]
+}

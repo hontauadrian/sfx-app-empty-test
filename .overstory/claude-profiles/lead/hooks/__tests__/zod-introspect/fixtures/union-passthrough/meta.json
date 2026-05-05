@@ -1,0 +1,4 @@
+{
+  "symbolName": "flexInputSchema",
+  "schemaPath": "test/fixtures/union-passthrough.ts"
+}

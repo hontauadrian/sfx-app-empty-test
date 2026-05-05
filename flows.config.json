@@ -1,0 +1,13 @@
+{
+  "openapi": {
+    "source": "command",
+    "command": "pnpm --filter @sfx/api openapi:dump",
+    "path": ".claude/hooks/.openapi.json"
+  },
+  "schema": {
+    "source": "prisma",
+    "path": "packages/database/prisma/schema.prisma"
+  },
+  "apiBaseUrl": "http://localhost:3001",
+  "flowsDir": ".overstory/runtime-contract.flows"
+}

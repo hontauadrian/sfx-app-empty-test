@@ -1,0 +1,891 @@
+{
+  "diagnostics": [],
+  "flows": [
+    {
+      "contract": {
+        "endpoint": "CRUD /api/v1/tasks",
+        "kind": "chain-crud-roundtrip",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "chain:crud-roundtrip:tasks",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "CRUD roundtrip for tasks fails."
+      },
+      "steps": [
+        {
+          "body": {
+            "description": "task-desc",
+            "title": "my-task"
+          },
+          "kind": "api",
+          "method": "POST",
+          "path": "/api/v1/tasks"
+        },
+        {
+          "kind": "expect",
+          "status": 201
+        },
+        {
+          "bindings": {
+            "resourceId": "$.id",
+            "resourceIdAlt": "$.id"
+          },
+          "kind": "capture"
+        },
+        {
+          "kind": "api",
+          "method": "GET",
+          "path": "/api/v1/tasks/${resourceId}"
+        },
+        {
+          "kind": "expect",
+          "status": 200
+        },
+        {
+          "body": {
+            "title": "updated-title"
+          },
+          "kind": "api",
+          "method": "PATCH",
+          "path": "/api/v1/tasks/${resourceId}"
+        },
+        {
+          "kind": "expect",
+          "status": 200
+        },
+        {
+          "kind": "api",
+          "method": "GET",
+          "path": "/api/v1/tasks/${resourceId}"
+        },
+        {
+          "kind": "expect",
+          "status": 200
+        },
+        {
+          "kind": "api",
+          "method": "DELETE",
+          "path": "/api/v1/tasks/${resourceId}"
+        },
+        {
+          "kind": "expect",
+          "statusAnyOf": [
+            200,
+            204
+          ]
+        },
+        {
+          "kind": "api",
+          "method": "GET",
+          "path": "/api/v1/tasks/${resourceId}"
+        },
+        {
+          "kind": "expect",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "DELETE /api/v1/tasks/:id",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:delete:auth:expired-jwt",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "DELETE /api/v1/tasks/:id accepts expired JWT."
+      },
+      "steps": [
+        {
+          "headers": {
+            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwcm9iZS1mYWtlLXVzZXIiLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MX0.garbage-signature-not-valid"
+          },
+          "kind": "api",
+          "method": "DELETE",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "DELETE /api/v1/tasks/:id",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:delete:auth:garbage-bearer",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "DELETE /api/v1/tasks/:id accepts garbage bearer token."
+      },
+      "steps": [
+        {
+          "headers": {
+            "Authorization": "Bearer garbage-not-a-jwt"
+          },
+          "kind": "api",
+          "method": "DELETE",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "DELETE /api/v1/tasks/:id",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:delete:auth:no-bearer",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "DELETE /api/v1/tasks/:id does not require authentication (missing bearer accepted)."
+      },
+      "steps": [
+        {
+          "kind": "api",
+          "method": "DELETE",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "DELETE /api/v1/tasks/:id",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:delete:auth:wrong-secret-jwt",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "DELETE /api/v1/tasks/:id accepts JWT signed with wrong secret."
+      },
+      "steps": [
+        {
+          "headers": {
+            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwcm9iZS1mYWtlLXVzZXIiLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6OTk5OTk5OTk5OX0.ZhYgvkyXWp0mfGS-w7fqFfqgFyxUXqJwSYfLtwsq_GQ"
+          },
+          "kind": "api",
+          "method": "DELETE",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "DELETE /api/v1/tasks/:id",
+        "kind": "endpoint-stub-untyped",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:delete:happy",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "DELETE /api/v1/tasks/:id rejects valid input or returns unexpected status."
+      },
+      "steps": [
+        {
+          "kind": "api",
+          "method": "DELETE",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 204
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "DELETE /api/v1/tasks/:id",
+        "kind": "status-reachability",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:delete:status-reach:404",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "DELETE /api/v1/tasks/:id does not return 404 for missing resource."
+      },
+      "steps": [
+        {
+          "kind": "api",
+          "method": "DELETE",
+          "path": "/api/v1/tasks/non-existent-id-00000"
+        },
+        {
+          "kind": "expect",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "GET /api/v1/tasks/:id",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:get:auth:expired-jwt",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "GET /api/v1/tasks/:id accepts expired JWT."
+      },
+      "steps": [
+        {
+          "headers": {
+            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwcm9iZS1mYWtlLXVzZXIiLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MX0.garbage-signature-not-valid"
+          },
+          "kind": "api",
+          "method": "GET",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "GET /api/v1/tasks/:id",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:get:auth:garbage-bearer",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "GET /api/v1/tasks/:id accepts garbage bearer token."
+      },
+      "steps": [
+        {
+          "headers": {
+            "Authorization": "Bearer garbage-not-a-jwt"
+          },
+          "kind": "api",
+          "method": "GET",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "GET /api/v1/tasks/:id",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:get:auth:no-bearer",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "GET /api/v1/tasks/:id does not require authentication (missing bearer accepted)."
+      },
+      "steps": [
+        {
+          "kind": "api",
+          "method": "GET",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "GET /api/v1/tasks/:id",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:get:auth:wrong-secret-jwt",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "GET /api/v1/tasks/:id accepts JWT signed with wrong secret."
+      },
+      "steps": [
+        {
+          "headers": {
+            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwcm9iZS1mYWtlLXVzZXIiLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6OTk5OTk5OTk5OX0.ZhYgvkyXWp0mfGS-w7fqFfqgFyxUXqJwSYfLtwsq_GQ"
+          },
+          "kind": "api",
+          "method": "GET",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "GET /api/v1/tasks/:id",
+        "kind": "endpoint-stub-untyped",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:get:happy",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "GET /api/v1/tasks/:id rejects valid input or returns unexpected status."
+      },
+      "steps": [
+        {
+          "kind": "api",
+          "method": "GET",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "GET /api/v1/tasks/:id",
+        "kind": "status-reachability",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:get:status-reach:404",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "GET /api/v1/tasks/:id does not return 404 for missing resource."
+      },
+      "steps": [
+        {
+          "kind": "api",
+          "method": "GET",
+          "path": "/api/v1/tasks/non-existent-id-00000"
+        },
+        {
+          "kind": "expect",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "PATCH /api/v1/tasks/:id",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:patch:auth:expired-jwt",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "PATCH /api/v1/tasks/:id accepts expired JWT."
+      },
+      "steps": [
+        {
+          "body": {
+            "title": "updated-title"
+          },
+          "headers": {
+            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwcm9iZS1mYWtlLXVzZXIiLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MX0.garbage-signature-not-valid"
+          },
+          "kind": "api",
+          "method": "PATCH",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "PATCH /api/v1/tasks/:id",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:patch:auth:garbage-bearer",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "PATCH /api/v1/tasks/:id accepts garbage bearer token."
+      },
+      "steps": [
+        {
+          "body": {
+            "title": "updated-title"
+          },
+          "headers": {
+            "Authorization": "Bearer garbage-not-a-jwt"
+          },
+          "kind": "api",
+          "method": "PATCH",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "PATCH /api/v1/tasks/:id",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:patch:auth:no-bearer",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "PATCH /api/v1/tasks/:id does not require authentication (missing bearer accepted)."
+      },
+      "steps": [
+        {
+          "body": {
+            "title": "updated-title"
+          },
+          "kind": "api",
+          "method": "PATCH",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "PATCH /api/v1/tasks/:id",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:patch:auth:wrong-secret-jwt",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "PATCH /api/v1/tasks/:id accepts JWT signed with wrong secret."
+      },
+      "steps": [
+        {
+          "body": {
+            "title": "updated-title"
+          },
+          "headers": {
+            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwcm9iZS1mYWtlLXVzZXIiLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6OTk5OTk5OTk5OX0.ZhYgvkyXWp0mfGS-w7fqFfqgFyxUXqJwSYfLtwsq_GQ"
+          },
+          "kind": "api",
+          "method": "PATCH",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "PATCH /api/v1/tasks/:id",
+        "kind": "endpoint-invalidator",
+        "source": "src/tasks/tasks.schema.ts:UpdateTaskSchema"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:patch:field-title:wrong-type",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "PATCH /api/v1/tasks/:id does not reject invalid title (wrong-type)."
+      },
+      "steps": [
+        {
+          "body": {
+            "title": 12345
+          },
+          "kind": "api",
+          "method": "PATCH",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "errorFieldMentions": "title",
+          "kind": "expect",
+          "status": 400
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "PATCH /api/v1/tasks/:id",
+        "kind": "endpoint-happy",
+        "source": "src/tasks/tasks.schema.ts:UpdateTaskSchema + src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:patch:happy",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "PATCH /api/v1/tasks/:id rejects valid input or returns unexpected status."
+      },
+      "steps": [
+        {
+          "body": {
+            "title": "updated-title"
+          },
+          "kind": "api",
+          "method": "PATCH",
+          "path": "/api/v1/tasks/:id"
+        },
+        {
+          "kind": "expect",
+          "status": 200
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "PATCH /api/v1/tasks/:id",
+        "kind": "status-reachability",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks-id:patch:status-reach:404",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "PATCH /api/v1/tasks/:id does not return 404 for missing resource."
+      },
+      "steps": [
+        {
+          "kind": "api",
+          "method": "PATCH",
+          "path": "/api/v1/tasks/non-existent-id-00000"
+        },
+        {
+          "kind": "expect",
+          "status": 404
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "POST /api/v1/tasks",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks:post:auth:expired-jwt",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "POST /api/v1/tasks accepts expired JWT."
+      },
+      "steps": [
+        {
+          "body": {
+            "description": "task-desc",
+            "title": "my-task"
+          },
+          "headers": {
+            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwcm9iZS1mYWtlLXVzZXIiLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MX0.garbage-signature-not-valid"
+          },
+          "kind": "api",
+          "method": "POST",
+          "path": "/api/v1/tasks"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "POST /api/v1/tasks",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks:post:auth:garbage-bearer",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "POST /api/v1/tasks accepts garbage bearer token."
+      },
+      "steps": [
+        {
+          "body": {
+            "description": "task-desc",
+            "title": "my-task"
+          },
+          "headers": {
+            "Authorization": "Bearer garbage-not-a-jwt"
+          },
+          "kind": "api",
+          "method": "POST",
+          "path": "/api/v1/tasks"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "POST /api/v1/tasks",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks:post:auth:no-bearer",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "POST /api/v1/tasks does not require authentication (missing bearer accepted)."
+      },
+      "steps": [
+        {
+          "body": {
+            "description": "task-desc",
+            "title": "my-task"
+          },
+          "kind": "api",
+          "method": "POST",
+          "path": "/api/v1/tasks"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "POST /api/v1/tasks",
+        "kind": "auth-boundary",
+        "source": "src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks:post:auth:wrong-secret-jwt",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "POST /api/v1/tasks accepts JWT signed with wrong secret."
+      },
+      "steps": [
+        {
+          "body": {
+            "description": "task-desc",
+            "title": "my-task"
+          },
+          "headers": {
+            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwcm9iZS1mYWtlLXVzZXIiLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6OTk5OTk5OTk5OX0.ZhYgvkyXWp0mfGS-w7fqFfqgFyxUXqJwSYfLtwsq_GQ"
+          },
+          "kind": "api",
+          "method": "POST",
+          "path": "/api/v1/tasks"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "POST /api/v1/tasks",
+        "kind": "endpoint-invalidator",
+        "source": "src/tasks/tasks.schema.ts:CreateTaskSchema"
+      },
+      "dependsOn": [],
+      "id": "tasks:post:field-description:wrong-type",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "POST /api/v1/tasks does not reject invalid description (wrong-type)."
+      },
+      "steps": [
+        {
+          "body": {
+            "description": 12345,
+            "title": "my-task"
+          },
+          "kind": "api",
+          "method": "POST",
+          "path": "/api/v1/tasks"
+        },
+        {
+          "errorFieldMentions": "description",
+          "kind": "expect",
+          "status": 400
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "POST /api/v1/tasks",
+        "kind": "endpoint-invalidator",
+        "source": "src/tasks/tasks.schema.ts:CreateTaskSchema"
+      },
+      "dependsOn": [],
+      "id": "tasks:post:field-title:missing",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "POST /api/v1/tasks does not reject invalid title (missing)."
+      },
+      "steps": [
+        {
+          "body": {
+            "description": "task-desc"
+          },
+          "kind": "api",
+          "method": "POST",
+          "path": "/api/v1/tasks"
+        },
+        {
+          "errorFieldMentions": "title",
+          "kind": "expect",
+          "status": 400
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "POST /api/v1/tasks",
+        "kind": "endpoint-invalidator",
+        "source": "src/tasks/tasks.schema.ts:CreateTaskSchema"
+      },
+      "dependsOn": [],
+      "id": "tasks:post:field-title:wrong-type",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "POST /api/v1/tasks does not reject invalid title (wrong-type)."
+      },
+      "steps": [
+        {
+          "body": {
+            "description": "task-desc",
+            "title": 12345
+          },
+          "kind": "api",
+          "method": "POST",
+          "path": "/api/v1/tasks"
+        },
+        {
+          "errorFieldMentions": "title",
+          "kind": "expect",
+          "status": 400
+        }
+      ]
+    },
+    {
+      "contract": {
+        "endpoint": "POST /api/v1/tasks",
+        "kind": "endpoint-happy",
+        "source": "src/tasks/tasks.schema.ts:CreateTaskSchema + src/tasks/tasks.controller.ts"
+      },
+      "dependsOn": [],
+      "id": "tasks:post:happy",
+      "onFail": {
+        "check": [
+          "src/tasks/tasks.controller.ts"
+        ],
+        "implies": "POST /api/v1/tasks rejects valid input or returns unexpected status."
+      },
+      "steps": [
+        {
+          "body": {
+            "description": "task-desc",
+            "title": "my-task"
+          },
+          "kind": "api",
+          "method": "POST",
+          "path": "/api/v1/tasks"
+        },
+        {
+          "bodyHas": [
+            "id"
+          ],
+          "kind": "expect",
+          "status": 201
+        }
+      ]
+    }
+  ],
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "logicalSource": ".claude/runtime-contract.logical.json",
+  "matrixSource": ".claude/hooks/.matrix.json",
+  "version": "1"
+}

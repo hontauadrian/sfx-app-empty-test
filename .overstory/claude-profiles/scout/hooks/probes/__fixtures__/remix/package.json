@@ -1,0 +1,5 @@
+{
+  "name": "fixture-remix",
+  "private": true,
+  "dependencies": { "@remix-run/react": "2.0.0" }
+}

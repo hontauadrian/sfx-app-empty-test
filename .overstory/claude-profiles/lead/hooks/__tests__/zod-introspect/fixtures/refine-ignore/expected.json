@@ -1,0 +1,76 @@
+{
+  "schemaRef": "test/fixtures/refine-ignore.ts:passwordResetSchema",
+  "fields": [
+    {
+      "name": "password",
+      "type": "string",
+      "required": true,
+      "constraints": {
+        "min": 8
+      },
+      "samples": {
+        "valid": "vwmasogq",
+        "invalidators": [
+          {
+            "kind": "missing",
+            "expectedErrorField": "password"
+          },
+          {
+            "kind": "wrong-type",
+            "value": 12345,
+            "expectedErrorField": "password"
+          },
+          {
+            "kind": "empty-string",
+            "value": "",
+            "expectedErrorField": "password"
+          },
+          {
+            "kind": "below-min",
+            "value": "vwmasog",
+            "expectedErrorField": "password"
+          }
+        ]
+      }
+    },
+    {
+      "name": "confirmPassword",
+      "type": "string",
+      "required": true,
+      "constraints": {
+        "min": 8
+      },
+      "samples": {
+        "valid": "kwcmmcga",
+        "invalidators": [
+          {
+            "kind": "missing",
+            "expectedErrorField": "confirmPassword"
+          },
+          {
+            "kind": "wrong-type",
+            "value": 12345,
+            "expectedErrorField": "confirmPassword"
+          },
+          {
+            "kind": "empty-string",
+            "value": "",
+            "expectedErrorField": "confirmPassword"
+          },
+          {
+            "kind": "below-min",
+            "value": "kwcmmcg",
+            "expectedErrorField": "confirmPassword"
+          }
+        ]
+      }
+    }
+  ],
+  "sampleValid": {
+    "password": "vwmasogq",
+    "confirmPassword": "kwcmmcga"
+  },
+  "diagnostics": [
+    "'passwordResetSchema' uses .refine() — custom refinements are not introspected"
+  ]
+}

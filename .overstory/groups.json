@@ -1,0 +1,16 @@
+[
+	{
+		"id": "group-bc102d10",
+		"name": "sfx-task-manager",
+		"memberIssueIds": [
+			"sfx-webapp-boilerplate-0798",
+			"sfx-webapp-boilerplate-fd32",
+			"sfx-webapp-boilerplate-bf61",
+			"sfx-webapp-boilerplate-4984",
+			"sfx-webapp-boilerplate-3876"
+		],
+		"status": "active",
+		"createdAt": "2026-04-22T16:36:39.164Z",
+		"completedAt": null
+	}
+]

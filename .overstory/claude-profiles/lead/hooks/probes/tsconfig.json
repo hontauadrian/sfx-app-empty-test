@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "baseUrl": "../../../../..",
+    "paths": {
+      "@sfx/domain": ["packages/domain/src"],
+      "@sfx/domain/*": ["packages/domain/src/*"],
+      "@sfx/validation": ["packages/validation/src"],
+      "@sfx/validation/*": ["packages/validation/src/*"],
+      "@sfx/shared": ["packages/shared/src"],
+      "@sfx/shared/*": ["packages/shared/src/*"],
+      "@sfx/database": ["packages/database/src"],
+      "@sfx/database/*": ["packages/database/src/*"]
+    }
+  },
+  "include": ["*.ts"]
+}

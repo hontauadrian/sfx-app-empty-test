@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "task_id": "_shared",
+  "owns": [
+    { "actor": "anonymous" }
+  ],
+  "actors": [
+    {
+      "name": "anonymous",
+      "auth": {}
+    }
+  ],
+  "config": {
+    "reservedActors": {
+      "anonymous": {
+        "auth": {}
+      }
+    },
+    "fixturesRoot": "fixtures",
+    "envelope": {
+      "successWrapper": ["data"]
+    }
+  }
+}

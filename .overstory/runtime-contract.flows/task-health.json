@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "task_id": "task-health",
+  "owns": [
+    { "resource": "health-check" }
+  ],
+  "extends": [
+    { "actor": "anonymous" }
+  ],
+  "resources": [
+    {
+      "name": "health-check",
+      "kind": "endpoint"
+    }
+  ],
+  "special_flows": [
+    {
+      "id": "task-health:happy-liveness-probe",
+      "description": "GET /health returns 200 with status/timestamp/database fields",
+      "contract": {
+        "kind": "http",
+        "source": "apps/api HealthController.check",
+        "endpoint": "GET /health"
+      },
+      "steps": [
+        {
+          "kind": "setAuth",
+          "binding": "anonymous"
+        },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/health"
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.status": "ok",
+            "$.timestamp": { "type": "string" },
+            "$.database": "connected"
+          }
+        }
+      ]
+    }
+  ]
+}

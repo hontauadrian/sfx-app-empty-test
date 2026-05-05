@@ -1,0 +1,57 @@
+# Source-tree exclusions for Dockerfile `COPY . .`. Keeps the build context
+# lean so per-image weight stays around code + node_modules dep graph instead
+# of every previous worktree's checkout, every agent's transcript, every
+# claude-code cache, and the entire content-addressable pnpm store. Without
+# this list, the panel-managed overstory state (which lives in the workspace
+# via bind mounts at runtime) inflates every image by 2-3 GB and tips the
+# docker daemon into "input/output error" on layer extraction the moment two
+# stacks share a disk.
+
+node_modules
+**/node_modules
+
+# Build outputs / dev caches
+.next
+**/.next
+dist
+**/dist
+.turbo
+**/.turbo
+coverage
+**/coverage
+
+# Repo-local pnpm content-addressable store. Containers get their own
+# `pnpm install --frozen-lockfile` during the `deps` stage; the host store is
+# a host-only optimisation and including it in the image is just wasted bytes.
+.pnpm-store
+**/.pnpm-store
+
+# Overstory + ecosystem state managed by the panel via bind mounts at
+# runtime. Worktrees in particular hold full checkouts of completed agents
+# and would otherwise be COPYed into every image rebuild.
+.overstory
+.canopy
+.mulch
+.seeds
+.stack.json
+.stack.start.log
+.pgdata
+.turbo-watch.pid
+.turbo-watch.log
+
+# Agent-side claude / playwright / test artefacts that have no place inside
+# the app image.
+.claude
+.playwright
+
+# VCS + secrets
+.git
+.gitignore
+.env
+.env.*
+*.log
+
+# Docs (the boilerplate ships with hundreds of MB of generated docs)
+*.md
+!README.md
+pgdata

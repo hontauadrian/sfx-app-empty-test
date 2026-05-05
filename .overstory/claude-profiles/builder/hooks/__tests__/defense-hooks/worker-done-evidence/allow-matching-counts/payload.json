@@ -1,0 +1,1 @@
+{"tool_name":"Bash","tool_input":{"command":"ov mail send --to team-lead --subject worker_done --body \"$(cat <<'EOF'\n## Summary\nDone with tasks.\n\n## runtime-evidence\nprobe:smoke: total=10 passed=9 failed=1\nEOF\n)\""}}

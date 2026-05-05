@@ -1,0 +1,6 @@
+{
+  "cases": [
+    { "method": "GET", "path": "/api/v1/users" },
+    { "method": "POST", "path": "/api/v1/auth/login" }
+  ]
+}

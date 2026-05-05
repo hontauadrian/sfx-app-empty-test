@@ -1,0 +1,120 @@
+# =============================================================================
+# Editing rules for AGENTS spawning per-worktree stacks via `pnpm stack:up`
+# inside the SFX panel container. Read this BEFORE changing the file.
+#
+# 1. Hot reload works ONLY through `bind` volumes whose source is a path
+#    relative to this compose file (or under the worktree). Keep them as
+#    relative `./apps/...` / `./packages/...` entries so
+#    `scripts/stack-up-docker.sh` can rewrite them to host-absolute paths
+#    at runtime — that rewrite is what makes bind mounts resolve when the
+#    panel container talks to the host docker daemon (DooD). Absolute
+#    paths in compose are NOT rewritten and will fail with
+#    "mounts denied: not shared from the host".
+#
+# 2. Both `web` and `api` declare an explicit `image:` tag in addition to
+#    `build:`. Without an `image:`, docker compose names the image after
+#    the project (`<project>-web`), so every per-worktree project would
+#    rebuild from scratch. Sharing `sfx-app-*:dev` lets workers reuse the
+#    one image built at panel boot — first stack:up = ~5 min, every later
+#    stack:up = instant because the worktree's code is bind-mounted in,
+#    not baked into the image.
+#
+# 3. Use `${VAR:-default}` for every published port so the panel's slot
+#    manager + per-worker hash port mapping can override at runtime
+#    without forking the file. NEXT_PORT (web), API_PORT (api), and
+#    PG_PORT (postgres) are the contract — do not introduce new port
+#    env names without updating `scripts/stack-up-docker.sh` and
+#    `src/lib/server/test-slot-manager.ts` in the panel repo.
+#
+# 4. Postgres healthcheck MUST pin `-d $POSTGRES_DB`. `pg_isready -U <user>`
+#    alone defaults to db named after the user, which never exists, and
+#    floods the logs. The compose file passes `$${POSTGRES_DB}` through to
+#    the container so the probe resolves dynamically.
+#
+#    To override db name/user/password for a non-SFX app, drop a `.env`
+#    next to this file with `POSTGRES_USER=...`, `POSTGRES_PASSWORD=...`,
+#    `POSTGRES_DB=...`. `scripts/stack-up-docker.sh` sources that .env so
+#    per-worker stacks pick the same values.
+#
+# 5. NEVER bind-mount paths outside the project root — DooD bind rewrite
+#    only translates worktree-relative paths. Mounting `/etc/...`,
+#    `/var/...`, or `~/.foo` will silently fail when stack:up runs from
+#    inside the panel container.
+# =============================================================================
+services:
+  web:
+    image: sfx-app-web:dev
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: development
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:${API_PORT:-3001}}
+    ports:
+      - "${NEXT_PORT:-3000}:3000"
+    volumes:
+      - ./apps/web/src:/app/apps/web/src
+      - ./apps/web/.env.local:/app/apps/web/.env.local
+      - ./packages/domain/src:/app/packages/domain/src
+      - ./packages/shared/src:/app/packages/shared/src
+      - ./packages/validation/src:/app/packages/validation/src
+    depends_on:
+      - api
+
+  api:
+    image: sfx-app-api:dev
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: development
+    ports:
+      - "${API_PORT:-3001}:3001"
+    volumes:
+      - ./apps/api/src:/app/apps/api/src
+      - ./apps/api/.env:/app/apps/api/.env
+      - ./packages/domain/src:/app/packages/domain/src
+      - ./packages/shared/src:/app/packages/shared/src
+      - ./packages/validation/src:/app/packages/validation/src
+      - ./packages/database/src:/app/packages/database/src
+      - ./packages/database/prisma:/app/packages/database/prisma
+    environment:
+      # Postgres credentials/db are parametrized via .env so non-SFX apps can
+      # override without editing this file. Defaults (`app`/`app`/`app_db`)
+      # match a generic boilerplate; the SFX webapp ships a `.env` that pins
+      # POSTGRES_USER=sfx / POSTGRES_DB=sfx_db / POSTGRES_PASSWORD=sfx.
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@postgres:5432/${POSTGRES_DB:-app_db}
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-minimum-16-chars}
+      # CORS allowlist. Default tracks the worktree's web port for
+      # auto-isolated worker stacks. Override in .env to a panel
+      # subdomain (http://app.localhost) or a prod origin
+      # (https://app.example.com,https://example.com — csv allowed).
+      - WEB_ORIGIN=${WEB_ORIGIN:-http://localhost:${NEXT_PORT:-3000}}
+      - PORT=3001
+      - NODE_ENV=development
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: ${POSTGRES_DB:-app_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` without `-d` defaults to the db named after `-U`, which
+      # silently logs `FATAL: database "<user>" does not exist` once per
+      # healthcheck interval. Pin `-d $POSTGRES_DB` so the probe authenticates
+      # against the actual db. The shell expands env at probe time inside the
+      # container — keep the literal `$$` so docker compose passes it through.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-app} -d $${POSTGRES_DB:-app_db}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
