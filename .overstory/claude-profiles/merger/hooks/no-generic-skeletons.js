@@ -11,7 +11,7 @@
 
 const fs = require("fs");
 
-const input = JSON.parse(fs.readFileSync("/dev/stdin", "utf-8"));
+const input = JSON.parse(fs.readFileSync(0, "utf8"));
 const toolName = input.tool_name;
 
 if (toolName !== "Edit" && toolName !== "Write") {

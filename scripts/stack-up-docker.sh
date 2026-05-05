@@ -412,6 +412,32 @@ for attempt in $(seq 1 60); do
       fi
       echo "[stack-up-docker] upserted DATABASE_URL in packages/database/.env" | tee -a "$LOG"
     fi
+
+    # Also upsert apps/api/.env. NestJS boots via dotenv from apps/api at
+    # runtime (and during integration tests), and the seeded file ships with
+    # `localhost:6651` which is wrong inside the panel container — the host
+    # Postgres is reachable as `host.docker.internal` from there. Without
+    # this, every builder hits the wall when running `pnpm --filter @sfx/api
+    # test:integration` and burns 30+ minutes diagnosing connection refused.
+    if [ -d "$PROJECT_DIR/apps/api" ]; then
+      API_ENV_FILE="$PROJECT_DIR/apps/api/.env"
+      if [ ! -f "$API_ENV_FILE" ]; then
+        # Seed from .env.example if present so we don't drop JWT secrets etc.
+        if [ -f "$PROJECT_DIR/apps/api/.env.example" ]; then
+          cp "$PROJECT_DIR/apps/api/.env.example" "$API_ENV_FILE"
+        else
+          : > "$API_ENV_FILE"
+        fi
+      fi
+      if grep -q '^DATABASE_URL=' "$API_ENV_FILE"; then
+        escaped_url="$(printf '%s' "$WORKTREE_DATABASE_URL" | sed -e 's/[\/&]/\\&/g')"
+        sed "s|^DATABASE_URL=.*|DATABASE_URL=${escaped_url}|" "$API_ENV_FILE" > "$API_ENV_FILE.tmp" \
+          && mv "$API_ENV_FILE.tmp" "$API_ENV_FILE"
+      else
+        echo "DATABASE_URL=$WORKTREE_DATABASE_URL" >> "$API_ENV_FILE"
+      fi
+      echo "[stack-up-docker] upserted DATABASE_URL in apps/api/.env" | tee -a "$LOG"
+    fi
     if [ "$pg_ready" = "1" ] \
       && command -v pnpm >/dev/null 2>&1 \
       && [ -f "$PROJECT_DIR/package.json" ] \
