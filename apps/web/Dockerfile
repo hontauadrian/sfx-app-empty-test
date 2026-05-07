@@ -25,7 +25,7 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 FROM deps AS development
 COPY . .
 ARG NEXT_PUBLIC_API_URL
-RUN if [ -n "$NEXT_PUBLIC_API_URL" ]; then echo "NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL" > /app/apps/web/.env.local; fi
+RUN echo "NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL" > /app/apps/web/.env.local
 RUN pnpm --filter @sfx/domain build && \
     pnpm --filter @sfx/shared build && \
     pnpm --filter @sfx/validation build

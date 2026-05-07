@@ -199,7 +199,7 @@ features/designSystem/tenants/[tenantName]/
 
 - Never hardcode tenant values outside `tenants/` — go through `useTheme()` or `CONFIG`
 - `Colors.ts` exports both `light` and `dark` variants
-- Assets accessed via `theme.assets.[KEY]`, never by direct path
+- Assets accessed via `theme.assets.[KEY]` (see Image Assets above)
 
 ### Adding a new tenant
 

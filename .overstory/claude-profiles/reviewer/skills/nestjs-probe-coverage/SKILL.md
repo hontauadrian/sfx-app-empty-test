@@ -67,9 +67,7 @@ If a probe fails:
 
 Anti-pattern that wastes minutes per cycle: reading
 `runtime-contract.flows/*.json` to "understand" what the probe expects.
-Stop. The report says it directly. Reading the JSON is a cargo-cult
-behaviour from the era before the report carried `responseEcho` and
-`bootstrapDiagnostics` inline. Both are present today.
+Stop. The report says it directly.
 
 ## 0. Boot-time setup (already wired — understand it, don't break it)
 
@@ -252,7 +250,7 @@ async register(@Body() body: RegisterInput) { ... }
 
 ### 2.5.2 Hand-written `$ref` in `@ApiBody` — the dangling-reference trap
 
-The shorthand `@ApiBody({ schema: zodToOpenApi(X, { ref: 'X' }) })` registers the schema as a side effect of evaluating `zodToOpenApi(...)`. That is the only reason it resolves at bootstrap. The moment you reach for `allOf` / `oneOf` / `anyOf` composition and write the `$ref` by hand, the side-effect call is no longer there — and nothing tells you. NestJS Swagger silently emits the operation as `{}` in the dump, the contract probe synthesises an empty request body, the server returns 400, and every chain step that depends on the resource cascades into 404 "not found" failures. This is exactly the failure mode that burned 8 hours of builder time on the teams chunk.
+The shorthand `@ApiBody({ schema: zodToOpenApi(X, { ref: 'X' }) })` registers the schema as a side effect of evaluating `zodToOpenApi(...)`. That is the only reason it resolves at bootstrap. The moment you reach for `allOf` / `oneOf` / `anyOf` composition and write the `$ref` by hand, the side-effect call is no longer there — and nothing tells you. NestJS Swagger silently emits the operation as `{}` in the dump, the contract probe synthesises an empty request body, the server returns 400, and every chain step that depends on the resource cascades into 404 "not found" failures.
 
 **❌ Wrong — produces a dangling `$ref`, empty operation in `.openapi.json`:**
 ```ts
@@ -411,8 +409,6 @@ idempotentCreate(@Headers('idempotency-key') key?: string) {
 ```
 
 Without the explicit `status: 500` declaration, the logical-contract probe sees the runtime 500 and (correctly) flags it as drift. **Declared 5xx = intentional. Undeclared 5xx = bug.** No heuristics, no path regex — only the declaration disambiguates.
-
-This rule is a strict instance of 2.8.1: the probe still emits zero flows for any undeclared status. Section 2.8.5 just calls out the specific 5xx interaction because raw `throw new Error` / `TypeError` is the easiest way to "accidentally" emit an undeclared 500.
 
 ### 2.9 Auth endpoints — REQUIRED canonical `operationId` (or `x-auth-*` extension)
 
@@ -1251,7 +1247,7 @@ export class TasksController {
   async findOne(@Param('id') id: string) { ... }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuardAPI Error: Claude's response exceeded the 32000 output token maximum. To configure this behavior, set the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable.)
   @ApiOperation({ summary: 'Update a task' })
   @ApiParam({ name: 'id', description: 'Task UUID', example: '018f...' })
   @ApiBody({ schema: zodToOpenApi(updateTaskSchema, { ref: 'UpdateTaskInput' }) as never })
@@ -1306,11 +1302,9 @@ export class TasksController {
 
 ### 5.1 `@ApiResponse` vs shorthand — prefer explicit
 
-Both forms are Swagger-equivalent, but this repo's **house style is the explicit `@ApiResponse({ status, description })` form**. Reasons:
+This repo's **house style is the explicit `@ApiResponse({ status, description })` form**.
 
-1. `grep -E '@ApiResponse\(\{ status: (4[0-9]{2}|5[0-9]{2})' apps/api/` gives you an instant audit of every error branch across the codebase. The shorthand form scatters them across 6+ decorator names.
-2. Every handler reads the same — success and errors all use the same keyword shape. No cognitive jumps between `@ApiOkResponse` and `@ApiResponse`.
-3. Probe coverage matches 1:1 — one decorator, one status, one flow.
+1. `grep -E '@ApiResponse\(\{ status: (4[0-9]{2}|5[0-9]{2})' apps/api/` gives you an instant audit of every error branch across the codebase.
 
 ```ts
 // ✅ house style — explicit, uniform, grep-friendly

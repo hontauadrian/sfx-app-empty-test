@@ -5,28 +5,22 @@ description: Integration test patterns for API modules and frontend features. Us
 
 # Integration Tests
 
-Unit tests with mocked dependencies prove individual functions work in isolation. Integration tests prove your code works when all pieces are wired together. **You MUST write both.**
+You MUST write both unit tests (mocked deps) and integration tests (wired together).
 
 ## WARNING: integration tests do not prove HTTP works
 
-This skill teaches integration tests that use NestJS
-`Test.createTestingModule` (in-process, never binds a port) and MSW (mocks
-HTTP at the client). Both are valuable for unit-level integration, but they
-do NOT prove:
+NestJS `Test.createTestingModule` (in-process, no port) and MSW (mocks HTTP at client) do NOT prove:
 
-- Your server boots with the real module graph.
-- Your routes are actually registered on the real HTTP listener.
-- Your middleware actually runs in the request pipeline.
-- Your CORS / helmet / throttle config allows real requests through.
-- Your client can actually reach your API at the configured base URL.
-- Auth cookies / tokens actually traverse the real origin boundary.
+- Server boots with real module graph.
+- Routes registered on real HTTP listener.
+- Middleware runs in real request pipeline.
+- CORS / helmet / throttle config allows real requests.
+- Client can reach API at configured base URL.
+- Auth cookies / tokens traverse real origin boundary.
 
-**Runtime verification (see the `runtime-verification` section of
-builder.md) is the gate that proves those things.** Integration tests are
-complementary, not substitutes.
+**Runtime verification (see `runtime-verification` section of builder.md) is the gate that proves those things.**
 
-**A passing integration suite with a failing runtime probe = failing
-feature.**
+**A passing integration suite with a failing runtime probe = failing feature.**
 
 ---
 
@@ -162,7 +156,7 @@ describe('Task Module (integration)', () => {
 
 ## Frontend Integration Tests (MSW + Testing Library)
 
-Test the full data flow: hook → repository → HTTP call → mapper → UI state. Use MSW to intercept real HTTP calls at the network level — NOT mocked repositories.
+Test full data flow: hook → repository → HTTP call → mapper → UI state. Use MSW to intercept real HTTP calls at network level — NOT mocked repositories.
 
 ```typescript
 import { renderHook, waitFor } from '@testing-library/react';

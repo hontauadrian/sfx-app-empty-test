@@ -23,7 +23,10 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<RequestWithAuthenticatedUser>();
-    const token = extractBearerToken(request.headers.authorization);
+    const token = extractBearerToken(
+      request.headers.authorization,
+      request.headers['x-forwarded-access-token'],
+    );
     const user = await this.authTokenService.verifyAccessToken(token);
     const requiredRoles = this.reflector.getAllAndOverride<string[]>(AUTH_ROLES_KEY, [
       context.getHandler(),
@@ -39,14 +42,24 @@ export class JwtAuthGuard implements CanActivate {
   }
 }
 
-function extractBearerToken(authorization: string | string[] | undefined): string {
+function extractBearerToken(
+  authorization: string | string[] | undefined,
+  forwardedAccessToken: string | string[] | undefined,
+): string {
   const value = Array.isArray(authorization) ? authorization[0] : authorization;
+  const forwardedValue = Array.isArray(forwardedAccessToken)
+    ? forwardedAccessToken[0]
+    : forwardedAccessToken;
 
-  if (!value?.startsWith('Bearer ')) {
-    throw new UnauthorizedException('Bearer token is required');
+  if (forwardedValue) {
+    return forwardedValue.trim();
   }
 
-  return value.slice('Bearer '.length).trim();
+  if (value?.startsWith('Bearer ')) {
+    return value.slice('Bearer '.length).trim();
+  }
+
+  throw new UnauthorizedException('Bearer token is required');
 }
 
 function hasRequiredRole(userRoles: string[], requiredRoles: string[]): boolean {

@@ -98,13 +98,6 @@ Zod schema, or matrix entry. If you didn't declare it, the probe will
 either go red with a DIAG (good — the gate is working) or silently
 under-cover your code (bad — coverage gap hides bugs).
 
-**Why:** The probe's value is catching contract drift — the moment your
-code's actual behavior diverges from what your declarations promise.
-Heuristic guessing (path regexes, field-name matching, body sniffing)
-undermines that value because it "succeeds" on coincidences and "passes"
-wrong assertions silently. A DIAG that says "declare this thing" gives you
-a small mechanical fix and ensures the probe exercises the real contract.
-
 **Recognition test:** If you're writing code and thinking "the probe should
 be able to figure this out from context" — STOP. It won't, by design. Add
 the declaration.
@@ -227,7 +220,7 @@ This applies to every:
 Without `@Inject`, `pnpm openapi:dump` crashes silently with code 1, no
 stderr by default, and the live API may also fail to boot from the same
 class. Both `pnpm probe:smoke` (depends on `.openapi.json`) and the static
-matrix regen break. Hours of agent debugging are spent on a one-line fix.
+matrix regen break.
 
 ### Example 3: `@ResourceCaptures(...)` on chainable POST handlers — applies meta-principle A
 
@@ -404,16 +397,3 @@ endpoint. See `forms.md` for the full status notice.
 | DIAG | Trigger | Fix |
 |---|---|---|
 | `DECORATOR_MATCH_AMBIGUOUS` | Matrix enrichment found multiple exact path matches in the OpenAPI document for one endpoint. Suffix-match (Pass 2) and handler-name-match (Pass 3) were removed — only normalized exact-path match (Pass 1) is accepted. | Make the path declaration unique. If two controller methods share the same path, give them distinct `operationId`s and route prefixes. |
-
-## Why these DIAGs replace heuristics
-
-The runtime-verification probe's value is catching **contract drift** —
-the moment your code's actual behavior diverges from what your declarations
-promise. Heuristics undermine that: a regex like `path =~ /login/` "succeeds"
-on `/api/v1/admin/auth/sign-in/login-with-otp` and on `/blog/post-login-tips`
-alike. The probe then either silently passes a wrong assertion or silently
-skips the right one.
-
-A DIAG that says "declare this thing" gives you a small, mechanical fix
-(one decorator, one comment, one overlay key) and ensures the probe is
-exercising the real contract — not a coincidence of route naming.

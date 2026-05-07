@@ -7,7 +7,7 @@ description: Use BEFORE any sd create or ov sling. Turns the brief into a produc
 
 ## Overview
 
-Turn the brief into a plan that guarantees a USABLE app — not just compiling code. Briefs list entities, endpoints, and URLs but rarely describe how a real user gets from "just logged in" to "created their first thing". Close that gap, then divide the work into chunks one lead can own each.
+Turn the brief into a plan that guarantees a USABLE app. Close the gap between entities/endpoints/URLs and how a real user gets from "just logged in" to "created their first thing". Divide work into chunks one lead can own each.
 
 **Announce:** "I'm using the product-plan skill."
 

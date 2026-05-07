@@ -7,9 +7,7 @@ description: Use when you hold a product-plan spec and need to break an assigned
 
 ## Overview
 
-You hold a product plan at `--spec` (lead) or at `.overstory/specs/<top-level-issue-id>.md` (coordinator in direct-builder mode). Your job: turn a grouping of features into per-feature scout+builder dispatches. Scouts write the per-feature specs; builders integrate them one at a time.
-
-**You do not Write feature spec files personally.** Scouts write them; you draft the scout prompts and dispatch.
+You hold a product plan at `--spec` (lead) or at `.overstory/specs/<top-level-issue-id>.md` (coordinator in direct-builder mode). Turn a grouping of features into per-feature scout+builder dispatches. Scouts write the per-feature specs; builders integrate them one at a time.
 
 **Announce:** "I'm using the feature-plan skill."
 
@@ -55,8 +53,7 @@ Each feature is a complete vertical slice one builder can integrate end-to-end. 
   "login surface") — the probe detects the actual route via the existing login-page
   signature.
 
-For a lead: decompose your chunk into features here.
-For a coordinator in direct-builder mode: §3 is already flat, but restate each feature with the five fields above.
+Lead: decompose your chunk into features. Coordinator in direct-builder mode: §3 is already flat, but restate each feature with the five fields above.
 
 ### 3. Scout dispatch plan
 

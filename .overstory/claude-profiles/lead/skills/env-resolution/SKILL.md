@@ -16,13 +16,13 @@ When adding or changing an env variable, **you MUST**:
    Reason: the panel `Envs` page parses `.env.example` with
    `parseDotenv` (`sfx-team-panel/src/lib/server/app-env-manager.ts`),
    which **skips lines starting with `#`**. A commented entry is
-   invisible to the UI — the user cannot set it from the panel, the
-   bridge cannot push it through env-requests, and the value silently
-   stays at whatever compose-side fallback you wrote (or undefined).
+   invisible to the UI — user cannot set it from the panel, bridge
+   cannot push it through env-requests, value silently stays at
+   whatever compose-side fallback you wrote (or undefined).
 
 2. **Use `${VAR:-fallback}` in `docker-compose.yml`** when a container
    reads the variable. Always the colon form (`:-`), never the bare
-   form (`-`). Reason: `:-` falls back when the var is unset OR empty;
+   form (`-`). Reason: `:-` falls back when var is unset OR empty;
    `-` only falls back when unset, so an empty value (the panel-UI
    default after step 1) bypasses the fallback and breaks the worktree
    default.
@@ -47,20 +47,20 @@ When adding or changing an env variable, **you MUST**:
 
 5. **Mirror to `apps/<app>/.env.example`** when an app also reads the
    var in standalone-dev mode (running `pnpm --filter ... dev` outside
-   compose). Standalone-dev uses literal values; the per-app file is
-   the source of truth there.
+   compose). Standalone-dev uses literal values; per-app file is
+   source of truth there.
 
 ## Editing-existing-var checklist
 
-- [ ] If the value semantic changed: update the default in
-      `.env.example` and the three-mode comment block.
+- [ ] If value semantic changed: update default in `.env.example` and
+      the three-mode comment block.
 - [ ] If you commented it out for a "temporary" reason: don't.
       Re-uncomment with empty value before the diff lands. Panel UI
       breakage is silent.
 - [ ] If you renamed it: update all of `.env.example` (root + each app
       that reads it), `docker-compose.yml` `${...:-...}` block, and
-      every `process.env.<OLD>` reference in app code. Grep for the
-      old name across `apps/` and `packages/`.
+      every `process.env.<OLD>` reference in app code. Grep for old
+      name across `apps/` and `packages/`.
 
 ## Anti-patterns (forbidden)
 
@@ -75,8 +75,8 @@ When adding or changing an env variable, **you MUST**:
   Compose's service `environment` block is the merge point, not
   `apps/<app>/.env` (which is for standalone-dev only).
 - **Adding a per-app var when a workspace-level var would do.**
-  Workspace `.env` is shared across services and visible in the panel
-  Envs page; per-app `.env` is not picked up by compose.
+  Workspace `.env` is shared across services and visible in panel
+  Envs page; per-app `.env` not picked up by compose.
 
 ## Worked example: WEB_ORIGIN (the canonical case)
 
@@ -109,10 +109,10 @@ WEB_ORIGIN=
 WEB_ORIGIN=
 ```
 
-Result: panel `Envs` page shows `WEB_ORIGIN` as an empty editable
-field; user sets it via UI; bridge writes `.env`; api restarts; CORS
-picks up the new allowlist. Worktree workers without a `.env` value
-still get `http://localhost:${NEXT_PORT}` automatically.
+Result: panel `Envs` page shows `WEB_ORIGIN` as empty editable field;
+user sets it via UI; bridge writes `.env`; api restarts; CORS picks up
+new allowlist. Worktree workers without a `.env` value still get
+`http://localhost:${NEXT_PORT}` automatically.
 
 ## Three modes the chain has to satisfy
 
@@ -123,7 +123,7 @@ still get `http://localhost:${NEXT_PORT}` automatically.
 | Production | set to real domain (e.g. `https://api.example.com`) | as set |
 
 Your edit must keep all three working. If you can only get one mode
-green, the var is wrong. Re-read steps 1–5.
+green, the var is wrong.
 
 ## Debugging an env var that "isn't taking effect"
 
@@ -131,7 +131,7 @@ green, the var is wrong. Re-read steps 1–5.
    commented or missing. Fix step 1.
 2. **Field is set in UI but container still sees default.** → bridge
    may not have restarted the service. `pnpm stack:debug` to verify
-   bridge is alive; re-save in panel UI; or
+   bridge alive; re-save in panel UI; or
    `docker compose -p app-$(basename $PWD) restart api`.
 3. **`process.env.X` is undefined inside container.** → `docker compose
    -p app-$(basename $PWD) exec api env | grep X` to confirm. If

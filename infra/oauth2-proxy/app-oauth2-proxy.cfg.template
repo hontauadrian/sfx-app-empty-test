@@ -5,7 +5,10 @@ email_domains = [ "*" ]
 scope = "openid email profile"
 skip_provider_button = true
 
-upstreams = [ "http://web:3000" ]
+upstreams = [
+  "http://api:3001/api/v1/",
+  "http://web:3000/",
+]
 
 set_authorization_header = true
 pass_authorization_header = true

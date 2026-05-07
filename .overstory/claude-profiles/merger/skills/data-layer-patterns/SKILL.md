@@ -25,7 +25,6 @@ export async function executeRequest<T>(config: { path: string; method?: string;
 
 ### Interceptor Chain
 
-Centralized error handling:
 1. `refreshTokenOnUnauthorized` — 401: refresh token + retry
 2. `handleForbiddenError` — 403: emit `auth:loginRequired`
 3. `mapApiError` — maps HTTP codes to `APIError` enum

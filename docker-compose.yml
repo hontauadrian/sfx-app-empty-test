@@ -49,12 +49,13 @@ services:
       dockerfile: apps/web/Dockerfile
       target: development
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:${API_PORT:-3001}}
+        # When accessed through app-oauth2-proxy, browser API calls stay
+        # same-origin and the proxy injects the bearer token for /api/v1/*.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
     ports:
       - "${NEXT_PORT:-3000}:3000"
     volumes:
       - ./apps/web/src:/app/apps/web/src
-      - ./apps/web/.env.local:/app/apps/web/.env.local
       - ./packages/domain/src:/app/packages/domain/src
       - ./packages/shared/src:/app/packages/shared/src
       - ./packages/validation/src:/app/packages/validation/src
@@ -71,7 +72,6 @@ services:
       - "${API_PORT:-3001}:3001"
     volumes:
       - ./apps/api/src:/app/apps/api/src
-      - ./apps/api/.env:/app/apps/api/.env
       - ./packages/domain/src:/app/packages/domain/src
       - ./packages/shared/src:/app/packages/shared/src
       - ./packages/validation/src:/app/packages/validation/src
@@ -95,9 +95,41 @@ services:
       - WEB_ORIGIN=${WEB_ORIGIN:-http://localhost:${NEXT_PORT:-3000}}
       - PORT=3001
       - NODE_ENV=development
+    extra_hosts:
+      - "keycloak.localtest.me:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
+
+  app-oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.2
+    command:
+      - --provider=keycloak-oidc
+      - --http-address=0.0.0.0:4180
+      - --reverse-proxy=true
+      - --email-domain=*
+      - --scope=openid email profile
+      - --skip-provider-button=true
+      - --upstream=http://api:3001/api/v1/
+      - --upstream=http://web:3000/
+      - --oidc-issuer-url=${OAUTH_ISSUER_URL:-http://keycloak.localtest.me:9080/realms/sfx-panel}
+      - --client-id=${OAUTH2_PROXY_CLIENT_ID:-sfx-app-dev-proxy}
+      - --client-secret=${OAUTH2_PROXY_CLIENT_SECRET:-dev-generated-app-proxy-secret}
+      - --cookie-secret=${OAUTH2_PROXY_COOKIE_SECRET:-0123456789abcdef0123456789abcdef}
+      - --redirect-url=${OAUTH2_PROXY_REDIRECT_URL:-http://app.localtest.me:4181/oauth2/callback}
+      - --cookie-domain=${OAUTH2_PROXY_COOKIE_DOMAIN:-app.localtest.me}
+      - --cookie-secure=${OAUTH2_PROXY_COOKIE_SECURE:-false}
+      - --set-authorization-header=true
+      - --pass-authorization-header=true
+      - --pass-access-token=true
+      - --set-xauthrequest=true
+    ports:
+      - "${APP_PROXY_PORT:-4181}:4180"
+    extra_hosts:
+      - "keycloak.localtest.me:host-gateway"
+    depends_on:
+      - api
+      - web
 
   postgres:
     image: postgres:16-alpine

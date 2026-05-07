@@ -33,11 +33,7 @@ Every page file MUST begin with this JSDoc header:
  */
 ```
 
-The `derive-test-matrix` utility (plan 02) reads these headers to build the
-auth matrix generically. A page without this header is treated by the Stop
-hook as protected-by-default; a missing unauth redirect fails the probe.
-
-This header is NOT for humans — it is for the probe. Keep it machine-parseable.
+A page without this header is treated by the Stop hook as protected-by-default; a missing unauth redirect fails the probe. Keep it machine-parseable.
 
 ---
 
