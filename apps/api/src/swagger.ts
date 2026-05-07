@@ -65,7 +65,7 @@ export function buildSwaggerDocument(app: INestApplication): ReturnType<typeof S
     };
   }
 
-  (document as Record<string, unknown>)['x-response-envelope'] = {
+  (document as unknown as Record<string, unknown>)['x-response-envelope'] = {
     successWrapper: [...TransformInterceptor.ENVELOPE.successWrapper],
     errorPath: TransformInterceptor.ENVELOPE.errorPath,
   };
