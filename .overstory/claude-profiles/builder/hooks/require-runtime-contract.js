@@ -118,8 +118,11 @@ async function runHook({ projectRoot, stdinRaw, capability } = {}) {
   const touched = touchedSources(session.files);
 
   if (touched.length === 0 && session.files.length > 0) {
+    // Omit `decision` so Claude Code's default Stop behavior runs and the
+    // remaining Stop-hook chain (e2e-test, pre-close-gate, etc.) still fires.
+    // `decision: 'allow'` is not in the Stop-hook schema; `'approve'` would
+    // skip the rest of the chain — neither is what we want here.
     const allow = {
-      decision: 'allow',
       summary: {
         source: 'skip',
         routes: 0,
@@ -140,7 +143,7 @@ async function runHook({ projectRoot, stdinRaw, capability } = {}) {
 
   if (parseError) {
     return {
-      decision: advisory ? 'allow' : 'block',
+      decision: advisory ? undefined : 'block',
       category: 'RUNTIME_CONTRACT_VIOLATION',
       reason: `OVERLAY_PARSE_ERROR: ${parseError.message}`,
       summary: {
@@ -159,7 +162,7 @@ async function runHook({ projectRoot, stdinRaw, capability } = {}) {
     const schemaDiagnostics = validateOverlay(overlay);
     if (schemaDiagnostics.length > 0) {
       return {
-        decision: advisory ? 'allow' : 'block',
+        decision: advisory ? undefined : 'block',
         category: 'RUNTIME_CONTRACT_VIOLATION',
         reason: `${schemaDiagnostics[0].code}: ${schemaDiagnostics[0].message}`,
         summary: {
@@ -181,14 +184,14 @@ async function runHook({ projectRoot, stdinRaw, capability } = {}) {
   if (mergeErrors.length > 0) {
     const first = mergeErrors[0];
     const decision = {
-      decision: advisory ? 'allow' : 'block',
+      decision: advisory ? undefined : 'block',
       category: 'RUNTIME_CONTRACT_VIOLATION',
       reason: `${first.code}: ${first.message}`,
       summary: {
         source: 'merged',
         routes: merged.routes.length,
         endpoints: merged.endpoints.length,
-        flows: merged.flows.length,
+        flows: merged.flows?.length ?? 0,
         overlay: merged.source.hasOverlay,
         mergeErrors: mergeErrors.length,
         advisory,
@@ -199,12 +202,11 @@ async function runHook({ projectRoot, stdinRaw, capability } = {}) {
   }
 
   const allow = {
-    decision: 'allow',
     summary: {
       source: 'merged',
       routes: merged.routes.length,
       endpoints: merged.endpoints.length,
-      flows: merged.flows.length,
+      flows: merged.flows?.length ?? 0,
       overlay: merged.source.hasOverlay,
       mergeErrors: 0,
       advisory,

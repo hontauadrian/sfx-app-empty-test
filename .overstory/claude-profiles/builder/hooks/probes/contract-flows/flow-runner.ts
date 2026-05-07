@@ -52,6 +52,21 @@ export interface FlowStepReport {
   passed: boolean;
   blockReason?: string;
   capturedBindingNames?: string[];
+  /** When this step failed, echoes from the adapter so the renderer
+   *  can show the literal request that was issued and the literal
+   *  response received. Truncation is the renderer's job — these
+   *  carry the un-capped data so other consumers (e.g. test asserts)
+   *  can see exactly what the runner saw. */
+  requestEcho?: {
+    method: string;
+    url: string;
+    body?: unknown;
+    bodyKind?: string;
+  };
+  responseEcho?: {
+    status: number;
+    body?: unknown;
+  };
 }
 
 export interface FlowReport {
@@ -61,6 +76,12 @@ export interface FlowReport {
   reason?: string;
   steps: FlowStepReport[];
   durationMs: number;
+  /** When status is 'skipped' with reason 'UPSTREAM_FAILED:<id>', this
+   *  carries the failed upstream flow's id. Lets the report group
+   *  derived flows under their root cause instead of listing them as
+   *  N independent failures. Only set by cascade-detection skips —
+   *  unsupported-step skips leave it undefined. */
+  derivedOf?: string;
 }
 
 export interface RunReport {
@@ -143,6 +164,60 @@ function rewriteStepPath(step: Step, prefix: string): void {
   }
 }
 
+/**
+ * Sort flows topologically by their declared `dependsOn` field so that
+ * dependencies execute before dependents. This is the structural
+ * prerequisite for cascade detection: when a flow fails, every
+ * downstream flow declaring it in `dependsOn` must already be queued
+ * after the failure has been recorded so the runner can short-circuit
+ * them with `UPSTREAM_FAILED:<id>` instead of letting them issue HTTP
+ * requests that will fail with confusing cascading errors (404s on
+ * captured resources that were never created, etc.).
+ *
+ * `dependsOn` entries that reference IDs not present in `flows` are
+ * ignored — they may legitimately point at auth-bootstrap flows or
+ * chains executed outside this loop. Cycles fall back to the original
+ * order; the resource-graph builder already surfaces cycles as
+ * FLOW_RESOURCE_CYCLE at load time.
+ */
+export function topoSortFlows(flows: AttributedSpecialFlow[]): AttributedSpecialFlow[] {
+  const idToIndex = new Map<string, number>();
+  flows.forEach((af, i) => idToIndex.set(af.flow.id, i));
+
+  const incoming: Array<Set<number>> = flows.map(() => new Set());
+  const outgoing: Array<Set<number>> = flows.map(() => new Set());
+  for (let i = 0; i < flows.length; i++) {
+    const deps = (flows[i].flow as { dependsOn?: string[] }).dependsOn ?? [];
+    for (const dep of deps) {
+      const j = idToIndex.get(dep);
+      if (j === undefined) continue; // external dep; ignore
+      incoming[i].add(j);
+      outgoing[j].add(i);
+    }
+  }
+
+  const ready: number[] = [];
+  for (let i = 0; i < flows.length; i++) {
+    if (incoming[i].size === 0) ready.push(i);
+  }
+  const sorted: AttributedSpecialFlow[] = [];
+  while (ready.length > 0) {
+    const i = ready.shift()!;
+    sorted.push(flows[i]);
+    for (const child of outgoing[i]) {
+      incoming[child].delete(i);
+      if (incoming[child].size === 0) ready.push(child);
+    }
+  }
+  if (sorted.length !== flows.length) {
+    // Cycle detected. Fall back to the input order; the cycle is also
+    // reported by the resource-graph builder at load time so the human
+    // report surfaces it independently.
+    return flows;
+  }
+  return sorted;
+}
+
 /** Reasons a flow is skipped (the runner refuses to start it). */
 function whyFlowIsSkipped(flow: AttributedSpecialFlow): string | null {
   if (flow.flow.setup && flow.flow.setup.length > 0) {
@@ -215,12 +290,43 @@ export async function executeCuratedFlows(
   }
   httpAdapter.setActorTokens(actorTokens);
 
-  // Step 3 — walk flows.
+  // Step 3 — walk flows in topological order so the cascade detector
+  // can short-circuit downstream flows when an upstream dependency
+  // fails. Without ordering, a flow declaring `dependsOn: ['chain-X']`
+  // could be visited before chain-X's status is known.
+  const orderedFlows = topoSortFlows(merged.specialFlows);
+
+  // Failed flow IDs accumulate as the loop walks the topo order. A
+  // flow is downgraded from "would-fail" to "skipped:UPSTREAM_FAILED"
+  // the moment any of its declared dependencies is in this set —
+  // before any HTTP request is issued. This collapses N derived
+  // failures into one root cause in the report and saves the wall
+  // clock that would have been spent issuing requests guaranteed to
+  // fail because of the upstream gap.
+  const failedFlowIds = new Set<string>();
+
   const reports: FlowReport[] = [];
   const runtimeErrors: TypedError[] = [];
 
-  for (const af of merged.specialFlows) {
+  for (const af of orderedFlows) {
     if (options.onlyFlowIds && !options.onlyFlowIds.has(af.flow.id)) continue;
+
+    // Cascade detection: any declared dependency already failed?
+    const deps = (af.flow as { dependsOn?: string[] }).dependsOn ?? [];
+    const failedDep = deps.find((d) => failedFlowIds.has(d));
+    if (failedDep !== undefined) {
+      reports.push({
+        id: af.flow.id,
+        description: af.flow.description,
+        status: 'skipped',
+        reason: `UPSTREAM_FAILED:${failedDep}`,
+        derivedOf: failedDep,
+        steps: [],
+        durationMs: 0,
+      });
+      continue;
+    }
+
     const skipReason = whyFlowIsSkipped(af);
     if (skipReason) {
       reports.push({
@@ -237,6 +343,9 @@ export async function executeCuratedFlows(
     // above, so step paths stay un-prefixed and the adapter's joinUrl
     // produces the correct concatenation. No per-step rewrite needed.
     const flowReport = await runOneFlow(af, registry, runtimeErrors);
+    if (flowReport.status === 'failed') {
+      failedFlowIds.add(af.flow.id);
+    }
     reports.push(flowReport);
   }
 
@@ -302,6 +411,13 @@ async function runOneFlow(
       passed: result.passed,
       blockReason: result.passed ? undefined : result.blockReason,
       capturedBindingNames: captured ? Object.keys(captured) : undefined,
+      // Carry adapter-emitted echoes through to the FlowStepReport so
+      // the smoke-report renderer can show the agent the literal
+      // request/response pair, eliminating a 5-turn loop of "look at
+      // logs, curl manually, hypothesise" with a single self-contained
+      // diagnostic.
+      requestEcho: result.passed ? undefined : result.requestEcho,
+      responseEcho: result.passed ? undefined : result.responseEcho,
     });
 
     if (!result.passed) {

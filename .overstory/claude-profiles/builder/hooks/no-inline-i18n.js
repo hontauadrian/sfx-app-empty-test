@@ -1,5 +1,5 @@
 const fs = require('fs');
-const hookInput = JSON.parse(fs.readFileSync('/dev/stdin', 'utf8'));
+const hookInput = JSON.parse(fs.readFileSync(0, 'utf8'));
 const input = hookInput.tool_input || {};
 const filePath = input.file_path || input.path || '';
 const content = input.content || input.new_string || '';

@@ -1,5 +1,5 @@
 const fs = require('fs');
-const input = JSON.parse(fs.readFileSync('/dev/stdin', 'utf8'));
+const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const tool = input.tool_name;
 
 const AUTO_APPROVE = ['Bash', 'Edit', 'Write', 'Glob', 'Grep', 'Read', 'Agent'];

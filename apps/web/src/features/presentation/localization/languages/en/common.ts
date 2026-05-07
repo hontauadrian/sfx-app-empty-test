@@ -16,4 +16,6 @@ export const common: CommonTranslations = {
   disconnected: 'Disconnected',
   getStarted: 'Get started',
   apiDocs: 'View API docs',
+  pendingAccessTitle: 'Access pending',
+  pendingAccessMessage: 'Your account is authenticated, but an administrator must assign an app role before you can continue.',
 };

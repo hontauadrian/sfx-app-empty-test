@@ -84,6 +84,10 @@ services:
       # POSTGRES_USER=sfx / POSTGRES_DB=sfx_db / POSTGRES_PASSWORD=sfx.
       - DATABASE_URL=postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@postgres:5432/${POSTGRES_DB:-app_db}
       - JWT_SECRET=${JWT_SECRET:-dev-secret-minimum-16-chars}
+      - OAUTH_ISSUER_URL=${OAUTH_ISSUER_URL:-http://keycloak.localtest.me:9080/realms/sfx-panel}
+      - OAUTH_JWKS_URL=${OAUTH_JWKS_URL:-http://keycloak.localtest.me:9080/realms/sfx-panel/protocol/openid-connect/certs}
+      - OAUTH_API_CLIENT_ID=${OAUTH_API_CLIENT_ID:-sfx-app-dev-api}
+      - OAUTH_AUDIENCE=${OAUTH_AUDIENCE:-sfx-app-dev-api}
       # CORS allowlist. Default tracks the worktree's web port for
       # auto-isolated worker stacks. Override in .env to a panel
       # subdomain (http://app.localhost) or a prod origin

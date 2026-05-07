@@ -35,7 +35,7 @@ const { execSync } = require('child_process');
 
 let input;
 try {
-  input = JSON.parse(fs.readFileSync('/dev/stdin', 'utf8'));
+  input = JSON.parse(fs.readFileSync(0, 'utf8'));
 } catch {
   process.exit(0);
 }
@@ -327,6 +327,12 @@ function checkMissingIntegrationTests() {
 const TESTABLE_PATTERN = /\.(tsx?|jsx?|css|scss)$/;
 const EXCLUDED_PATHS = /(\/(\.claude|__tests__|__mocks__|node_modules|e2e)\/)/;
 const UI_PATH_PATTERN = /(apps\/web|presentation|app\/|pages|components|features)/;
+// Toolchain/config files live alongside UI source but do not render UI. They
+// must not pull a backend-only diff into the Playwright gate just because
+// they happen to sit under apps/web/. The fallback "/" route was triggering
+// false positives any time a backend builder bumped next.config.ts or
+// tsconfig.json — wrong-layer enforcement.
+const CONFIG_FILE_PATTERN = /(^|\/)(next|tailwind|postcss|vitest|playwright|jest|eslint|prettier|babel|webpack)\.config\.[mc]?(t|j)sx?$|(^|\/)tsconfig(\.[^.\/]+)?\.json$|(^|\/)package(-lock)?\.json$|(^|\/)pnpm-lock\.yaml$/;
 const APP_PAGE_PATTERN = /(^|\/)app\/(.+)\/page\.(tsx|jsx|ts|js)$/;
 const APP_ROOT_PAGE_PATTERN = /(^|\/)app\/page\.(tsx|jsx|ts|js)$/;
 const DYNAMIC_SEGMENT_PATTERN = /\[[^\]]+\]/;
@@ -347,6 +353,7 @@ function relevantUIFiles(changedFiles) {
     (filePath) =>
       TESTABLE_PATTERN.test(filePath) &&
       !EXCLUDED_PATHS.test(filePath) &&
+      !CONFIG_FILE_PATTERN.test(filePath) &&
       UI_PATH_PATTERN.test(filePath) &&
       fs.existsSync(filePath)
   );

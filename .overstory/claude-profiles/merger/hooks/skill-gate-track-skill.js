@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 let input = {};
-try { input = JSON.parse(fs.readFileSync('/dev/stdin', 'utf8') || '{}'); } catch {}
+try { input = JSON.parse(fs.readFileSync(0, 'utf8') || '{}'); } catch {}
 
 if (input.tool_name !== 'Skill') process.exit(0);
 const skill = input.tool_input?.skill;

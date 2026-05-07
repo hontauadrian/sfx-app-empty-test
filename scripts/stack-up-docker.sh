@@ -292,21 +292,47 @@ if [ "$NEEDS_INSTALL" = "1" ]; then
   fi
 fi
 
+# Discover workspace packages from pnpm-workspace.yaml so adding a new
+# package doesn't require touching this script. The list of names is
+# emitted to stdout, one `<name>:<dist-relpath>` pair per line, by a
+# `--list` mode of the same generator that produces the dist mount
+# overlay below.
+SHARED_PACKAGES_LIST="$(cd "$PROJECT_DIR" && node scripts/generate-stack-mounts.mjs --list 2>/dev/null || true)"
 SHARED_BUILD_NEEDED=0
-for pkg_path in packages/shared packages/validation packages/domain packages/database; do
-  if [ -d "$PROJECT_DIR/$pkg_path" ] && [ ! -f "$PROJECT_DIR/$pkg_path/dist/index.js" ]; then
+while IFS=: read -r pkg_name pkg_dist; do
+  [ -z "$pkg_name" ] && continue
+  if [ -d "$PROJECT_DIR/$(dirname "$pkg_dist")" ] && [ ! -f "$PROJECT_DIR/$pkg_dist/index.js" ]; then
     SHARED_BUILD_NEEDED=1
     break
   fi
-done
+done <<< "$SHARED_PACKAGES_LIST"
 if [ "$SHARED_BUILD_NEEDED" = "1" ]; then
   echo "[stack-up-docker] Building shared packages..." | tee -a "$LOG"
-  for pkg in @sfx/shared @sfx/domain @sfx/validation @sfx/database; do
-    if ! (cd "$PROJECT_DIR" && pnpm --filter "$pkg" build 2>&1) | tee -a "$LOG"; then
-      echo "ERROR: shared package build failed for $pkg" | tee -a "$LOG"
+  while IFS=: read -r pkg_name pkg_dist; do
+    [ -z "$pkg_name" ] && continue
+    if ! (cd "$PROJECT_DIR" && pnpm --filter "$pkg_name" build 2>&1) | tee -a "$LOG"; then
+      echo "ERROR: shared package build failed for $pkg_name" | tee -a "$LOG"
       exit 1
     fi
-  done
+  done <<< "$SHARED_PACKAGES_LIST"
+fi
+
+# Generate the dist-mount overlay so a `stack:reload-api` after a
+# `pnpm --filter X build` propagates the new dist into the container
+# without rebuilding the image. The overlay is regenerated every
+# stack:up so the mount list always matches the current workspace
+# state — newly added packages are picked up automatically.
+if ! (cd "$PROJECT_DIR" && node scripts/generate-stack-mounts.mjs 2>&1) | tee -a "$LOG"; then
+  echo "ERROR: failed to generate dist-mount overlay" | tee -a "$LOG"
+  exit 1
+fi
+MOUNTS_OVERLAY="$PROJECT_DIR/docker-compose.mounts.generated.yml"
+if [ -f "$MOUNTS_OVERLAY" ]; then
+  if [ -n "$COMPOSE_OVERLAY_ARG" ]; then
+    COMPOSE_OVERLAY_ARG="$COMPOSE_OVERLAY_ARG -f $MOUNTS_OVERLAY"
+  else
+    COMPOSE_OVERLAY_ARG="-f $MOUNTS_OVERLAY"
+  fi
 fi
 
 if [ -n "$BUILD_FLAG" ]; then
@@ -330,7 +356,28 @@ if ! [ -f /.dockerenv ]; then
   HEALTH_HOST="localhost"
 fi
 
-echo "[stack-up-docker] Waiting for stack health on http://${HEALTH_HOST}:${NEXT_PORT}..." | tee -a "$LOG"
+echo "[stack-up-docker] Waiting for API health on http://${HEALTH_HOST}:${API_PORT}/api/docs-json..." | tee -a "$LOG"
+# probe:smoke's preflight checks the API's /api/docs-json endpoint on api_port.
+# Without this wait the script returned as soon as the WEB port responded
+# (Next.js boots first) — but builders run probe:smoke immediately after
+# `pnpm stack:up` returns and the probe failed with
+# `PROBE_INTERNAL_ERROR:preflight:stack not started` because Nest/api was
+# still bootstrapping. Builder then writes a red `.http-smoke.json`,
+# `worker-done-evidence` blocks worker_done, lead can't merge — a full
+# round-trip wasted on a startup race the script could have absorbed.
+api_ready=0
+for attempt in $(seq 1 60); do
+  if curl -sf --connect-timeout 2 --max-time 5 "http://${HEALTH_HOST}:${API_PORT}/api/docs-json" > /dev/null 2>&1; then
+    api_ready=1
+    break
+  fi
+  sleep 1
+done
+if [ "$api_ready" != "1" ]; then
+  echo "WARN: api on ${HEALTH_HOST}:${API_PORT} did not respond to /api/docs-json within 60s — probe:smoke is likely to fail preflight" | tee -a "$LOG"
+fi
+
+echo "[stack-up-docker] Waiting for web health on http://${HEALTH_HOST}:${NEXT_PORT}..." | tee -a "$LOG"
 for attempt in $(seq 1 60); do
   if curl -sf --connect-timeout 2 --max-time 5 "http://${HEALTH_HOST}:${NEXT_PORT}/" > /dev/null 2>&1; then
     pg_user="${POSTGRES_USER:-app}"

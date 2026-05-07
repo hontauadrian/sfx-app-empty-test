@@ -55,6 +55,7 @@ import {
   executeCuratedFlows,
   formatRunSummary as formatCuratedRunSummary,
 } from './contract-flows/flow-runner';
+import type { TypedError } from './contract-flows/errors';
 // RFC 6265bis cookie jar — per-flow jars seeded from declared dependsOn
 // parents (see flow loop). Inheritance is driven entirely by the declarative
 // dependsOn relationship — never by path/field heuristics.
@@ -714,6 +715,10 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
 
   // 5. Exercise matrix.
   const cases: SmokeCaseEntry[] = [];
+  // Captured from the curated-flows runner below so the SmokeReport can
+  // surface bootstrap failures alongside flow failures. Both writers (JSON +
+  // MD) read this single source.
+  let capturedBootstrapDiagnostics: TypedError[] = [];
   const only = options.only ?? 'all';
 
   if (webClient && (only === 'all' || only === 'pages')) {
@@ -947,15 +952,42 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
       const blockReason = passed
         ? undefined
         : (flow.reason ?? 'flow-failed');
+      // For a failed flow, surface the first failing step's echoes
+      // (request that was sent + response that was returned) so the
+      // smoke-report renderer can show the agent the exact pair
+      // without having to grep logs or rerun curl. Skipped flows
+      // never have echoes — they didn't issue any HTTP.
+      const failedStep = passed || skipped
+        ? undefined
+        : flow.steps.find((s) => !s.passed);
       cases.push({
         label: `contract-flow:${flow.id}`,
         passed: passed || skipped,
         category: 'endpoint',
         blockReason,
+        // Carry the cascade-detection backref through to the smoke
+        // report so the human render can group derived skips under
+        // their root cause instead of listing them as N orphan rows.
+        derivedOf: flow.derivedOf,
+        requestEcho: failedStep?.requestEcho,
+        responseEcho: failedStep?.responseEcho,
       });
     }
+    capturedBootstrapDiagnostics = curatedReport.bootstrapDiagnostics;
+    // Print one structured key=value line per failed actor immediately so an
+    // agent piping `pnpm probe:smoke 2>&1 | grep bootstrap-FAIL` sees the
+    // exact actor + scheme + reason for every failure without opening the
+    // .md or .json. This is the FIRST signal when probes can't run their
+    // authed flows; everything downstream cascades from these lines.
     for (const diag of curatedReport.bootstrapDiagnostics) {
-      process.stderr.write(`[contract-flows-execute] ${diag.code}: ${diag.message}\n`);
+      if (diag.code === 'FLOW_AUTH_BOOTSTRAP_ACTOR_FAILED') {
+        const d = diag as { actorName: string; scheme: string; reason: string; message: string };
+        process.stderr.write(
+          `[contract-flows-bootstrap-FAIL] actor=${d.actorName} scheme=${d.scheme} reason=${JSON.stringify(d.reason)}\n`,
+        );
+      } else {
+        process.stderr.write(`[contract-flows-execute] ${diag.code}: ${diag.message}\n`);
+      }
     }
     for (const err of curatedReport.runtimeErrors) {
       process.stderr.write(`[contract-flows-execute] ${err.code}: ${err.message}\n`);
@@ -1000,6 +1032,9 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
     blockReason: blockReasons[0],
     cases,
     runtimeDiagnostics: dedupedRuntimeDiagnostics,
+    bootstrapDiagnostics: capturedBootstrapDiagnostics.length > 0
+      ? capturedBootstrapDiagnostics
+      : undefined,
   };
 
   writeReport(report, { reportPath: options.reportPath, humanReportPath: options.humanReportPath });

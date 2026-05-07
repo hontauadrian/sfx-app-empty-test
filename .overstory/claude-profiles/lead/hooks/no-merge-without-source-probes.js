@@ -537,6 +537,47 @@ function newestCommitMtimeOnBranch(branch, opts) {
   }
 }
 
+// Lead branches that only carry overlay/spec/flow scaffolding have no
+// production code to probe. Forcing them through the probe gate burns a
+// coordinator round-trip on every chunk close (lead has to spawn a stack,
+// run pnpm probe:smoke against zero meaningful changes, then retry the
+// merge). Detect a meta-only diff and let the merge through — the
+// downstream master-side probe gate still verifies real code on the next
+// integration.
+const META_ONLY_PATTERN = /^(\.overstory\/(specs|runtime-contract\.flows|agent-defs|claude-profiles|skills)\/|\.runtime-contract\.overlay\.json$|\.claude\/runtime-contract\.logical\.json$|\.claude\/hooks\/\.flows\.generated\.json$|\.overstory\/agents\/|\.overstory\/transcripts\/)/;
+
+function isMetaOnlyDiff(sourceBranch, opts) {
+  const exec = opts.execSync || execSync;
+  const cwd = opts.cwd;
+  let target = null;
+  for (const candidate of ['master', 'main']) {
+    try {
+      const ref = exec(`git rev-parse --verify --quiet ${candidate}`, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        cwd,
+      }).trim();
+      if (ref) { target = candidate; break; }
+    } catch {
+      // ref missing — try next candidate
+    }
+  }
+  if (!target) return false;
+  let files;
+  try {
+    const out = exec(`git diff --name-only ${target}...${sourceBranch}`, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      cwd,
+    });
+    files = (out || '').trim().split('\n').filter(Boolean);
+  } catch {
+    return false;
+  }
+  if (files.length === 0) return false;
+  return files.every((filePath) => META_ONLY_PATTERN.test(filePath));
+}
+
 function shellQuote(arg) {
   return `'${String(arg).replace(/'/g, "'\\''")}'`;
 }
@@ -982,6 +1023,10 @@ function runGuard(opts) {
           block,
         }),
       };
+    }
+
+    if (isMetaOnlyDiff(intent.sourceBranch, { cwd, execSync: execStub })) {
+      return { allow: true };
     }
 
     const block = evaluateProbeArtifact(worktreePath, intent.sourceBranch, {

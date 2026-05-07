@@ -58,7 +58,8 @@
       "rm",
       "restore",
       "checkout",
-      "config"
+      "config",
+      "cherry-pick"
     ]
   }
 }

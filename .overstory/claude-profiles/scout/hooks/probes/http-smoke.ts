@@ -43,6 +43,18 @@ import { generateFixture } from './schema-fixture';
 import { join } from 'node:path';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+// Phase 0b additive load — curated flows folder is read at probe start so
+// W5 can wire downstream consumption. Until then this just logs counts so
+// users can see whether any curated flow is in scope.
+import {
+  loadCuratedContract,
+  formatSummary as formatCuratedSummary,
+} from './contract-flows/probe-integration';
+// W5 — execute curated contract flows after the matrix probe.
+import {
+  executeCuratedFlows,
+  formatRunSummary as formatCuratedRunSummary,
+} from './contract-flows/flow-runner';
 // RFC 6265bis cookie jar — per-flow jars seeded from declared dependsOn
 // parents (see flow loop). Inheritance is driven entirely by the declarative
 // dependsOn relationship — never by path/field heuristics.
@@ -539,6 +551,17 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
     fullScope: !!options.fullScope,
   };
 
+  // Phase 0b additive — load curated flows (.overstory/runtime-contract.flows/)
+  // alongside the existing generated battery. The merged contract is reported
+  // here for visibility; W5 will wire it into adapter execution. Errors from
+  // the loader/merger are non-fatal for now (they surface in stderr) so a
+  // half-authored folder cannot break the existing probe path.
+  const curatedSummary = loadCuratedContract(PROJECT_ROOT);
+  process.stderr.write(formatCuratedSummary(curatedSummary) + '\n');
+  for (const err of curatedSummary.errors) {
+    process.stderr.write(`[contract-flows] ${err.code}: ${err.message}\n`);
+  }
+
   // -1. Probe preflight — fail fast if the stack isn't booted, the API isn't
   //    reachable, or the static OpenAPI dump is older than its source files.
   //    Skipping this and proceeding straight to matrix regen produces a
@@ -906,6 +929,51 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
       category: 'endpoint',
       blockReason: `CONTRACT_STATUS_UNREACHABLE: ${failure.method} ${failure.path} declares ${failure.declaredStatus} but no flow reached it (source: ${failure.controllerFile})`,
     });
+  }
+
+  // 6b. Execute curated contract flows (additive — doesn't affect matrix
+  //     summary cases above; surfaces a separate stderr line + appended
+  //     entries on the smoke report so failures are visible without
+  //     replacing the matrix probe).
+  if (curatedSummary.contract && curatedSummary.contract.specialFlows.length > 0 && apiBase) {
+    const curatedReport = await executeCuratedFlows(curatedSummary.contract, {
+      baseUrl: apiBase,
+      stepTimeoutMs: (options.timeoutSec ?? 30) * 1000,
+    });
+    process.stderr.write(formatCuratedRunSummary(curatedReport) + '\n');
+    for (const flow of curatedReport.flows) {
+      const passed = flow.status === 'passed';
+      const skipped = flow.status === 'skipped';
+      const blockReason = passed
+        ? undefined
+        : (flow.reason ?? 'flow-failed');
+      // For a failed flow, surface the first failing step's echoes
+      // (request that was sent + response that was returned) so the
+      // smoke-report renderer can show the agent the exact pair
+      // without having to grep logs or rerun curl. Skipped flows
+      // never have echoes — they didn't issue any HTTP.
+      const failedStep = passed || skipped
+        ? undefined
+        : flow.steps.find((s) => !s.passed);
+      cases.push({
+        label: `contract-flow:${flow.id}`,
+        passed: passed || skipped,
+        category: 'endpoint',
+        blockReason,
+        // Carry the cascade-detection backref through to the smoke
+        // report so the human render can group derived skips under
+        // their root cause instead of listing them as N orphan rows.
+        derivedOf: flow.derivedOf,
+        requestEcho: failedStep?.requestEcho,
+        responseEcho: failedStep?.responseEcho,
+      });
+    }
+    for (const diag of curatedReport.bootstrapDiagnostics) {
+      process.stderr.write(`[contract-flows-execute] ${diag.code}: ${diag.message}\n`);
+    }
+    for (const err of curatedReport.runtimeErrors) {
+      process.stderr.write(`[contract-flows-execute] ${err.code}: ${err.message}\n`);
+    }
   }
 
   // 7. Build + write report.

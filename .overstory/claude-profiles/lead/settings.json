@@ -174,6 +174,10 @@
 					{
 						"type": "command",
 						"command": "node .claude/hooks/bash-allowlist.js"
+					},
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-stop-clean-before-merge.js"
 					}
 				]
 			},
@@ -273,6 +277,10 @@
 					{
 						"type": "command",
 						"command": "node .claude/hooks/require-flow-skill.js"
+					},
+					{
+						"type": "command",
+						"command": "node .claude/hooks/validate-flow-file.js"
 					}
 				]
 			},
@@ -324,5 +332,8 @@
 				]
 			}
 		]
-	}
+	},
+	"enabledMcpjsonServers": [
+		"playwright"
+	]
 }

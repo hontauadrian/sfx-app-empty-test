@@ -20,4 +20,10 @@ git config merge.ours.driver true
 # root, so this works for worktrees too.
 git config core.hooksPath scripts/git-hooks
 
-echo "[setup-git-merge-drivers] registered merge.ours.driver + core.hooksPath"
+# Force a merge commit on every merge so the commit-msg probe gate fires.
+# Without this, fast-forward merges create no commit object and the gate
+# is silently bypassed — `ov merge` runs `git merge --no-edit <X>` which
+# FFs whenever master is an ancestor of the source branch.
+git config merge.ff false
+
+echo "[setup-git-merge-drivers] registered merge.ours.driver + core.hooksPath + merge.ff=false"

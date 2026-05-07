@@ -16,4 +16,6 @@ export const common: CommonTranslations = {
   disconnected: 'Deconectat',
   getStarted: 'Incepe',
   apiDocs: 'Documentatie API',
+  pendingAccessTitle: 'Acces in asteptare',
+  pendingAccessMessage: 'Contul tau este autentificat, dar un administrator trebuie sa iti atribuie un rol in aplicatie inainte de a continua.',
 };

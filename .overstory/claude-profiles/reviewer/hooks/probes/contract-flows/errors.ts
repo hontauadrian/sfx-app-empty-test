@@ -18,7 +18,24 @@
 // Discriminated union — every error is one member.
 // ────────────────────────────────────────────────────────────────────────────
 
+export interface EnvelopeUndeclaredError {
+  code: 'ENVELOPE_UNDECLARED';
+  file: string;
+  message: string;
+}
+
+export interface EnvelopeMismatchError {
+  code: 'ENVELOPE_MISMATCH';
+  file: string;
+  declared: string[];
+  observedKeys: string[];
+  message: string;
+}
+
 export type TypedError =
+  // Response envelope (sourced from apps/api/.openapi.json x-response-envelope).
+  | EnvelopeUndeclaredError
+  | EnvelopeMismatchError
   // Decision 10 — mandatory.
   | FlowMergeConflictError
   | FlowDuplicateIdError
@@ -486,6 +503,9 @@ export const ALL_ERROR_CODES: readonly ErrorCode[] = [
   // File / ownership (Decision 10).
   'FLOW_OWNERSHIP_VIOLATION',
   'FLOW_NEW_ENDPOINT_UNCOVERED',
+  // Response envelope.
+  'ENVELOPE_UNDECLARED',
+  'ENVELOPE_MISMATCH',
   // Schema / matcher (Decision 10).
   'FLOW_UNKNOWN_MATCHER',
   // Coverage (Decision 10).

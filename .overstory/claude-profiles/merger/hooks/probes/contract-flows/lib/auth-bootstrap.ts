@@ -38,6 +38,7 @@
  *   - Reuses an actor's credential for another actor.
  */
 
+import { z } from 'zod';
 import type { MergedContract } from '../contract-flows-merger';
 import type {
   TypedError,
@@ -362,25 +363,21 @@ export async function bootstrapActors(
       continue;
     }
 
+    // Dispatch via the central registry (single source of truth shared with
+    // `contract-flows-schema.ts`'s discriminated union). Adding a new scheme
+    // = single edit to AUTH_SCHEME_REGISTRY at the bottom of this file.
     let result: { credential?: ActorCredential; error?: TypedError };
-    switch (scheme) {
-      case 'bearer-in-body':
-        result = await bootstrapBearerInBody(name, auth, options.baseUrl, fetchImpl, timeoutMs);
-        break;
-      case 'bearer-in-header':
-        result = await bootstrapBearerInHeader(name, auth, options.baseUrl, fetchImpl, timeoutMs);
-        break;
-      case 'cookie':
-        result = await bootstrapCookie(name, auth, options.baseUrl, fetchImpl, timeoutMs);
-        break;
-      case 'api-key':
-        result = bootstrapApiKey(name, auth);
-        break;
-      case 'oauth-scoped':
-        result = await bootstrapOauthScoped(name, auth, options.baseUrl, fetchImpl, timeoutMs);
-        break;
-      default:
-        result = { error: failure(name, scheme, `unknown auth scheme '${scheme}'`) };
+    const entry = AUTH_SCHEME_REGISTRY[scheme as AuthSchemeName];
+    if (!entry) {
+      result = {
+        error: failure(
+          name,
+          scheme,
+          `unknown auth scheme '${scheme}' (allowed: ${Object.keys(AUTH_SCHEME_REGISTRY).join(', ')})`,
+        ),
+      };
+    } else {
+      result = await entry.handler(name, auth, options.baseUrl, fetchImpl, timeoutMs);
     }
 
     if (result.credential) {
@@ -393,3 +390,103 @@ export async function bootstrapActors(
 
   return { tokens, diagnostics };
 }
+
+// =============================================================================
+// AUTH_SCHEME_REGISTRY — single source of truth for runner + validator.
+//
+// Each entry pairs a Zod schema (validates the actor.auth shape — used at
+// pre-edit time by `validate-flow-file.js` AND at contract-load time by
+// `contract-flows-loader.ts` via `ContractFileSchema`) with a handler
+// (executes the login at probe-bootstrap time, above).
+//
+// Adding a new scheme requires exactly ONE edit here:
+//   1) define the variant `<Name>AuthSchema` (literal `scheme` discriminator
+//      + only the fields the handler reads — match the destructuring in the
+//      bootstrap function above).
+//   2) implement the bootstrap handler returning { credential?, error? }.
+//   3) add the `'<scheme-name>': { schema, handler }` entry to the registry.
+//
+// `contract-flows-schema.ts` derives its discriminated union from
+// `Object.values(AUTH_SCHEME_REGISTRY).map(e => e.schema)`, so the validator
+// (which writes pre-edit) and the runner (which dispatches at probe time)
+// cannot drift. Drop a scheme from the registry → schema rejects it +
+// runner errors with the same name.
+// =============================================================================
+
+const RegisterBlock = z.object({
+  path: z.string().min(1),
+  body: z.unknown().optional(),
+  key: z.string().optional(),
+});
+
+export const BearerInBodyAuthSchema = z.object({
+  scheme: z.literal('bearer-in-body'),
+  register: RegisterBlock.optional(),
+  login: z.object({
+    path: z.string().min(1),
+    body: z.unknown().optional(),
+    key: z.string().optional(),
+  }),
+  token: z.string().optional(),
+});
+
+export const BearerInHeaderAuthSchema = z.object({
+  scheme: z.literal('bearer-in-header'),
+  login: z.object({
+    path: z.string().min(1),
+    body: z.unknown().optional(),
+    headerName: z.string().optional(),
+  }),
+  token: z.string().optional(),
+});
+
+export const CookieAuthSchema = z.object({
+  scheme: z.literal('cookie'),
+  login: z.object({
+    path: z.string().min(1),
+    body: z.unknown().optional(),
+  }),
+});
+
+export const ApiKeyAuthSchema = z.object({
+  scheme: z.literal('api-key'),
+  headerName: z.string().min(1),
+  value: z.string().min(1),
+});
+
+export const OauthScopedAuthSchema = z.object({
+  scheme: z.literal('oauth-scoped'),
+  tokenEndpoint: z.string().min(1),
+  scopes: z.array(z.string().min(1)).min(1),
+  clientId: z.string().min(1),
+  clientSecret: z.string().min(1),
+  audience: z.string().optional(),
+});
+
+export const AnonymousAuthSchema = z.object({
+  scheme: z.literal('anonymous'),
+});
+
+type AuthHandler = (
+  name: string,
+  auth: ActorAuth,
+  base: string,
+  fetchImpl: typeof globalThis.fetch,
+  timeoutMs: number,
+) => Promise<{ credential?: ActorCredential; error?: TypedError }>;
+
+// Wrappers for handlers whose underlying fn is sync or has narrower args,
+// so the registry exposes a uniform AuthHandler signature.
+const bootstrapApiKeyHandler: AuthHandler = async (name, auth) => bootstrapApiKey(name, auth);
+const bootstrapAnonymousHandler: AuthHandler = async () => ({ credential: {} });
+
+export const AUTH_SCHEME_REGISTRY = {
+  'bearer-in-body':   { schema: BearerInBodyAuthSchema,   handler: bootstrapBearerInBody as AuthHandler },
+  'bearer-in-header': { schema: BearerInHeaderAuthSchema, handler: bootstrapBearerInHeader as AuthHandler },
+  'cookie':           { schema: CookieAuthSchema,         handler: bootstrapCookie as AuthHandler },
+  'api-key':          { schema: ApiKeyAuthSchema,         handler: bootstrapApiKeyHandler },
+  'oauth-scoped':     { schema: OauthScopedAuthSchema,    handler: bootstrapOauthScoped as AuthHandler },
+  'anonymous':        { schema: AnonymousAuthSchema,      handler: bootstrapAnonymousHandler },
+} as const;
+
+export type AuthSchemeName = keyof typeof AUTH_SCHEME_REGISTRY;

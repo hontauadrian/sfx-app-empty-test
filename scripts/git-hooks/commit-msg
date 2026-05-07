@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+# commit-msg — fail-CLOSED merge gate enforced inside git.
+#
+# Why this exists at the git layer:
+#   The claude-code PreToolUse hook `no-merge-without-source-probes.js`
+#   already implements probe gating, but on 2026-05-05 18:17:32 it
+#   silently allowed an unverified merge of teams-backend-builder-3 into
+#   master. The unverified code (a TypeError in
+#   apps/api/src/modules/team/application/controllers/team.controller.ts:90)
+#   cascaded — every downstream builder spawned from broken master could
+#   not boot the API, every probe preflight failed, the run stalled.
+#
+#   Git hooks run inside `git commit` itself. They cannot be skipped by
+#   claude code, by `bypassPermissions`, by tmux session resumes, or by
+#   ScheduleWakeup races. Fail-CLOSED.
+#
+# Why commit-msg and not pre-merge-commit:
+#   pre-merge-commit fires AFTER MERGE_HEAD/MERGE_MSG are consumed —
+#   AUTO_MERGE has only the merged-tree SHA, not the source branch.
+#   commit-msg fires AT MERGE_MSG and gets the message file as $1, so we
+#   can extract the source branch directly from "Merge branch 'X'".
+#
+# Bypass for legitimate operator override: `git commit --no-verify`.
+
+msg_file="$1"
+[ -n "$msg_file" ] && [ -f "$msg_file" ] || exit 0
+
+# Only gate merge commits. The first line of the prepared message is
+# "Merge branch '<src>'" / "Merge branches 'a' and 'b'" / "Merge remote-
+# tracking branch '<remote>/<src>'". Non-merge commits exit early.
+first_line="$(head -1 "$msg_file")"
+case "$first_line" in
+  "Merge branch "*|"Merge branches "*|"Merge remote-tracking branch "*) ;;
+  *) exit 0 ;;
+esac
+
+git_dir="$(git rev-parse --git-dir 2>/dev/null)"
+[ -n "$git_dir" ] || exit 0
+
+# Only gate when actually mid-merge (MERGE_HEAD present). Protects the
+# rare case where someone hand-types a non-merge commit with "Merge
+# branch …" as the message.
+[ -f "$git_dir/MERGE_HEAD" ] || exit 0
+
+head_branch="$(git symbolic-ref --short HEAD 2>/dev/null)"
+
+# Determine which branch counts as canonical for this repo. Read from
+# `.overstory/config.yaml` first (project's declared canonical), fall
+# back to git's default-branch ref, then to the conventional names.
+# Without this, hard-coded `main|master` would silently bypass the gate
+# on repos using `dev` (or any other) as trunk — exactly the case caught
+# by the post-rebuild smoke test on 2026-05-05.
+canonical_branch=""
+toplevel="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -n "$toplevel" ] && [ -f "$toplevel/.overstory/config.yaml" ]; then
+  canonical_branch="$(grep -m1 '^[[:space:]]*canonicalBranch:' "$toplevel/.overstory/config.yaml" 2>/dev/null | sed -E 's/^[[:space:]]*canonicalBranch:[[:space:]]*//; s/[[:space:]]*$//')"
+fi
+if [ -z "$canonical_branch" ]; then
+  canonical_branch="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')"
+fi
+if [ -z "$canonical_branch" ]; then
+  case "$head_branch" in
+    main|master|dev) canonical_branch="$head_branch" ;;
+  esac
+fi
+[ -n "$canonical_branch" ] || exit 0
+[ "$head_branch" = "$canonical_branch" ] || exit 0
+
+# Extract source branch name from the message line.
+src_branch="$(printf '%s\n' "$first_line" | sed -E "s/^Merge (branch|branches|remote-tracking branch) '([^']+)'.*/\\2/")"
+[ -n "$src_branch" ] && [ "$src_branch" != "$first_line" ] || exit 0
+
+case "$src_branch" in
+  main|master|dev|origin/main|origin/master|origin/dev|HEAD|FETCH_HEAD) exit 0 ;;
+esac
+[ "$src_branch" = "$canonical_branch" ] && exit 0
+
+# Locate worktree for source branch.
+src_wt=""
+cur_wt=""
+while IFS= read -r line; do
+  case "$line" in
+    "worktree "*) cur_wt="${line#worktree }" ;;
+    "branch refs/heads/$src_branch") src_wt="$cur_wt" ;;
+  esac
+done < <(git worktree list --porcelain 2>/dev/null)
+
+reject() {
+  local code="$1" detail="$2"
+  # Print to /dev/tty if available so the agent SEES the deny reason in
+  # its tmux pane. ov merge's resolver captures stderr/stdout of `git
+  # merge`, runs through tier escalations, and only surfaces a generic
+  # "tier: ai-resolve" summary — our stderr is buried. /dev/tty bypasses
+  # the pipe and goes straight to the controlling terminal.
+  # Fallback: stderr (visible to a human running git merge by hand).
+  local out_fd=2
+  if [ -e /dev/tty ] && exec 3>/dev/tty 2>/dev/null; then
+    out_fd=3
+  fi
+  {
+    printf '\n'
+    printf -- '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+    printf 'BLOCKED by scripts/git-hooks/commit-msg — refusing to land unverified merge.\n'
+    printf 'Reason code: %s\n' "$code"
+    printf 'Source:      %s\n' "$src_branch"
+    printf 'Destination: %s\n\n' "$head_branch"
+    printf '%s\n\n' "$detail"
+    printf 'If the source builder ran probe:smoke and it passed, retry the merge.\n'
+    printf 'Operator override only: git commit --no-verify\n'
+    printf -- '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+  } >&${out_fd}
+  exit 1
+}
+
+if [ -z "$src_wt" ]; then
+  reject "SOURCE_WORKTREE_NOT_FOUND" "No live worktree exists for branch ${src_branch}. Without a worktree we cannot read its probe artifact, so the merge is unverifiable."
+fi
+
+artifact="$src_wt/.claude/hooks/.http-smoke.json"
+if [ ! -f "$artifact" ]; then
+  reject "PROBE_ARTIFACT_MISSING" "No .http-smoke.json exists at ${artifact}. The builder either never ran 'pnpm probe:smoke' or the probe crashed before writing."
+fi
+
+node="$(command -v node 2>/dev/null)"
+if [ -z "$node" ]; then
+  reject "PROBE_VALIDATOR_UNAVAILABLE" "node not on PATH; cannot validate probe artifact at ${artifact}."
+fi
+
+status_code="$("$node" - "$artifact" <<'NODE_EOF'
+const fs = require('fs');
+const p = process.argv[2];
+let probe;
+try { probe = JSON.parse(fs.readFileSync(p, 'utf8')); }
+catch (e) { console.log('PROBE_ARTIFACT_CORRUPT'); process.exit(0); }
+const ec = Number(probe && probe.exitCode);
+const bc = Array.isArray(probe && probe.blockCodes) ? probe.blockCodes : [];
+const s = probe && probe.summary;
+if (!s || typeof s !== 'object') { console.log('PROBE_ARTIFACT_CORRUPT'); process.exit(0); }
+const total = Number(s.total);
+const failed = Number(s.failed);
+if (!Number.isFinite(ec) || ec !== 0) { console.log('PROBE_EXITCODE_NONZERO|exitCode=' + probe.exitCode); process.exit(0); }
+if (bc.length > 0) { console.log('PROBE_BLOCKED|' + bc.join(',')); process.exit(0); }
+if (!Number.isFinite(total) || total === 0) { console.log('PROBE_NO_CASES'); process.exit(0); }
+if (Number.isFinite(failed) && failed > 0) { console.log('PROBE_CASES_FAILED|failed=' + failed); process.exit(0); }
+console.log('OK');
+NODE_EOF
+)"
+
+case "$status_code" in
+  OK) exit 0 ;;
+  PROBE_*) reject "${status_code%%|*}" "Detail: ${status_code#*|}. Investigate ${artifact} and re-run pnpm probe:smoke in the source worktree." ;;
+  *) reject "PROBE_VALIDATION_ERROR" "Could not validate probe artifact at ${artifact} (validator returned: ${status_code})." ;;
+esac

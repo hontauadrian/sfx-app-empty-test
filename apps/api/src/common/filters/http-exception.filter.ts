@@ -32,7 +32,21 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         message = typedBody.message ?? message;
         errors = typedBody.errors;
       }
+    } else if (exception instanceof Error) {
+      // Non-HttpException = unhandled runtime fault. In any environment other
+      // than production, the response carries the standard ECMAScript `Error`
+      // fields (`name`, `message`, `stack`) so the probe runner — which already
+      // captures every failed response body via `responseEcho` — surfaces the
+      // exact throw site in `.http-smoke.md` without needing docker logs or a
+      // separate file. The `Error.prototype` properties are spec-defined; this
+      // filter just forwards them, no new contract introduced.
+      message = exception.message ?? message;
     }
+
+    const includeUnhandledTrace =
+      !(exception instanceof HttpException) &&
+      exception instanceof Error &&
+      process.env.NODE_ENV !== 'production';
 
     response.status(status).json({
       success: false,
@@ -40,6 +54,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         statusCode: status,
         message,
         ...(errors ? { errors } : {}),
+        ...(includeUnhandledTrace
+          ? {
+              name: (exception as Error).name,
+              stack: (exception as Error).stack,
+            }
+          : {}),
       },
     });
   }

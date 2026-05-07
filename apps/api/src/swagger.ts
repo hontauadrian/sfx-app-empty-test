@@ -4,6 +4,7 @@ import { Reflector } from '@nestjs/core';
 import { getOpenApiSchemas } from '@sfx/validation';
 import { COOKIE_ROLES_KEY } from './common/decorators/cookie-role.decorator';
 import { COOKIE_CONSUMES_KEY } from './common/decorators/cookie-consumer.decorator';
+import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import type { CookieRoleEntry } from './common/decorators/cookie-role.decorator';
 import type { CookieConsumeEntry } from './common/decorators/cookie-consumer.decorator';
 // Direct JSON import — resolves at compile time so TypeScript picks up
@@ -64,8 +65,11 @@ export function buildSwaggerDocument(app: INestApplication): ReturnType<typeof S
     };
   }
 
-  // Inject x-cookie-role on apiKey-in-cookie security schemes.
-  // addApiKey() doesn't support x- extensions, so patch post-build.
+  (document as Record<string, unknown>)['x-response-envelope'] = {
+    successWrapper: [...TransformInterceptor.ENVELOPE.successWrapper],
+    errorPath: TransformInterceptor.ENVELOPE.errorPath,
+  };
+
   const cookieSessionScheme = document.components?.securitySchemes?.['cookieSession'];
   if (cookieSessionScheme && typeof cookieSessionScheme === 'object') {
     (cookieSessionScheme as unknown as Record<string, unknown>)['x-cookie-role'] = 'session';

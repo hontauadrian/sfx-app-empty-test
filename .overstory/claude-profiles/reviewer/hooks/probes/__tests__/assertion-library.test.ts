@@ -366,4 +366,34 @@ describe('resolveConstrainedSigil', () => {
     // With 12-char random alphanumeric, collision in 20 calls is astronomically unlikely
     assert.ok(seen.size >= 15, `expected mostly unique values, got ${seen.size}/20`);
   });
+
+  // Parametric coverage for char-class-derived alphabet generation. Each
+  // case must produce a candidate that satisfies the pattern by
+  // construction — no retry-loop guesswork. Regression for the
+  // 2026-05-05 incident where the hardcoded uppercase alphabet caused
+  // every chain:resource-setup:teams flow to 400 with slug-validation.
+  const patternCases: Array<[string, string, number]> = [
+    ['lowercase slug',     '^[a-z0-9-]+$',     20],
+    ['uppercase only',     '^[A-Z]+$',         16],
+    ['uppercase + digits', '^[A-Z0-9]+$',      16],
+    ['hex lower',          '^[0-9a-f]+$',      32],
+    ['hex upper',          '^[0-9A-F]+$',      32],
+    ['mixed alphanumeric', '^[A-Za-z0-9]+$',   20],
+    ['digits only',        '^[0-9]+$',         10],
+    ['shorthand \\d',      '^\\d+$',           10],
+    ['shorthand \\w',      '^\\w+$',           12],
+    ['underscore allowed', '^[a-z_]+$',        15],
+    ['kebab-snake mix',    '^[a-z][a-z0-9_-]*$', 25],
+    ['no anchors',         '[a-z]+',           10],
+  ];
+  for (const [name, src, maxLen] of patternCases) {
+    test(`pattern: ${name}`, () => {
+      const encoded = Buffer.from(src).toString('base64');
+      const key = `uniq:maxLen:${maxLen}:pattern:${encoded}`;
+      const result = resolveConstrainedSigil(key);
+      assert.ok(result !== null, `${name}: should resolve`);
+      assert.ok(result!.length <= maxLen, `${name}: length ${result!.length} > ${maxLen}`);
+      assert.match(result!, new RegExp(src), `${name}: ${result} fails pattern ${src}`);
+    });
+  }
 });

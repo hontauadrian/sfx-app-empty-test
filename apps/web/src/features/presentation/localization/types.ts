@@ -16,6 +16,8 @@ export interface CommonTranslations {
   readonly disconnected: string;
   readonly getStarted: string;
   readonly apiDocs: string;
+  readonly pendingAccessTitle: string;
+  readonly pendingAccessMessage: string;
 }
 
 export interface TranslationNamespaces {

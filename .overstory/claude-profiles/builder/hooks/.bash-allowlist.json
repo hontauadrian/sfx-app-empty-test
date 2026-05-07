@@ -88,7 +88,8 @@
       "stash",
       "rev-parse",
       "ls-files",
-      "reflog"
+      "reflog",
+      "cherry-pick"
     ],
     "node": [
       {

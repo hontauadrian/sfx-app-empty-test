@@ -13,6 +13,11 @@ const SSE_METADATA_KEY = '__sse__';
 
 @Injectable()
 export class TransformInterceptor<T> implements NestInterceptor<T, SuccessResponse<T> | T> {
+  static readonly ENVELOPE = {
+    successWrapper: ['data'] as const,
+    errorPath: 'error' as const,
+  };
+
   intercept(context: ExecutionContext, next: CallHandler<T>): Observable<SuccessResponse<T> | T> {
     // Skip wrapping for GraphQL — Apollo handles its own response format.
     // We check `context.getType()` instead of relying on GqlExecutionContext.getInfo()

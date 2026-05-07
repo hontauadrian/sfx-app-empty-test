@@ -29,11 +29,47 @@ export interface Actor {
   transport?: string;
 }
 
+// Auth shape is derived from the AUTH_SCHEME_REGISTRY in
+// `lib/auth-bootstrap.ts`. That registry is the SINGLE source of truth: the
+// runner uses it to dispatch login at probe time; here we read its `schema`
+// fields and assemble the discriminated union. Adding a scheme there → it
+// is automatically accepted here. Removing a scheme → automatically rejected.
+// No drift possible.
+import { AUTH_SCHEME_REGISTRY } from './lib/auth-bootstrap';
+
+const _registryVariants = Object.values(AUTH_SCHEME_REGISTRY).map((e) => e.schema);
+// Zod's `discriminatedUnion` expects a non-empty tuple; cast accordingly.
+// Runtime correctness is guaranteed by the registry not being empty.
+const SchemedAuth = z.discriminatedUnion(
+  'scheme',
+  _registryVariants as unknown as [
+    (typeof _registryVariants)[number],
+    ...(typeof _registryVariants)[number][],
+  ],
+);
+
+// Convention: an actor declared with `auth: {}` (no scheme) is treated as
+// anonymous-by-omission. Matches `auth-bootstrap.ts` which short-circuits
+// such actors with `tokens[name] = {}`. Keeps existing `_shared.json`
+// patterns valid (placeholder roles like `team-owner` declared at coordinator
+// seed time before they have credentials wired up). Preprocess BEFORE the
+// discriminator runs so error messages stay tied to the scheme allowlist
+// rather than reporting the catch-all union as "unrecognized keys".
+const AuthSchema = z.preprocess(
+  (val) => {
+    if (val && typeof val === 'object' && !Array.isArray(val) && Object.keys(val).length === 0) {
+      return { scheme: 'anonymous' };
+    }
+    return val;
+  },
+  SchemedAuth,
+);
+
 export const ActorSchema: z.ZodType<Actor> = z.object({
   name: z.string().min(1),
-  auth: z.record(z.unknown()),
+  auth: AuthSchema,
   transport: z.string().optional(),
-}).strict();
+}).strict() as z.ZodType<Actor>;
 
 // ────────────────────────────────────────────────────────────────────────────
 // Resource — every P0/P1/P2 declarative behaviour block reserved as

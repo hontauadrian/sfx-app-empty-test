@@ -4,7 +4,7 @@ const { spawn } = require('child_process');
 
 let input = {};
 try {
-  const raw = fs.readFileSync('/dev/stdin', 'utf8').trim();
+  const raw = fs.readFileSync(0, 'utf8').trim();
   if (raw) input = JSON.parse(raw);
 } catch {
   // stdin may be empty when run as a quality gate command (not a Stop hook)

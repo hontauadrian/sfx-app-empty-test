@@ -257,6 +257,14 @@
 						"command": "node .claude/hooks/probe-covers-diff.js"
 					}
 				]
+			},
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/auto-commit-wip-on-stop.js"
+					}
+				]
 			}
 		],
 		"PreToolUse": [
@@ -266,6 +274,10 @@
 					{
 						"type": "command",
 						"command": "node .claude/hooks/bash-allowlist.js"
+					},
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-stop-clean-before-merge.js"
 					}
 				]
 			},
@@ -329,6 +341,14 @@
 					{
 						"type": "command",
 						"command": "node .claude/hooks/skill-gate-block-edit.js"
+					},
+					{
+						"type": "command",
+						"command": "node .claude/hooks/validate-flow-file.js"
+					},
+					{
+						"type": "command",
+						"command": "node .claude/hooks/env-validation-example-sync.js"
 					}
 				]
 			},
@@ -677,5 +697,8 @@
 				]
 			}
 		]
-	}
+	},
+	"enabledMcpjsonServers": [
+		"playwright"
+	]
 }

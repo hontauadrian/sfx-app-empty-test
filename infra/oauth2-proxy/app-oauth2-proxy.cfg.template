@@ -1,0 +1,21 @@
+provider = "keycloak-oidc"
+http_address = "0.0.0.0:4180"
+reverse_proxy = true
+email_domains = [ "*" ]
+scope = "openid email profile"
+skip_provider_button = true
+
+upstreams = [ "http://web:3000" ]
+
+set_authorization_header = true
+pass_authorization_header = true
+pass_access_token = true
+set_xauthrequest = true
+
+# Filled by SFX Panel for dev and by SFX Foreman for preprod/prod:
+# oidc_issuer_url = "${OAUTH_ISSUER_URL}"
+# client_id = "${OAUTH_PROXY_CLIENT_ID}"
+# client_secret = "${OAUTH_PROXY_CLIENT_SECRET}"
+# cookie_secret = "${OAUTH_PROXY_COOKIE_SECRET}"
+# redirect_url = "${OAUTH_PROXY_REDIRECT_URL}"
+# cookie_domain = "${OAUTH_PROXY_COOKIE_DOMAIN}"

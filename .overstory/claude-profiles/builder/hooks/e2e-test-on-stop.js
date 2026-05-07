@@ -38,7 +38,7 @@ const OVERLAY_FILE = path.join(PROJECT_DIR, '.runtime-contract.overlay.json');
 
 let input = {};
 try {
-  input = JSON.parse(fs.readFileSync('/dev/stdin', 'utf8'));
+  input = JSON.parse(fs.readFileSync(0, 'utf8'));
 } catch {
   // Stop hooks may be invoked without stdin JSON in some test contexts —
   // fall back to {} and carry on; session_id will be missing and the

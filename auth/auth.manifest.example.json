@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "appSlug": "sfx-app",
+  "environments": ["dev", "preprod", "prod"],
+  "clients": {
+    "proxyClientIdPattern": "${appSlug}-${environment}-proxy",
+    "apiClientIdPattern": "${appSlug}-${environment}-api"
+  },
+  "roles": {
+    "protected": ["viewer", "editor", "admin"],
+    "custom": []
+  },
+  "tokens": {
+    "roleClaimPath": "resource_access[OAUTH_API_CLIENT_ID].roles",
+    "requiredScopes": ["openid", "email", "profile"]
+  },
+  "oauth2Proxy": {
+    "callbackPath": "/oauth2/callback",
+    "forwardBearerToken": true,
+    "sessionStorage": "cookie"
+  },
+  "reconciliation": {
+    "dev": "force",
+    "preprod": "force",
+    "prod": "approval-required-for-destructive"
+  }
+}

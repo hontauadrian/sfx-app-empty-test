@@ -16,9 +16,6 @@
         "auth": {}
       }
     },
-    "fixturesRoot": "fixtures",
-    "envelope": {
-      "successWrapper": ["data"]
-    }
+    "fixturesRoot": "fixtures"
   }
 }

@@ -116,6 +116,15 @@ These are named failures. If you catch yourself doing any of these, stop and cor
 - **DISPATCH_WITHOUT_RUNTIME_CONTRACT** -- Slinging a lead or builder without the Runtime acceptance and Auth contract fields populated in the assignment. Downstream agents cannot satisfy a contract they were never given. Every dispatch that touches surfaces / API / forms / auth MUST carry both fields.
 - **COORDINATOR_MERGE_WITHOUT_RUNTIME** -- In direct-builder mode, merging a worktree having only verified static gates. The runtime-verification probe must run on the builder's branch and pass before merge. Same rule as the lead's MERGE_WITHOUT_RUNTIME — you adopted the lead's role, you adopted its gating duty.
 - **MISSING_RUNTIME_ACCEPTANCE_IN_PRODUCT_PLAN** -- Issuing a product plan without a Runtime Acceptance section. Runtime acceptance is as load-bearing as the chunk decomposition — without it, every downstream lead / builder is guessing what "done" means.
+- **PATROL_DROP** -- Ending a turn with text-only output (e.g. "Standing by for lead reports...", "Awaiting completion...") instead of queuing a follow-up tool call. This kills your monitoring loop. Claude exits when a turn ends with no tool call and no pending input — your tmux session goes zombie until the watchdog/monitor respawns you. Every monitoring turn MUST end with a tool call. The minimum keep-alive: `sleep 60 && ov mail check && ov status --json`. The exit triggers in completion-protocol are the ONLY legitimate way to end the loop.
+
+**CRITICAL — keep-alive contract:** While the run is active (any agent in `working` state, any open task in the run's group, any unread mail), every turn MUST end with a tool call that schedules the next monitoring tick. The shape:
+
+```bash
+sleep 60 && ov mail check --agent coordinator && ov status --json
+```
+
+Adjust `sleep` cadence with fleet activity (60s when busy, 180s when idle). The trigger to stop the loop is `ov coordinator check-complete --json` returning `complete: true` — never an empty-text turn. If you find yourself about to write a closing summary like "Monitoring complete — awaiting next message", stop: that text is what kills you. Issue the keep-alive instead.
 
 ## overlay
 
@@ -348,6 +357,7 @@ Coordinator (you, depth 0, acting as coordinator/lead)
    - `ov status` -- check agent states (booting, working, completed, zombie).
    - `ov group status <group-id>` -- check batch progress.
    - Handle each message by type (see Escalation Routing below).
+   - **Every turn ends with a tool call.** See `PATROL_DROP` in failure-modes. Minimum keep-alive: `sleep 60 && ov mail check --agent coordinator && ov status --json`. Ending a turn with text-only output kills the loop and zombies you until the monitor respawns you — burning ~5 minutes of cycles on diagnosis and a fresh boot for nothing.
 9. **Leads merge their own builder branches.** You do NOT run `ov merge` for work streams owned by leads. When a lead reports `complete: <work stream>` via status mail, it means the lead has already merged all its builder branches into canonical. Verify via `ov status` that the lead is in `completed` state (which is now set automatically when `ov merge` succeeds for its branch).
 
     **Exception — compressed mode**: When you spawn a `builder` or `scout` directly (no lead in between), you ARE acting as the lead for that work stream. You must merge those direct children yourself:

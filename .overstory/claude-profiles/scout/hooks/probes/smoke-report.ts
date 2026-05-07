@@ -11,6 +11,27 @@ import { ProbeCaseResult, RuntimeDiagnostic } from './assertion-library';
 
 export interface SmokeCaseEntry extends ProbeCaseResult {
   category: 'page' | 'endpoint' | 'flow' | 'middleware' | 'auth-bootstrap';
+  /** When set, this case was skipped because its declared dependency
+   *  (`flow.dependsOn`) failed earlier in the topological walk. The
+   *  value is the upstream flow id. The case still counts as passed
+   *  in the summary (skipped flows are not failures) but the human
+   *  report groups it under its root cause instead of letting it
+   *  appear as an independent symptom. */
+  derivedOf?: string;
+  /** Echo of the request that was issued by the failing step, so the
+   *  agent can see the literal payload without grepping logs. Bodies
+   *  are rendered with a hard byte cap by `formatHumanReport`. */
+  requestEcho?: {
+    method: string;
+    url: string;
+    body?: unknown;
+    bodyKind?: string;
+  };
+  /** Echo of the response associated with the failing step. */
+  responseEcho?: {
+    status: number;
+    body?: unknown;
+  };
 }
 
 export interface SmokeReport {
@@ -105,6 +126,44 @@ export function formatHumanReport(report: SmokeReport): string {
       if (entry.location) lines.push(`- location: ${entry.location}`);
       if (typeof entry.elapsedMs === 'number') lines.push(`- elapsedMs: ${entry.elapsedMs}`);
       if (entry.hint) lines.push(`- hint: ${entry.hint}`);
+      // Request/response echoes: inline the literal pair the runner
+      // saw, capped at REPORT_BODY_CAP bytes so a verbose JSON payload
+      // doesn't drown the rest of the report. Renderer never expands
+      // recursively — `previewJson` flattens once and slices.
+      if (entry.requestEcho) {
+        lines.push(`- sent: \`${entry.requestEcho.method} ${entry.requestEcho.url}\``);
+        const sentBody = previewJson(entry.requestEcho.body, entry.requestEcho.bodyKind);
+        if (sentBody !== null) lines.push(`  - body: \`${sentBody}\``);
+      }
+      if (entry.responseEcho) {
+        const gotBody = previewJson(entry.responseEcho.body);
+        const head = `- got: \`status=${entry.responseEcho.status}\``;
+        lines.push(gotBody !== null ? `${head} body=\`${gotBody}\`` : head);
+      }
+      lines.push('');
+    }
+  }
+
+  // Cascade-skipped cases: group by their root cause so a single bad
+  // chain step does not look like N independent symptoms.
+  const cascaded = report.cases.filter((c) => c.derivedOf);
+  if (cascaded.length > 0) {
+    const byRoot = new Map<string, SmokeCaseEntry[]>();
+    for (const entry of cascaded) {
+      const root = entry.derivedOf as string;
+      const list = byRoot.get(root) ?? [];
+      list.push(entry);
+      byRoot.set(root, list);
+    }
+    lines.push('## Derived flows skipped (cascade)');
+    lines.push('');
+    lines.push('These flows were not run because a flow they declare in `dependsOn` failed earlier in the topological walk. Fix the root cause and the derived flows will run on the next probe.');
+    lines.push('');
+    for (const [root, derived] of byRoot.entries()) {
+      lines.push(`### Root: \`${root}\` (${derived.length} derived)`);
+      for (const entry of derived) {
+        lines.push(`- ${entry.label}`);
+      }
       lines.push('');
     }
   }
@@ -126,6 +185,33 @@ export function formatHumanReport(report: SmokeReport): string {
     lines.push('');
   }
   return lines.join('\n');
+}
+
+/**
+ * Render a body value for the failure report. Returns `null` if the
+ * value is undefined or the body kind has no useful preview (e.g.
+ * binary or multipart, where the wire payload is opaque). Otherwise
+ * returns a JSON-serialised, single-line preview of the full payload.
+ *
+ * Non-heuristic by construction: serialise → flatten. No regex
+ * matching, no field-importance ranking, no truncation. Whitespace is
+ * collapsed so the preview stays on one line so the markdown renderer
+ * doesn't break inside a code span. The full payload is always
+ * preserved — typical API request/response bodies are well under 1
+ * KiB and the agent benefits from seeing every field.
+ */
+function previewJson(value: unknown, bodyKind?: string): string | null {
+  if (value === undefined) {
+    if (bodyKind && bodyKind !== 'json') return `<${bodyKind} body — not echoed>`;
+    return null;
+  }
+  let serialised: string;
+  try {
+    serialised = JSON.stringify(value);
+  } catch {
+    serialised = String(value);
+  }
+  return serialised.replace(/\s+/g, ' ').trim();
 }
 
 // Minimal symptom→skill router. Returns the skill name to invoke, or null

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   zodToOpenApi,
+  zodApiBody,
   getOpenApiSchemas,
   __resetOpenApiRegistry,
 } from '../openapi';
@@ -99,6 +100,46 @@ describe('zodToOpenApi', () => {
       expect(Object.keys(getOpenApiSchemas())).toContain('Tmp');
       __resetOpenApiRegistry();
       expect(Object.keys(getOpenApiSchemas())).toHaveLength(0);
+    });
+  });
+
+  describe('zodApiBody helper', () => {
+    beforeEach(() => {
+      __resetOpenApiRegistry();
+    });
+
+    it('registers the schema and returns the @ApiBody-shaped wrapper', () => {
+      const schema = z.object({ name: z.string().min(1) });
+      const result = zodApiBody(schema, 'CreateTeamInput');
+      expect(result).toEqual({
+        schema: { $ref: '#/components/schemas/CreateTeamInput' },
+      });
+      expect(getOpenApiSchemas()).toHaveProperty('CreateTeamInput');
+    });
+
+    it('the registered schema preserves required fields', () => {
+      const schema = z.object({
+        name: z.string().min(1),
+        description: z.string().optional(),
+      });
+      zodApiBody(schema, 'X');
+      const registered = getOpenApiSchemas().X as { required?: string[] };
+      expect(registered.required).toContain('name');
+      expect(registered.required ?? []).not.toContain('description');
+    });
+
+    it('eliminates the dangling-$ref class of bug', () => {
+      // The bug class: hand-written `{ $ref: '...' }` without a paired
+      // `zodToOpenApi(schema, { ref })`. Using the helper, that path is
+      // unreachable: the $ref is only produced when the schema is also
+      // registered in the same call.
+      const schema = z.object({ name: z.string() });
+      const before = Object.keys(getOpenApiSchemas());
+      const result = zodApiBody(schema, 'NoOrphanRef');
+      const after = Object.keys(getOpenApiSchemas());
+      expect(after).toContain('NoOrphanRef');
+      expect(result.schema.$ref).toBe('#/components/schemas/NoOrphanRef');
+      expect(after.length).toBe(before.length + 1);
     });
   });
 

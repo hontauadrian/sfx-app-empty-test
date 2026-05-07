@@ -55,7 +55,8 @@
       "diff",
       "show",
       "blame",
-      "branch"
+      "branch",
+      "cherry-pick"
     ],
     "pnpm": [
       "test",

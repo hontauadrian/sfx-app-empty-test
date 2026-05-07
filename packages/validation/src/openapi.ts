@@ -55,6 +55,30 @@ export function getOpenApiSchemas(): Record<string, OpenApiSchemaObject> {
 }
 
 /**
+ * Build a NestJS `@ApiBody` argument for a Zod-defined request body.
+ *
+ * Pairs registration with reference in a single call: the schema is
+ * registered under `ref` (so `$ref: '#/components/schemas/<ref>'`
+ * resolves at bootstrap) AND the `{ schema: { $ref: ... } }` wrapper
+ * NestJS expects is returned. Impossible to produce a `$ref` without
+ * registering the target — eliminates the dangling-reference class of
+ * bug where a hand-written `$ref` in `@ApiBody` is paired with a
+ * forgotten `zodToOpenApi(schema, { ref })` call, producing a silently
+ * empty operation in the emitted OpenAPI dump and a probe runner that
+ * synthesizes empty request bodies.
+ *
+ * Usage:
+ *   @ApiBody(zodApiBody(createTeamSchema, 'CreateTeamInput'))
+ */
+export function zodApiBody(
+  schema: z.ZodTypeAny,
+  ref: string,
+): { schema: { $ref: string } } {
+  zodToOpenApi(schema, { ref });
+  return { schema: { $ref: `#/components/schemas/${ref}` } };
+}
+
+/**
  * Test-only: clear the registry. Exported so test suites can start from
  * a clean slate when asserting registration behaviour.
  */

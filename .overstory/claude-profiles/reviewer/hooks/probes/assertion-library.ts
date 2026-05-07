@@ -2550,21 +2550,150 @@ export function resolveConstrainedSigil(sigilKey: string): string | null {
     }
   }
 
-  // Generate random uppercase alphanumeric strings within retry budget
+  // Derive the alphabet from the regex's character classes so candidates
+  // satisfy the pattern by construction, not by guess-and-check. Falls
+  // back to alphanumeric only if the pattern can't be parsed.
+  const alphabet = deriveAlphabetFromPattern(pattern);
+  // Pick a non-digit prefix from the alphabet to avoid patterns that
+  // forbid leading digits. If the alphabet is digit-only, we accept the
+  // leading digit — the pattern presumably permits it.
+  const nonDigit = alphabet.replace(/[0-9]/g, '');
+  const prefixSrc = nonDigit.length > 0 ? nonDigit : alphabet;
+
   const RETRY_BUDGET = 50;
   for (let attempt = 0; attempt < RETRY_BUDGET; attempt++) {
     const len = Math.min(maxLen, Math.max(6, maxLen));
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    let candidate = 'P'; // prefix to avoid leading digit issues
+    let candidate = prefixSrc[Math.floor(Math.random() * prefixSrc.length)];
     for (let j = 1; j < len; j++) {
-      candidate += chars[Math.floor(Math.random() * chars.length)];
+      candidate += alphabet[Math.floor(Math.random() * alphabet.length)];
     }
     if (pattern && !pattern.test(candidate)) continue;
     return candidate;
   }
 
-  // Exhausted budget — return a truncated fallback (no pattern match guaranteed)
-  return ('PROBE' + randomBytes(4).toString('hex')).slice(0, maxLen);
+  // Exhausted budget — last-resort fallback uses the same derived
+  // alphabet so we don't suddenly emit characters the pattern rejects.
+  let fallback = prefixSrc[0] || alphabet[0] || 'p';
+  while (fallback.length < Math.min(8, maxLen)) {
+    fallback += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return fallback.slice(0, maxLen);
+}
+
+/**
+ * Derive a generator alphabet from a regex's character classes. Walks
+ * the source string, picks up `[...]` blocks, expands ranges, honors
+ * negations, and unions across multiple classes. Handles common shorthand
+ * (`\d`, `\w`, `\s`). Returns a deduplicated alphabet string. Falls back
+ * to lowercase alphanumeric if the pattern has no class or parsing
+ * fails.
+ *
+ * Why this exists:
+ *   The previous generator hardcoded an uppercase alphabet, then tested
+ *   candidates against the pattern. For any pattern requiring lowercase
+ *   (e.g. `^[a-z0-9-]+$`, the team-slug validator), every retry failed
+ *   and the fallback was also wrong-case → 50 wasted retries → HTTP 400
+ *   for every probe. By driving the alphabet FROM the pattern itself,
+ *   the generator works for any character-class-defined validator
+ *   (lowercase, uppercase, mixed, hex-only, custom subsets) without
+ *   needing per-case heuristics.
+ */
+export function deriveAlphabetFromPattern(pattern: RegExp | null): string {
+  const FALLBACK = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  if (!pattern) return FALLBACK;
+
+  const src = pattern.source;
+  const classes: string[] = [];
+  let i = 0;
+
+  while (i < src.length) {
+    if (src[i] === '\\' && i + 1 < src.length) {
+      // Top-level shorthand outside a class — e.g. /\d+/. Treat as a
+      // single anonymous class.
+      const c = src[i + 1];
+      const expanded = expandShorthand(c);
+      if (expanded) classes.push(expanded);
+      i += 2;
+      continue;
+    }
+    if (src[i] !== '[') { i += 1; continue; }
+
+    // Walk a [...] block, respecting `\]` and `\\`.
+    let j = i + 1;
+    let body = '';
+    let negate = false;
+    if (src[j] === '^') { negate = true; j += 1; }
+    while (j < src.length && src[j] !== ']') {
+      if (src[j] === '\\' && j + 1 < src.length) {
+        body += src.slice(j, j + 2);
+        j += 2;
+        continue;
+      }
+      body += src[j];
+      j += 1;
+    }
+    classes.push(expandClassBody(body, negate));
+    i = j + 1;
+  }
+
+  if (classes.length === 0) return FALLBACK;
+
+  // Union across all classes — any candidate char that satisfies one is
+  // a safe pick for repeated quantifiers.
+  const merged = Array.from(new Set(classes.join(''))).join('');
+  return merged.length > 0 ? merged : FALLBACK;
+}
+
+function expandShorthand(c: string): string {
+  switch (c) {
+    case 'd': return '0123456789';
+    case 'w': return 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_';
+    case 's': return ' \t';
+    // Negated shorthands (\D, \W, \S) — fall through to a safe alphabet.
+    default: return '';
+  }
+}
+
+function expandClassBody(body: string, negate: boolean): string {
+  const chars = new Set<string>();
+  let i = 0;
+  while (i < body.length) {
+    // Escape sequence.
+    if (body[i] === '\\' && i + 1 < body.length) {
+      const c = body[i + 1];
+      const expanded = expandShorthand(c);
+      if (expanded) {
+        for (const ch of expanded) chars.add(ch);
+      } else {
+        // Literal escaped char (e.g. \-, \.).
+        chars.add(c);
+      }
+      i += 2;
+      continue;
+    }
+    // Range a-z.
+    if (i + 2 < body.length && body[i + 1] === '-' && body[i + 2] !== ']') {
+      const start = body.charCodeAt(i);
+      const end = body.charCodeAt(i + 2);
+      if (end >= start && end - start < 256) {
+        for (let code = start; code <= end; code++) chars.add(String.fromCharCode(code));
+      }
+      i += 3;
+      continue;
+    }
+    chars.add(body[i]);
+    i += 1;
+  }
+
+  if (negate) {
+    // Sample a safe printable subset and exclude. Without an upper bound,
+    // negation could produce unprintable bytes — restrict to typical
+    // identifier chars.
+    const safe = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    return Array.from(safe).filter((c) => !chars.has(c)).join('');
+  }
+
+  return Array.from(chars).join('');
 }
 
 function resolveBindingsInPath(path: string, bindings: Record<string, unknown>): string {

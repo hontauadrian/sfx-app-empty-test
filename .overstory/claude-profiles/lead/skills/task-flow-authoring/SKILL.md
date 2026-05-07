@@ -461,6 +461,54 @@ If any row is unchecked, the file is incomplete. The self-check formula
 in [self-check-formula.md](self-check-formula.md) gives the floor; this
 catalog gives the breadth.
 
+## Actor types — pick the smallest pattern that covers your tests
+
+Task-level flows usually consume actors declared in `_shared.json`. When a
+new actor is required for THIS task, it must still fit one of the five
+canonical types — picked by what your endpoints check, NOT by the project
+domain's wording. The five types map directly to the schemes the runtime
+supports today (`AUTH_SCHEME_REGISTRY` in `lib/auth-bootstrap.ts`).
+
+The full per-type shapes + the canonical register/login chain examples
+live in
+[shared-flow-authoring §Actor types](../shared-flow-authoring/SKILL.md#actor-types--pick-the-smallest-pattern-that-covers-your-tests).
+Read that section once when authoring a flow that introduces a new actor;
+the patterns are project-agnostic and apply identically inside a per-task
+file.
+
+The five types (summary):
+
+1. **Public** — `{ "scheme": "anonymous" }`. Reserved name `anonymous`.
+2. **Authenticated single-identity** — one user, one bearer. Use
+   `bearer-in-body` / `bearer-in-header` / `cookie` per transport.
+3. **Permission-scoped** — one actor per scope tier you need to test;
+   each declares its own login + a bootstrap chain that grants the scope.
+4. **Tenant-scoped** — same shape as type 3, chain assigns tenancy
+   instead of role.
+5. **Machine** — `api-key` for static header, `oauth-scoped` for OAuth
+   client_credentials with scopes.
+
+### Per-task additions land where the flow is authored
+
+If the new actor is used by ONE task only, declare it in the task's
+own `<task-id>.json` `actors[]` array. If it's used by multiple tasks,
+escalate to coordinator with a `flow_escalation` mail so it lands in
+`_shared.json` instead — lifting prevents drift between task copies of
+the same actor.
+
+### Anti-patterns (same as shared)
+
+Do NOT declare `auth: {}` as a placeholder — the discriminator rejects
+it at contract-load time and probe stdout fills with
+`[contract-flows-bootstrap-FAIL] actor=<name> scheme=unknown`. Do NOT
+delete an actor to silence a bootstrap diagnostic — the deletion drops
+every flow that references it (the role-gated, tenant-gated, and
+service-to-service tests become untestable while pass count rises).
+
+If the runtime doesn't support your auth (OAuth authorization-code,
+mTLS, SAML, 2FA-challenge mid-login), the registry must be extended
+first — see the same shared-flow-authoring section for the path.
+
 ## Implementation status (read first)
 
 The probe-flows v3 plan ships features in phases. Today only the HTTP
@@ -476,7 +524,7 @@ the schema accepts but the runner ignores or stubs.
 - Resource fields used by setup/runtime: `name`, `kind`, `create`,
   `capture`, `parents`. `setup[].by` actor binding works.
 - Config: `reservedActors`, `clockAdvanceEndpoint`, `fixturesRoot`,
-  `cookieJar.allowSecureOnHttp`, `envelope.successWrapper`.
+  `cookieJar.allowSecureOnHttp`. Response envelope sourced from API code via openapi.json (NOT `_shared.json`).
 - Cookie jar (RFC 6265bis) + capture/replay step variants.
 
 **Schema-accepted but runner-stubbed/unimplemented:**
@@ -498,7 +546,7 @@ the schema accepts but the runner ignores or stubs.
 - For HTTP-only projects (current boilerplate state), focus on:
   resource declarations, special_flows with setup+steps, expect
   bodyHas/headerHas/status, setAuth-driven actor switching,
-  envelope.successWrapper config in `_shared.json` if the API wraps
+  response envelope is sourced from `apps/api/.openapi.json` `x-response-envelope` (declared in API code via TransformInterceptor.ENVELOPE) — do not duplicate in `_shared.json`. The probe halts loud if envelope undeclared. The runner enters the wrapper, so flow paths like
   responses.
 
 ## Schema reference (current)

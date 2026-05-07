@@ -35,6 +35,42 @@ Two audiences read the same artifact (`/api/docs-json` + the static dump at `app
 
 ---
 
+## DO NOT READ FLOW FILES — they are output, not input
+
+Files under `.overstory/runtime-contract.flows/` are owned by lead/coordinator
+(per Decision 3, enforced by the `flows-path-boundary.js` hook). They are
+the **probe contract** — what tests assert — derived from your code surface.
+You author the API; detectors generate the flows automatically from your
+schemas + decorators + controller decorations.
+
+Reading those files gives you ZERO actionable information for your job and
+costs hundreds of lines of context per file. The probe failure report
+(`.claude/hooks/.http-smoke.md`) already contains everything you need:
+
+- `requestEcho`: the exact body the probe sent.
+- `responseEcho`: the exact response your API returned (status + body).
+- `serverStack`: file:line of the throw site for any 5xx (filter attaches
+  `Error.name` + `Error.stack` on dev responses).
+- `[contract-flows-bootstrap-FAIL]`: per-actor scheme + reason — actor
+  setup failures are NOT yours to fix; mail lead.
+
+If a probe fails:
+
+1. Open `.claude/hooks/.http-smoke.md` (or the JSON sibling).
+2. Read the failure block for the case in question.
+3. Compare `expected` vs `actual` — fix YOUR code to match the contract.
+4. Do NOT open the flow file. The contract IS the API surface you declared
+   — if the flow expects something your code doesn't produce, the gap is
+   in your code or in the lead's flow file. Either way you don't edit
+   flows. If the flow itself looks wrong (wrong status, wrong shape), mail
+   `flow_mismatch` to lead with the specific case label.
+
+Anti-pattern that wastes minutes per cycle: reading
+`runtime-contract.flows/*.json` to "understand" what the probe expects.
+Stop. The report says it directly. Reading the JSON is a cargo-cult
+behaviour from the era before the report carried `responseEcho` and
+`bootstrapDiagnostics` inline. Both are present today.
+
 ## 0. Boot-time setup (already wired — understand it, don't break it)
 
 `apps/api/src/swagger.ts` exports `buildSwaggerDocument(app)`. Title / version / description are pulled from `apps/api/package.json` so a rename is a one-file edit.
@@ -213,6 +249,41 @@ async register(@Body() body: RegisterInput) { ... }
 - Forgot the side-effect import `import '@sfx/validation/openapi'` in the validation package barrel → `.openapi()` is a no-op.
 
 **Same rule applies to `@ApiResponse`** — for every named response schema you reference, the underlying Zod schema must annotate its fields, otherwise the response panel also degrades to `Unknown Type: object`.
+
+### 2.5.2 Hand-written `$ref` in `@ApiBody` — the dangling-reference trap
+
+The shorthand `@ApiBody({ schema: zodToOpenApi(X, { ref: 'X' }) })` registers the schema as a side effect of evaluating `zodToOpenApi(...)`. That is the only reason it resolves at bootstrap. The moment you reach for `allOf` / `oneOf` / `anyOf` composition and write the `$ref` by hand, the side-effect call is no longer there — and nothing tells you. NestJS Swagger silently emits the operation as `{}` in the dump, the contract probe synthesises an empty request body, the server returns 400, and every chain step that depends on the resource cascades into 404 "not found" failures. This is exactly the failure mode that burned 8 hours of builder time on the teams chunk.
+
+**❌ Wrong — produces a dangling `$ref`, empty operation in `.openapi.json`:**
+```ts
+@ApiBody({
+  schema: {
+    allOf: [
+      { $ref: '#/components/schemas/CreateTeamInput' },   // hand-written
+      { required: ['name', 'slug'], properties: { ... } },
+    ],
+  },
+})
+// no zodToOpenApi(createTeamSchema, { ref: 'CreateTeamInput' }) anywhere
+//   → schema is never registered → $ref resolves to nothing
+```
+
+**✅ Right — use the `zodApiBody` helper which pairs registration + ref in one call:**
+```ts
+import { zodApiBody } from '@sfx/validation';
+
+@ApiBody(zodApiBody(createTeamSchema, 'CreateTeamInput'))
+async create(@Body(new ZodValidationPipe(createTeamSchema)) body: CreateTeamInput) { ... }
+```
+
+The helper is impossible to misuse: it cannot return a `$ref` without registering the target schema. If you ever genuinely need `allOf` composition (rare — usually a sign you should split the schema), register first and compose second:
+
+```ts
+zodToOpenApi(createTeamSchema, { ref: 'CreateTeamInput' });   // explicit register
+@ApiBody({ schema: { allOf: [{ $ref: '#/components/schemas/CreateTeamInput' }, { ... }] } })
+```
+
+**Pre-flight catches this**: `pnpm probe:smoke` runs `pnpm openapi:check` first, which reads `apps/api/.openapi.json` and rejects any operation that is empty `{}` or contains a `$ref` not present in `components.schemas`. If the check fires, you forgot a registration somewhere — fix the call site, do not skip the gate.
 
 ### 2.6 Query — ZodValidationPipe when the handler reads query
 ```ts
@@ -1348,9 +1419,11 @@ Stopping/restarting the dev stack between code iterations wastes ~60–90s every
 
 5. **Never `stop && start` to "pick up a change".** Watch mode handles it. If a change isn't picked up, the watcher is broken — investigate, don't restart.
 
+6. **Docker variant fast path.** When the stack runs as docker containers (`pnpm stack:up` / `scripts/stack-up-docker.sh`, the standard path inside the panel container) the api is **not** in nest-watch — it reads compiled `packages/<X>/dist`. After editing a `packages/` source file run `pnpm --filter @sfx/<pkg> build && pnpm stack:reload-api` (host build + ~10s container restart). Use `pnpm stack:up --rebuild` (~5 min full image rebuild) only for new npm deps, Dockerfile edits, new env vars, or Prisma schema changes that need a fresh `prisma generate`.
+
 ### Signs the watcher is broken (rare)
 
-- TypeScript change compiles locally but API still returns old behavior → check `tail -f .api.log` for the nest rebuild.
+- TypeScript change compiles locally but API still returns old behavior → check `tail -f .api.log` for the nest rebuild (host watcher) or run `pnpm --filter @sfx/<pkg> build && pnpm stack:reload-api` (docker stack).
 - Package change in `packages/validation` doesn't flow to API → check `tail -f .turbo-watch.log` for the turbo rebuild.
 - Web change doesn't appear → check next-dev output; if none, `pnpm stack:refresh-watch` respawns watchers without rebooting PG/API.
 

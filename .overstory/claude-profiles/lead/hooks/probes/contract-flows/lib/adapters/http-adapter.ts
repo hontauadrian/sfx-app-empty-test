@@ -116,6 +116,15 @@ export interface HttpAdapterOptions {
  * preserved on `flowScratch.lastResponse.body` for matchers.
  */
 interface HttpFlowScratch {
+  /** Echo of the most recent api step's request. Captured even when
+   *  the api step itself succeeded so a downstream `expect` failure
+   *  can attach the "you sent X" diagnostic without re-deriving it. */
+  lastRequest?: {
+    method: string;
+    url: string;
+    body?: unknown;
+    bodyKind?: string;
+  };
   lastResponse?: {
     status: number;
     headers: Record<string, string>;
@@ -275,9 +284,16 @@ export class HttpAdapter implements ProtocolAdapter {
 
     // Body marshalling.
     let body: BodyInit | undefined;
+    // Echo of the post-interpolation body for the failure renderer.
+    // We carry this even on success because a downstream `expect` step
+    // needs it to render "you sent X" when it fails — the api step
+    // itself usually passes (server returned *some* response), and the
+    // expect step is what flags the mismatch.
+    let interpolatedBodyForEcho: unknown = undefined;
     const bodyKind = step.bodyKind ?? 'json';
     if (step.body !== undefined && bodyKind === 'json') {
       const interpBody = this.interpolateValue(step.body, ctx, 'body');
+      interpolatedBodyForEcho = interpBody;
       body = JSON.stringify(interpBody);
       if (!('Content-Type' in headers) && !('content-type' in headers)) {
         headers['Content-Type'] = 'application/json';
@@ -358,6 +374,15 @@ export class HttpAdapter implements ProtocolAdapter {
       rawText,
     };
 
+    // Stash the request echo so the next-step `expect` failure can
+    // attach "what you sent" to its diagnostic without re-deriving it.
+    scratch.lastRequest = {
+      method,
+      url: finalUrl,
+      body: interpolatedBodyForEcho,
+      bodyKind,
+    };
+
     return {
       passed: true,
       raw: scratch.lastResponse,
@@ -385,9 +410,12 @@ export class HttpAdapter implements ProtocolAdapter {
       for (const [path, matcher] of Object.entries(step.bodyHas)) {
         const actual = readJsonPath(last.body, path, this.contract);
         if (!matchValue(actual, matcher, ctx)) {
+          const shapeHint = actual === undefined
+            ? describeBodyAt(last.body, path, this.contract)
+            : null;
           return this.failStep(ctx, 'expect',
             `bodyHas.${path}=${describeMatcher(matcher)}`,
-            `actual=${truncate(JSON.stringify(actual))}`, last);
+            `actual=${truncate(JSON.stringify(actual))}${shapeHint ? '. ' + shapeHint : ''}`, last);
         }
       }
     }
@@ -498,13 +526,14 @@ export class HttpAdapter implements ProtocolAdapter {
       for (const [name, path] of Object.entries(step.bindings)) {
         const v = readJsonPath(last.body, path, this.contract);
         if (v === undefined) {
+          const shapeHint = describeBodyAt(last.body, path, this.contract);
           const err: FlowCaptureNotFoundError = {
             code: 'FLOW_CAPTURE_NOT_FOUND',
             flowId: ctx.flowId,
             stepIndex: -1,
             binding: name,
             jsonPath: path,
-            message: `capture: jsonPath '${path}' resolved to undefined for binding '${name}'`,
+            message: `capture: jsonPath '${path}' resolved to undefined for binding '${name}'${shapeHint ? '. ' + shapeHint : ''}`,
           };
           throw new ContractFlowError(err);
         }
@@ -984,6 +1013,7 @@ export class HttpAdapter implements ProtocolAdapter {
     actual: string,
     response: HttpFlowScratch['lastResponse'],
   ): StepResult {
+    const scratch = getScratch(ctx);
     const err: FlowStepFailedError = {
       code: 'FLOW_STEP_FAILED',
       flowId: ctx.flowId,
@@ -994,7 +1024,20 @@ export class HttpAdapter implements ProtocolAdapter {
       responseExcerpt: response ? truncate(response.rawText) : undefined,
       message: `${stepKind}: expected ${expected}, got ${actual}`,
     };
-    return { passed: false, blockReason: err.message };
+    // Attach echoes from scratch so the report renderer can show
+    // "you sent X / server returned Y" without grepping logs. Only
+    // populate when the data is present — auth-bootstrap step kinds
+    // and steps that fail before any HTTP call have neither.
+    return {
+      passed: false,
+      blockReason: err.message,
+      requestEcho: scratch.lastRequest
+        ? { ...scratch.lastRequest }
+        : undefined,
+      responseEcho: response
+        ? { status: response.status, body: response.body }
+        : undefined,
+    };
   }
 }
 
@@ -1061,6 +1104,72 @@ function readJsonPath(body: unknown, path: string, contract?: MergedContract | u
     cur = (cur as Record<string, unknown>)[tok];
   }
   return cur;
+}
+
+/**
+ * Diagnostic helper: walk the same path readJsonPath walks, but stop at the
+ * first miss and return a compact description of what IS at that point. Used
+ * to enrich capture/expect error messages so agents see the body shape
+ * deterministically (no heuristics, no fuzzy match) instead of a bare
+ * "resolved to undefined". Returns null when the walk succeeds — caller
+ * decides whether to append.
+ *
+ * Format: `Body shape at <path>[ (envelope wrapper)]: {key1, key2, ...} (no '<missingKey>')`
+ * Truncates key lists at 8 to keep output one-line.
+ */
+function describeBodyAt(body: unknown, path: string, contract?: MergedContract | undefined): string | null {
+  if (!path || path === '$') return null;
+  let cleaned = path;
+  if (cleaned.startsWith('$.')) cleaned = cleaned.slice(2);
+  else if (cleaned.startsWith('$[')) cleaned = cleaned.slice(1);
+
+  const envelopeWrapper = (contract?.config as { envelope?: { successWrapper?: string[] } } | undefined)?.envelope?.successWrapper;
+  let cur: unknown = body;
+  let walked = '$';
+  let inWrapper = false;
+  if (envelopeWrapper && envelopeWrapper.length > 0 && body !== null && typeof body === 'object') {
+    let envBody: unknown = body;
+    let envOk = true;
+    for (const seg of envelopeWrapper) {
+      if (envBody === null || typeof envBody !== 'object') { envOk = false; break; }
+      envBody = (envBody as Record<string, unknown>)[seg];
+    }
+    if (envOk) {
+      cur = envBody;
+      walked = '$.' + envelopeWrapper.join('.');
+      inWrapper = true;
+    }
+  }
+
+  const tokens = cleaned
+    .replace(/\[(\d+)\]/g, '.$1')
+    .split('.')
+    .filter((t) => t.length > 0);
+
+  for (const tok of tokens) {
+    const note = inWrapper ? ' (envelope wrapper)' : '';
+    if (cur === null || cur === undefined) {
+      return `Body at ${walked}${note} is ${cur === null ? 'null' : 'undefined'}`;
+    }
+    if (Array.isArray(cur)) {
+      return `Body at ${walked}${note} is array (length=${cur.length})`;
+    }
+    if (typeof cur !== 'object') {
+      return `Body at ${walked}${note} is ${typeof cur}`;
+    }
+    if (!(tok in cur)) {
+      const keys = Object.keys(cur);
+      const shown = keys.slice(0, 8).join(', ');
+      const more = keys.length > 8 ? `, ...${keys.length - 8} more` : '';
+      const shape = keys.length === 0 ? 'empty object' : `{${shown}${more}}`;
+      const missing = keys.length === 0 ? '' : ` (no '${tok}')`;
+      return `Body shape at ${walked}${note}: ${shape}${missing}`;
+    }
+    cur = (cur as Record<string, unknown>)[tok];
+    walked += `.${tok}`;
+    inWrapper = false;
+  }
+  return null;
 }
 
 function matchValue(actual: unknown, expected: Matcher, ctx: ExecCtx): boolean {

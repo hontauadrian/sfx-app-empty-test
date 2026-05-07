@@ -56,4 +56,28 @@ export interface StepResult {
   /** For poll/parallel/matrix steps — substep traces so diagnostics
    *  show why the aggregate passed or failed. */
   substeps?: StepResult[];
+  /**
+   * Echo of the request that was issued to produce the (failing)
+   * response. Set by HTTP adapters on failure so the probe report can
+   * show "you sent X, server returned Y" without the agent having to
+   * cross-reference logs or rerun curl. `body` is the post-binding-
+   * substitution payload — i.e. exactly what was sent over the wire.
+   * Bodies are not truncated here; the report renderer applies caps.
+   */
+  requestEcho?: {
+    method: string;
+    url: string;
+    body?: unknown;
+    bodyKind?: string;
+  };
+  /**
+   * Echo of the response associated with this step's failure. `body`
+   * is the parsed JSON when the response declared application/json,
+   * otherwise the raw text truncated by the adapter. Truncation for
+   * report display happens later in the renderer.
+   */
+  responseEcho?: {
+    status: number;
+    body?: unknown;
+  };
 }
