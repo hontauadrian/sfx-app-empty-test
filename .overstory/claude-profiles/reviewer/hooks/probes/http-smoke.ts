@@ -981,9 +981,10 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
     // authed flows; everything downstream cascades from these lines.
     for (const diag of curatedReport.bootstrapDiagnostics) {
       if (diag.code === 'FLOW_AUTH_BOOTSTRAP_ACTOR_FAILED') {
-        const d = diag as { actorName: string; scheme: string; reason: string; message: string };
+        const d = diag as { actorName: string; scheme: string; reason: string; sourceFile?: string; message: string };
+        const sourcePart = d.sourceFile ? ` source=${JSON.stringify(d.sourceFile)} owner=lead` : '';
         process.stderr.write(
-          `[contract-flows-bootstrap-FAIL] actor=${d.actorName} scheme=${d.scheme} reason=${JSON.stringify(d.reason)}\n`,
+          `[contract-flows-bootstrap-FAIL] actor=${d.actorName} scheme=${d.scheme}${sourcePart} reason=${JSON.stringify(d.reason)}\n`,
         );
       } else {
         process.stderr.write(`[contract-flows-execute] ${diag.code}: ${diag.message}\n`);

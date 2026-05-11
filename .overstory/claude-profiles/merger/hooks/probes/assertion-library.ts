@@ -768,6 +768,23 @@ export async function probeFlowWithBindings(
   // shared bindings for the unique keys — hence uniqueSeed spreads LAST.
   const uniqueSeed: Record<string, string> = seedUniqueBindings();
 
+  // Strip cached parameterized `uniq:*` sigils from inherited bindings.
+  // substitutePath caches resolved parameterized sigils into bindings on
+  // first reference (e.g. `uniq:maxLen:50:pattern:<b64>` → some random slug).
+  // Without this strip, sharedBindings carries that resolved value into
+  // every subsequent flow, so all chain copies created via fan-out send
+  // the SAME slug and the second create hits the @unique constraint
+  // (P2002). Per-flow uniqueness requires per-flow re-resolution; clearing
+  // the cache forces substitutePath to call resolveConstrainedSigil again.
+  // Fixed-name sigils (uniqEmail / uniqString / uniqUuid / uniqUuid2) are
+  // already overridden by uniqueSeed below — only parameterized keys leak.
+  const inheritedBindings = _options.bindings ?? {};
+  const filteredInherited: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(inheritedBindings)) {
+    if (key.startsWith("uniq:")) continue;
+    filteredInherited[key] = value;
+  }
+
   // Cookie jar: prefer the runner-provided shared jar (carries cookies from
   // dependsOn flows). When none is provided, fall back to a fresh jar per
   // call — preserves prior behavior for direct probeFlow callers.
@@ -786,7 +803,7 @@ export async function probeFlowWithBindings(
     httpClient: client,
     webClient: _options.webClient ?? null,
     apiClient: _options.apiClient ?? null,
-    bindings: { ...(_options.bindings ?? {}), ...uniqueSeed },
+    bindings: { ...filteredInherited, ...uniqueSeed },
     authHeader: _options.bearer ?? null,
     authSchemeConfig: null,
     lastResponse: null,

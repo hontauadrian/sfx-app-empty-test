@@ -7,6 +7,12 @@ description: Debug your worktree's docker stack. Use when the api crashed, a mig
 
 Worktree runs isolated docker compose stack named `app-<basename>` (e.g. `app-w7`). Panel-bridge runs alongside as detached process, auto-applying prisma migrations, env-file edits, lockfile rebuilds. Debug in this order.
 
+## TL;DR — `pnpm probe:smoke` is the single command
+
+`pnpm probe:smoke` runs the full bootstrap pipeline before the probe: stack:up, prisma migrate deploy, prisma generate, api container reload, openapi:dump, TRUNCATE + seed. Idempotent. Re-running is safe and free when nothing changed.
+
+Do NOT run `pnpm stack:reset`, `pnpm db:reset:fast`, or `pnpm openapi:dump` manually before a probe — `probe:smoke` already does them. Use those commands only if `probe:smoke` itself fails to bootstrap (script names them in the error). Use the `pnpm stack:*` debug helpers below to investigate WHY a probe failed, never as preconditions to running one.
+
 ## 1. One-shot snapshot
 
 ```bash

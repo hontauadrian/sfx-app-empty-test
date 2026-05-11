@@ -1083,6 +1083,29 @@ function readJsonPath(body: unknown, path: string, contract?: MergedContract | u
 
   // Look for envelope hint on contract.config (open extension).
   const envelopeWrapper = (contract?.config as { envelope?: { successWrapper?: string[] } } | undefined)?.envelope?.successWrapper;
+
+  const tokens = cleaned
+    .replace(/\[(\d+)\]/g, '.$1')
+    .split('.')
+    .filter((t) => t.length > 0);
+
+  function walkFrom(start: unknown): unknown {
+    let cur: unknown = start;
+    for (const tok of tokens) {
+      if (cur === null || cur === undefined) return undefined;
+      if (typeof cur !== 'object') return undefined;
+      cur = (cur as Record<string, unknown>)[tok];
+    }
+    return cur;
+  }
+
+  // Envelope-aware: try the unwrapped payload first, fall back to the raw
+  // body. Mirrors capture-step behavior (assertion-library.ts) so lead's
+  // path semantics are uniform across capture/bodyHas. Without fallback,
+  // a path like `$.data` on a `{success, data: [...]}` envelope unwraps to
+  // body.data.data (undefined), forcing lead into runner-specific syntax.
+  // With fallback, `$.data` resolves to the array directly when unwrap
+  // misses — same intent, no DSL escape required.
   let cur: unknown = body;
   if (envelopeWrapper && body !== null && typeof body === 'object') {
     let envBody: unknown = body;
@@ -1094,16 +1117,11 @@ function readJsonPath(body: unknown, path: string, contract?: MergedContract | u
     if (envOk) cur = envBody;
   }
 
-  const tokens = cleaned
-    .replace(/\[(\d+)\]/g, '.$1')
-    .split('.')
-    .filter((t) => t.length > 0);
-  for (const tok of tokens) {
-    if (cur === null || cur === undefined) return undefined;
-    if (typeof cur !== 'object') return undefined;
-    cur = (cur as Record<string, unknown>)[tok];
-  }
-  return cur;
+  const fromUnwrapped = walkFrom(cur);
+  if (fromUnwrapped !== undefined) return fromUnwrapped;
+  // Fallback: walk from raw body. Only used when unwrap miss produced
+  // undefined — preserves the unwrap-first behavior for normal cases.
+  return walkFrom(body);
 }
 
 /**
@@ -1175,6 +1193,19 @@ function describeBodyAt(body: unknown, path: string, contract?: MergedContract |
 function matchValue(actual: unknown, expected: Matcher, ctx: ExecCtx): boolean {
   if (typeof expected === 'string' || typeof expected === 'number'
       || typeof expected === 'boolean' || expected === null) {
+    // Substitute ${var} placeholders on the EXPECTED side using ctx.bindings.
+    // Path-side substitution already happens upstream; without value-side
+    // substitution the assertion `bodyHas.$.teamId="${addMemberTeamId}"`
+    // compares the real cuid to the literal string `${addMemberTeamId}` and
+    // always fails. Symmetric substitution removes the gap; lead authors
+    // assertions with the same syntax as paths.
+    if (typeof expected === 'string' && expected.includes('${')) {
+      const substituted = expected.replace(/\$\{([\w:+/=.]+)\}/g, (match, varName) => {
+        const v = ctx.bindings[varName];
+        return v !== undefined && v !== null ? String(v) : match;
+      });
+      return actual === substituted || String(actual) === substituted;
+    }
     return actual === expected;
   }
   if ('matches' in expected) {

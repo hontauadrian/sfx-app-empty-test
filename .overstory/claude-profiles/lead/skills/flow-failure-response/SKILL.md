@@ -36,7 +36,10 @@ Walk top-down. Stop at first match, follow its action.
 |---|---|
 | `FLOW_OWNERSHIP_VIOLATION` | Cannot edit flow folder. Mail lead (Option B). |
 | `FLOW_NEW_ENDPOINT_UNCOVERED` | Drift requires lead authorship. Mail lead (Option B) with new endpoint shape. |
-| `FLOW_STEP_FAILED` referencing a `<task-id>:<flow-name>` | Default: your code (Option A). Escalate only if flow's expectation provably contradicts spec. |
+| `[contract-flows-bootstrap-FAIL]` (one or more lines) | Actor declaration is broken in a lead-owned flow file. **Do not touch controllers** — actor-bootstrap failures cascade into 10+ contract-flow failures all rooted in the same actor. The line includes `source=<file>` and `owner=lead`; copy that into a `flow_actor_bootstrap` mail to lead with the full diagnostic line. Common causes: typo (`tokenPath` instead of `key`), missing DB seed for the actor's email, wrong login path. Do NOT chase the cascading flow failures. |
+| `expect: expected bodyHas.<path>="${<var>}"` (literal `${...}` in expected) | Lead authored an assertion referencing a variable that wasn't bound at runtime, OR the response envelope wrapper hides the captured value. Lead-owned flow file. Mail lead with `flow_assertion_unbound_var` and the line. Do NOT touch controllers — the API is returning correct data, the assertion shape is wrong. |
+| `expect: expected bodyHas.$={"type":"array"}, got actual={"success":...,"data":[...]}` (or any envelope mismatch where `$.data.<...>` would match) | Lead authored a non-envelope-aware bodyHas path. Mail lead with `flow_assertion_envelope` and the assertion line; lead must rewrite path as `$.<wrapper>.<rest>`. Do NOT touch controllers. |
+| `FLOW_STEP_FAILED` referencing a `<task-id>:<flow-name>` | Default: your code (Option A). Escalate only if flow's expectation provably contradicts spec. First confirm there are no `[contract-flows-bootstrap-FAIL]` lines above — if present, fix those first (above row). |
 | `FLOW_MERGE_CONFLICT` / `FLOW_DUPLICATE_ID` / `FLOW_FILE_MISSING_OWNS_OR_EXTENDS` | Lead-only resolution. Mail lead (Option B) with diagnostic block. |
 | `[http-smoke-FAIL]` without a `FLOW_*` code | Use `nestjs-probe-coverage` and `build-verifiable-features` first; this skill applies only to flow-named failures. |
 

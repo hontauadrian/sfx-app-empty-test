@@ -31,6 +31,14 @@ Teaches you how to declare features so the runtime-verification probe
 (in `.overstory/claude-profiles/<profile>/hooks/probes/`) can automatically
 verify them when the stack boots.
 
+**`pnpm probe:smoke` is one command, idempotent, ready out-of-the-box.** It
+runs the full bootstrap (stack:up → prisma migrate deploy → prisma generate
+→ api reload → openapi:dump → TRUNCATE + seed) before exercising flows. You
+do NOT need to run `pnpm stack:reset`, `pnpm db:reset:fast`, or
+`pnpm openapi:dump` manually before a probe — even when you've added new
+migrations or changed prisma schema. Re-running `pnpm probe:smoke` after a
+fix is the entire iteration loop.
+
 ## When to invoke a sub-skill
 
 Read the relevant sub-skill BEFORE writing code for that feature:
@@ -295,6 +303,60 @@ If you don't add `@ResourceCaptures` to a chainable POST:
 
 The probe will NOT guess based on field names. Heuristic detection was
 explicitly removed in commit 8a652f2; declarations are the only signal.
+
+### Example 4: `@BodyResourceRefs(...)` on consumers of foreign records — applies meta-principle A
+
+`@ResourceCaptures` covers path-param chains (parent path produces an id, child path consumes it). It does NOT cover request-body fields whose value must reference an **existing** record (invite-by-email, transfer-ownership-by-userId, share-with-org, follow-by-username, mention-by-handle). For those, the probe needs a parallel declaration so it pre-creates the referenced record before exercising your endpoint — otherwise the body sigil expands to a fresh `${uniqEmail}` / `${uniqString}` that exists nowhere, and your handler returns `404 X not found`.
+
+**Apply `@BodyResourceRefs(...)` from `apps/api/src/common/decorators/body-resource-refs.decorator.ts` to any endpoint whose request body contains a field referencing a record that must already exist in the database.**
+
+| Field          | What it is                                                                                                  | Example                                  |
+|----------------|-------------------------------------------------------------------------------------------------------------|------------------------------------------|
+| `parentField`  | Body field name                                                                                             | `'email'`, `'ownerId'`, `'projectSlug'`  |
+| `parentCreate` | `{ operationId }` of the creator endpoint                                                                   | `{ operationId: 'register' }`            |
+| `resource`     | Alternative to `parentCreate`: path of the creator POST                                                     | `'/api/v1/auth/register'`                |
+| `captureFrom`  | JSONPath into creator's success response body (envelope-aware). Defaults to creator's `@ResourceCaptures`.  | `'$.email'`, `'$.data.user.id'`          |
+
+```ts
+import { BodyResourceRefs } from '@/common/decorators/body-resource-refs.decorator';
+
+// POST /teams/:id/members invites an EXISTING user by email
+@Post(':id/members')
+@BodyResourceRefs({
+  parentField: 'email',
+  parentCreate: { operationId: 'register' },
+  captureFrom: '$.email',
+})
+inviteMember(...) { ... }
+
+// POST /projects assigns an existing user as owner by id
+@Post()
+@BodyResourceRefs({
+  parentField: 'ownerId',
+  parentCreate: { operationId: 'register' },
+  captureFrom: '$.id',
+})
+createProject(...) { ... }
+```
+
+#### Failure mode without it
+
+`pnpm probe:smoke` reports the consumer endpoint failing with `4xx X not found` — the probe sent body containing `${uniqEmail}` / `${uniqString}` etc., the value resolves to a fresh random per-flow seed, the referenced record does not exist. **Do not debug your handler** — it is correct per its contract. The gap is the missing declaration. Add `@BodyResourceRefs` to teach the probe to seed the foreign record first.
+
+#### Use vs `@ResourceCaptures`
+
+- **`@ResourceCaptures`** = "my response produces a value used as a sibling-route `:param`" (path producer).
+- **`@BodyResourceRefs`** = "my request body field references a foreign record that must exist" (body consumer).
+
+They are symmetric and additive. An endpoint may declare both.
+
+#### Stateful chains and mutating dependents — automatic fan-out
+
+A `chain:resource-setup:*` creates a stateful record (membership, post, comment, etc.). When two or more dependent flows MUTATE that record (DELETE / PATCH / PUT / POST that consumes it), the generator now emits one chain copy per mutator with renamed binding keys, so each dependent gets its own fresh record. You do not declare anything for this — it is detected from the dependsOn graph and step methods.
+
+Implication: do NOT debug a `404 X not found` on the second mutator (e.g. PATCH:happy after DELETE:happy passed). The chain will fan out automatically next regen. If your handler is correct, the issue is upstream.
+
+If an endpoint with a mutating verb is actually idempotent (PUT upsert, POST query) and should keep sharing chain state, declare `@ApiExtension('x-idempotent', true)` (extension hook reserved for this — currently treated as a passive marker).
 
 ---
 

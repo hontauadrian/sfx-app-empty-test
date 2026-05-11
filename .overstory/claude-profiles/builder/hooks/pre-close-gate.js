@@ -764,6 +764,19 @@ const gateReasons = [
 ].filter(([, reason]) => reason !== null);
 
 if (gateReasons.length === 0) {
+  try {
+    const dirty = execSync('git status --porcelain -- .overstory/runtime-contract.flows/', {
+      cwd: PROJECT_DIR,
+      encoding: 'utf8',
+    }).trim();
+    if (dirty) {
+      execSync('git add .overstory/runtime-contract.flows/', { cwd: PROJECT_DIR });
+      execSync(
+        'git -c user.email="overstory@sfx.local" -c user.name="overstory-orchestrator" commit -m "chore(flows): auto-commit runtime-contract.flows before close" --no-verify',
+        { cwd: PROJECT_DIR },
+      );
+    }
+  } catch {}
   process.exit(0);
 }
 

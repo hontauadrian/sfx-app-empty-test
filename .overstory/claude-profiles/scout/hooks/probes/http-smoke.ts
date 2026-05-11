@@ -55,6 +55,7 @@ import {
   executeCuratedFlows,
   formatRunSummary as formatCuratedRunSummary,
 } from './contract-flows/flow-runner';
+import type { TypedError } from './contract-flows/errors';
 // RFC 6265bis cookie jar — per-flow jars seeded from declared dependsOn
 // parents (see flow loop). Inheritance is driven entirely by the declarative
 // dependsOn relationship — never by path/field heuristics.
@@ -714,6 +715,10 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
 
   // 5. Exercise matrix.
   const cases: SmokeCaseEntry[] = [];
+  // Captured from the curated-flows runner below so the SmokeReport can
+  // surface bootstrap failures alongside flow failures. Both writers (JSON +
+  // MD) read this single source.
+  let capturedBootstrapDiagnostics: TypedError[] = [];
   const only = options.only ?? 'all';
 
   if (webClient && (only === 'all' || only === 'pages')) {
@@ -968,8 +973,22 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
         responseEcho: failedStep?.responseEcho,
       });
     }
+    capturedBootstrapDiagnostics = curatedReport.bootstrapDiagnostics;
+    // Print one structured key=value line per failed actor immediately so an
+    // agent piping `pnpm probe:smoke 2>&1 | grep bootstrap-FAIL` sees the
+    // exact actor + scheme + reason for every failure without opening the
+    // .md or .json. This is the FIRST signal when probes can't run their
+    // authed flows; everything downstream cascades from these lines.
     for (const diag of curatedReport.bootstrapDiagnostics) {
-      process.stderr.write(`[contract-flows-execute] ${diag.code}: ${diag.message}\n`);
+      if (diag.code === 'FLOW_AUTH_BOOTSTRAP_ACTOR_FAILED') {
+        const d = diag as { actorName: string; scheme: string; reason: string; sourceFile?: string; message: string };
+        const sourcePart = d.sourceFile ? ` source=${JSON.stringify(d.sourceFile)} owner=lead` : '';
+        process.stderr.write(
+          `[contract-flows-bootstrap-FAIL] actor=${d.actorName} scheme=${d.scheme}${sourcePart} reason=${JSON.stringify(d.reason)}\n`,
+        );
+      } else {
+        process.stderr.write(`[contract-flows-execute] ${diag.code}: ${diag.message}\n`);
+      }
     }
     for (const err of curatedReport.runtimeErrors) {
       process.stderr.write(`[contract-flows-execute] ${err.code}: ${err.message}\n`);
@@ -1014,6 +1033,9 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
     blockReason: blockReasons[0],
     cases,
     runtimeDiagnostics: dedupedRuntimeDiagnostics,
+    bootstrapDiagnostics: capturedBootstrapDiagnostics.length > 0
+      ? capturedBootstrapDiagnostics
+      : undefined,
   };
 
   writeReport(report, { reportPath: options.reportPath, humanReportPath: options.humanReportPath });

@@ -4456,12 +4456,30 @@ function detectPathPrefixParent(ep, endpoints) {
 function resolveResourceRefDeps(ep, endpoints) {
   const result = { deps: [], overrides: {}, pathSubstitutions: {} };
 
-  // --- Part A: path-prefix autodetection ---
-  const parentInfo = detectPathPrefixParent(ep, endpoints);
-  if (parentInfo) {
-    result.deps.push(parentInfo.chainId);
-    result.pathSubstitutions[parentInfo.paramName] =
-      `\${resource:${parentInfo.resourceName}:id}`;
+  // --- Part A: path-prefix autodetection for ALL :params, not just the
+  // immediate parent. detectPathPrefixParent returns the closest ancestor;
+  // for paths like /orgs/:orgId/projects/:projId/tasks/:taskId every :param
+  // along the path needs its own ancestor lookup, otherwise non-immediate
+  // params stay literal and 404 at runtime. Match contract is the same as
+  // the original detectPathPrefixParent (POST exists at ancestor base path
+  // and has a zodContract); whether the ancestor declared captures is
+  // checked separately by emitResourceSetupChains, which surfaces a DIAG
+  // when missing. Purely declaration-driven via the matrix, never inferred
+  // from name shape.
+  const segments = ep.path.split('/');
+  for (let i = 1; i < segments.length; i++) {
+    if (!segments[i].startsWith(':')) continue;
+    const paramName = segments[i].slice(1);
+    if (Object.prototype.hasOwnProperty.call(result.pathSubstitutions, paramName)) continue;
+    const ancestorBasePath = segments.slice(0, i).join('/');
+    const ancestorPost = endpoints.find(
+      (e) => e.method === 'POST' && e.path === ancestorBasePath,
+    );
+    if (!ancestorPost || !ancestorPost.zodContract) continue;
+    const resourceName = ancestorBasePath.split('/').pop();
+    const chainId = `chain:resource-setup:${resourceName}`;
+    if (!result.deps.includes(chainId)) result.deps.push(chainId);
+    result.pathSubstitutions[paramName] = `\${resource:${resourceName}:id}`;
   }
 
   // --- Part B: body-field x-probe-resource-ref ---
@@ -4548,6 +4566,31 @@ function emitResourceSetupChains(endpoints, options) {
 
     const createStep = { kind: 'api', method: 'POST', path: parentEp.path };
     if (parentBody) createStep.body = parentBody;
+
+    // Apply declaration-driven path-prefix substitutions, body overrides, and
+    // chain dependencies to the create step itself. Without this, parent
+    // endpoints whose path contains :params (e.g. POST /teams/:id/members) keep
+    // the literal ':id' and 404 at runtime, and parent endpoints whose body
+    // references foreign resources (x-probe-resource-ref) keep ${uniqEmail}
+    // pointing at no user. Mirrors the resolution that emitHappyFlow already
+    // applies to leaf endpoints — chain create steps are leaf consumers too.
+    const _chainRefs = resolveResourceRefDeps(parentEp, endpoints);
+    if (_chainRefs.pathSubstitutions && Object.keys(_chainRefs.pathSubstitutions).length > 0) {
+      for (const [param, sigil] of Object.entries(_chainRefs.pathSubstitutions)) {
+        createStep.path = createStep.path.replace(`:${param}`, sigil);
+      }
+    }
+    if (_chainRefs.overrides && Object.keys(_chainRefs.overrides).length > 0) {
+      if (createStep.body && typeof createStep.body === 'object') {
+        createStep.body = { ...createStep.body, ..._chainRefs.overrides };
+      }
+    }
+    if (_chainRefs.deps && _chainRefs.deps.length > 0) {
+      for (const dep of _chainRefs.deps) {
+        if (dep !== chainId && !deps.includes(dep)) deps.push(dep);
+      }
+    }
+
     steps.push(createStep);
     steps.push({ kind: 'expect', status: expectStatus });
     // Envelope-aware capture: when successWrapper is present (e.g. ['data']),
@@ -5059,6 +5102,18 @@ function generate(matrix, logical, overlay) {
     }
   }
 
+  // --- Fan out resource-setup chains with multiple mutating dependents ---
+  // A resource-setup chain creates a stateful record (e.g. a membership).
+  // The runner shares its captured bindings session-wide. When two or more
+  // dependent flows mutate that record (DELETE/PATCH/PUT, or POST that
+  // consumes it), the first mutator wins and later mutators see "X not
+  // found". Fix: emit one chain copy per mutating dependent with unique
+  // binding keys, and rewrite the dependents to reference the assigned
+  // copy. Detection is purely declarative: dependsOn graph + step.method +
+  // captured-sigil reference. No name patterns, no domain knowledge.
+  // Endpoints declared `x-idempotent: true` opt out of mutation classification.
+  const fanned = fanOutMutableChains(deduped);
+
   // --- Post-generation coverage-set suppression ---
   // Cross-endpoint emitters (tenant-isolation, auth chains, refresh chains,
   // CSRF, OAuth) run AFTER the per-endpoint status-reachability loop, so
@@ -5067,7 +5122,7 @@ function generate(matrix, logical, overlay) {
   // emitted flows and filter out UNGENERATABLE diagnostics whose tuple is
   // already covered. This is purely declarative: only declared flows with
   // declared statusAnyOf / status expectations count as coverage.
-  const coveredTuples = buildCoverageSet(deduped);
+  const coveredTuples = buildCoverageSet(fanned);
   const filteredDiagnostics = diagnostics.filter((d) => {
     if (d.code !== 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE') return true;
     // d.endpoint is "METHOD /path", d.message contains the status number.
@@ -5085,7 +5140,231 @@ function generate(matrix, logical, overlay) {
     (a.endpoint || '').localeCompare(b.endpoint || '') || a.code.localeCompare(b.code)
   );
 
-  return { flows: sortKeys(deduped), diagnostics: sortKeys(filteredDiagnostics) };
+  return { flows: sortKeys(fanned), diagnostics: sortKeys(filteredDiagnostics) };
+}
+
+/**
+ * Fan out resource-setup chains that have multiple mutating dependents.
+ *
+ * Detection (purely declarative):
+ *   - chain.contract.kind ∈ {chain-resource-setup, chain-body-resource-ref}
+ *   - capturedSigils derived from chain's capture-step bindings
+ *   - mutationDependents = flows declaring dependsOn[chain.id] AND containing
+ *     an api step with method ∈ {DELETE, PATCH, PUT, POST} that references
+ *     any capturedSigil in path/body/query/headers
+ *   - if mutationDependents.length ≥ 2 → fan out
+ *
+ * Endpoints declared `x-idempotent: true` are excluded from the mutation set.
+ *
+ * Effect for each mutating dependent:
+ *   - emit a clone of the chain with new id `${chain.id}:for:${depId}`
+ *   - rename every captured binding key in the clone to `${oldKey}:for:${dep}`
+ *   - rewrite dependent's dependsOn (chain.id → cloneId) and rewrite every
+ *     reference to the old sigil in step.path/body/query/headers
+ *
+ * Original chain is preserved so non-mutating dependents (e.g. GETs) can
+ * still share its single execution and bindings.
+ */
+function fanOutMutableChains(flows) {
+  // POST is intentionally excluded: POST typically creates a sub-resource of
+  // the captured parent (e.g. POST /teams/:id/members) without mutating the
+  // parent itself, so multiple POSTs do not invalidate each other's view of
+  // the parent. Including POST here would fan out chains unnecessarily and
+  // produce cross-binding paths (one chain's copy creating a member in a
+  // team belonging to a different copy). Only verbs that consume the
+  // captured record itself qualify.
+  const MUTATION_METHODS = new Set(['DELETE', 'PATCH', 'PUT']);
+  const out = flows.slice();
+
+  function containsSigil(value, sigil) {
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'string') return value.includes(sigil);
+    if (Array.isArray(value)) return value.some((v) => containsSigil(v, sigil));
+    if (typeof value === 'object') return Object.values(value).some((v) => containsSigil(v, sigil));
+    return false;
+  }
+
+  function rewriteSigil(value, oldSigil, newSigil) {
+    if (typeof value === 'string') return value.split(oldSigil).join(newSigil);
+    if (Array.isArray(value)) return value.map((v) => rewriteSigil(v, oldSigil, newSigil));
+    if (value && typeof value === 'object') {
+      const next = {};
+      for (const [k, v] of Object.entries(value)) next[k] = rewriteSigil(v, oldSigil, newSigil);
+      return next;
+    }
+    return value;
+  }
+
+  function chainCapturedKeys(chain) {
+    const keys = [];
+    for (const step of chain.steps || []) {
+      if (step.kind === 'capture' && step.bindings) {
+        for (const k of Object.keys(step.bindings)) keys.push(k);
+      }
+    }
+    return keys;
+  }
+
+  function clone(obj) {
+    return JSON.parse(JSON.stringify(obj));
+  }
+
+  function isResourceSetupChain(flow) {
+    return flow.contract && (
+      flow.contract.kind === 'chain-resource-setup'
+      || flow.contract.kind === 'chain-body-resource-ref'
+    );
+  }
+
+  function suffixFor(depId) {
+    return depId.replace(/[^a-zA-Z0-9]/g, '_');
+  }
+
+  function endpointDeclaresIdempotent(step, allFlows) {
+    // The api step itself has no extension metadata at this layer; the
+    // generator does not currently propagate `x-idempotent`. Skip until
+    // detection is wired through the matrix. Always returns false today —
+    // safe default (over-fan-out is correct, just slower). Hook left in
+    // place so downstream extension parsing can opt out without rewriting
+    // the algorithm.
+    void step;
+    void allFlows;
+    return false;
+  }
+
+  for (const chain of flows) {
+    if (!isResourceSetupChain(chain)) continue;
+
+    const capturedKeys = chainCapturedKeys(chain);
+    if (capturedKeys.length === 0) continue;
+    const capturedSigils = capturedKeys.map((k) => `\${${k}}`);
+
+    const dependents = flows.filter((f) =>
+      Array.isArray(f.dependsOn) && f.dependsOn.includes(chain.id),
+    );
+
+    const mutationDependents = dependents.filter((dep) => {
+      for (const step of dep.steps || []) {
+        if (step.kind !== 'api') continue;
+        if (!MUTATION_METHODS.has(step.method)) continue;
+        if (endpointDeclaresIdempotent(step, flows)) continue;
+        // The mutation TARGET in REST is the final path segment. Earlier
+        // :params are scope/context (e.g. DELETE /teams/:id/members/:userId
+        // mutates the member, not the team — :id is scope). Only fan out
+        // a chain when its captured sigil is the target — i.e. it appears
+        // in the LAST segment of the path. Without this, scope chains
+        // (chain:resource-setup:teams) would fan out alongside the target
+        // chain (chain:resource-setup:members) and create cross-binding
+        // paths where the member chain's POST creates a member in one
+        // team while the leaf's DELETE references a different team.
+        if (typeof step.path !== 'string') continue;
+        const lastSegment = step.path.split('/').filter(Boolean).pop() || '';
+        for (const sigil of capturedSigils) {
+          if (lastSegment.includes(sigil)) return true;
+        }
+      }
+      return false;
+    });
+
+    if (mutationDependents.length < 2) continue;
+
+    for (const dep of mutationDependents) {
+      const suffix = suffixFor(dep.id);
+      const flowsById = new Map();
+      for (const f of out) flowsById.set(f.id, f);
+      const copies = new Map(); // origChainId -> copy
+      const allKeyRenames = new Map(); // origKey -> newKey across the whole tree
+
+      // Recursively duplicate `chain` and its resource-setup dependencies
+      // for this dep. Auth-bootstrap and other non-resource-setup chains
+      // stay shared. Returns the cloned chain id.
+      function duplicateTreeFor(origChain) {
+        if (copies.has(origChain.id)) return copies.get(origChain.id).id;
+
+        const copyId = `${origChain.id}:for:${suffix}`;
+        const copy = clone(origChain);
+        copy.id = copyId;
+        copy.contract = { ...copy.contract, forFlow: dep.id };
+        copies.set(origChain.id, copy);
+
+        // Rename binding keys in this copy's capture steps and remember the
+        // renames so consumers can rewrite their sigils.
+        for (const step of copy.steps || []) {
+          if (step.kind === 'capture' && step.bindings) {
+            const renamed = {};
+            for (const [k, v] of Object.entries(step.bindings)) {
+              const newKey = `${k}:for:${suffix}`;
+              renamed[newKey] = v;
+              allKeyRenames.set(k, newKey);
+            }
+            step.bindings = renamed;
+          }
+        }
+
+        // Recurse into dependencies that are themselves resource-setup
+        // chains; replace their dep ids in this copy's dependsOn with the
+        // duplicated ids. Without this recursive duplication, two member
+        // chain copies would share the same upstream user/team chain and
+        // collide on uniqueness constraints (e.g. PRISMA P2002 on
+        // composite (teamId, userId)).
+        const newDeps = [];
+        for (const depId of copy.dependsOn || []) {
+          const depChain = flowsById.get(depId);
+          if (depChain && isResourceSetupChain(depChain)) {
+            newDeps.push(duplicateTreeFor(depChain));
+          } else {
+            newDeps.push(depId);
+          }
+        }
+        copy.dependsOn = newDeps;
+        return copyId;
+      }
+
+      const newRootId = duplicateTreeFor(chain);
+
+      // Apply ALL key renames across each copied chain's steps and the
+      // dep flow's steps so every reference to an old sigil resolves to
+      // the new tree's binding.
+      function rewriteSteps(steps) {
+        for (const step of steps || []) {
+          if (step.kind !== 'api') continue;
+          for (const [oldKey, newKey] of allKeyRenames) {
+            const oldSigil = `\${${oldKey}}`;
+            const newSigil = `\${${newKey}}`;
+            if (step.path !== undefined) step.path = rewriteSigil(step.path, oldSigil, newSigil);
+            if (step.body !== undefined) step.body = rewriteSigil(step.body, oldSigil, newSigil);
+            if (step.query !== undefined) step.query = rewriteSigil(step.query, oldSigil, newSigil);
+            if (step.headers !== undefined) step.headers = rewriteSigil(step.headers, oldSigil, newSigil);
+          }
+        }
+      }
+      for (const copy of copies.values()) rewriteSteps(copy.steps);
+      rewriteSteps(dep.steps);
+
+      // Wire dep to the new root copy and emit all copies.
+      dep.dependsOn = dep.dependsOn.map((d) => (d === chain.id ? newRootId : d));
+      for (const copy of copies.values()) out.push(copy);
+    }
+  }
+
+  // Orphan prune: an original resource-setup chain whose every dependent got
+  // redirected to a copy AND that nothing else references becomes stateful
+  // noise — it still runs in topo order, mutates the DB, and may fail with
+  // confusing errors (e.g. owner mismatch). Remove originals that no
+  // remaining flow references via dependsOn. Non-resource-setup chains
+  // (auth-bootstrap, post-register-landing, session-lifecycle) are
+  // preserved since the runner relies on them as global setup.
+  const referenced = new Set();
+  for (const f of out) {
+    if (Array.isArray(f.dependsOn)) for (const d of f.dependsOn) referenced.add(d);
+  }
+  return out.filter((f) => {
+    if (!isResourceSetupChain(f)) return true;
+    if (referenced.has(f.id)) return true;
+    // Keep if this is itself a fan-out copy — copies are the new roots.
+    if (f.id.includes(':for:')) return true;
+    return false;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -5162,6 +5441,7 @@ function main() {
 // Export for testing.
 module.exports = {
   generate,
+  fanOutMutableChains,
   sortKeys,
   matchesIgnore,
   fakeJwt,

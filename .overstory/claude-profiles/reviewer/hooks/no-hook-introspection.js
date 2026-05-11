@@ -110,6 +110,20 @@ const PATH_REGEXES = [
   /scripts\/git-hooks(\/|$|\b)/,
 ];
 
+const PROBE_ARTIFACT_ALLOWLIST = [
+  /\.claude\/hooks\/\.http-smoke\.(md|json)\b/g,
+  /\.claude\/hooks\/\.matrix\.json\b/g,
+  /\.claude\/hooks\/\.flows\.generated\.json\b/g,
+];
+
+function stripProbeArtifactMentions(component) {
+  let stripped = component;
+  for (const rx of PROBE_ARTIFACT_ALLOWLIST) {
+    stripped = stripped.replace(rx, '<allowed-probe-artifact>');
+  }
+  return stripped;
+}
+
 // --- §2.5 command-shape signals ---
 const EVAL_FLAG_REGEXES = [
   /\b(node|nodejs|deno|bun|ts-node|tsx)\s+(-e|--eval|-p|--print|--eval-script|--input-type|-r|--require)\b/,
@@ -304,15 +318,16 @@ function matchAny(regexes, text) {
 }
 
 function checkComponent(component, cwd) {
+  const sanitized = stripProbeArtifactMentions(component);
   if (matchAny(EVAL_FLAG_REGEXES, component)) return FAILURE_HOOK_OUTPUT_SMUGGLING;
   if (matchAny(WRITE_THEN_EXEC, component)) return FAILURE_HOOK_OUTPUT_SMUGGLING;
   if (matchAny(PACKAGE_EXEC, component)) return FAILURE_HOOK_OUTPUT_SMUGGLING;
   if (matchAny(NETWORK_EXFIL, component)) return FAILURE_HOOK_OUTPUT_SMUGGLING;
-  if (matchAny(READ_WITH_RESTRICTED_PATH, component)) return FAILURE_HOOK_INTROSPECTION;
-  if (matchAny(COPY_WITH_RESTRICTED_PATH, component)) return FAILURE_HOOK_OUTPUT_SMUGGLING;
-  if (matchAny(GIT_INDIRECT, component)) return FAILURE_HOOK_INTROSPECTION;
+  if (matchAny(READ_WITH_RESTRICTED_PATH, sanitized)) return FAILURE_HOOK_INTROSPECTION;
+  if (matchAny(COPY_WITH_RESTRICTED_PATH, sanitized)) return FAILURE_HOOK_OUTPUT_SMUGGLING;
+  if (matchAny(GIT_INDIRECT, sanitized)) return FAILURE_HOOK_INTROSPECTION;
   if (matchAny(PROC_ENV_INTROSPECT, component)) return FAILURE_HOOK_INTROSPECTION;
-  if (matchAny(PATH_REGEXES, component)) return FAILURE_HOOK_INTROSPECTION;
+  if (matchAny(PATH_REGEXES, sanitized)) return FAILURE_HOOK_INTROSPECTION;
 
   // Resolve pnpm/npm/yarn/bun run <name> to script body and recheck.
   const resolved = resolvePnpmRun(component, cwd);

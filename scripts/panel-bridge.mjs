@@ -600,33 +600,18 @@ let rebuildCtx = null;
 
 function startRebuildWatcher(manifest) {
   const config = manifest.rebuild;
-  if (!config || !Array.isArray(config.watch) || config.watch.length === 0) {
+  if (!config) {
     return false;
   }
   const composeProject =
     composeProjectFromEnv ?? manifest.composeProject ?? "app-dev-host";
-  // Watch path discipline: rebuild fires ONLY on the literal paths declared
-  // in `rebuild.watch`. Subdirectories are NEVER walked. App source under
-  // `apps/*/src/**` is already hot-reloaded via the docker bind mount, so a
-  // recursive watcher here would produce a rebuild storm on every Next.js /
-  // NestJS file save.
-  const watched = config.watch.map((entry) => {
-    const absolute = resolveAbsolute(entry);
-    const relativePath = relative(workspaceRoot, absolute) || entry;
-    return {
-      absolute,
-      relative: relativePath,
-      lastMtimeMs: mtimeMsSafe(absolute),
-      lastHash: sha256Safe(absolute),
-    };
-  });
   const customCommand =
     typeof config.command === "string" && config.command.trim() !== ""
       ? config.command.trim()
       : null;
   rebuildCtx = {
     composeProject,
-    watched,
+    watched: [],
     customCommand,
     pendingTriggers: new Set(),
     debounceTimer: null,
@@ -637,39 +622,8 @@ function startRebuildWatcher(manifest) {
   const commandLabel = customCommand ? ` (command: ${customCommand})` : "";
   emitLog(
     "info",
-    `rebuild watcher: ${watched.map((entry) => entry.relative).join(", ")} -> ${composeProject}${commandLabel}`,
+    `rebuild bridge: ${composeProject}${commandLabel} (manual trigger only; canonical rebuild owned by ov merge)`,
   );
-  const tick = () => {
-    for (const entry of rebuildCtx.watched) {
-      const current = mtimeMsSafe(entry.absolute);
-      if (current === null) {
-        if (entry.lastMtimeMs !== null) entry.lastMtimeMs = null;
-        if (entry.lastHash !== null) entry.lastHash = null;
-        continue;
-      }
-      if (entry.lastMtimeMs === null) {
-        // First-time observation post-disappearance: treat as a real change
-        // so a freshly-created lockfile triggers a rebuild.
-        entry.lastMtimeMs = current;
-        entry.lastHash = sha256Safe(entry.absolute);
-        queueRebuildTrigger(entry.relative);
-        continue;
-      }
-      if (current === entry.lastMtimeMs) continue;
-      // mtime moved; verify the bytes actually changed before firing. Catches
-      // `touch`, formatter re-saves, and lockfile no-op writes that would
-      // otherwise burn 30-90s on a redundant build.
-      const nextHash = sha256Safe(entry.absolute);
-      entry.lastMtimeMs = current;
-      if (nextHash !== null && entry.lastHash === nextHash) {
-        continue;
-      }
-      entry.lastHash = nextHash;
-      queueRebuildTrigger(entry.relative);
-    }
-  };
-  const timer = setInterval(tick, REBUILD_POLL_INTERVAL_MS);
-  timer.unref?.();
   return true;
 }
 

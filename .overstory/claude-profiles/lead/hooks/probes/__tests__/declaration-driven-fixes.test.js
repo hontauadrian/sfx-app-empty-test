@@ -10,6 +10,7 @@ const {
   emitHappyFlow,
   emitCrudRoundtrips,
   emitResourceSetupChains,
+  fanOutMutableChains,
   resolveResourceRefDeps,
   detectPathPrefixParent,
   emitLogicalContractFlows,
@@ -1400,5 +1401,402 @@ describe('resource-captures: declaration-driven capture via x-resource-captures'
     assert.equal(chain, undefined);
     const diag = diags.find((d) => d.code === 'RESOURCE_CAPTURE_UNDECLARED');
     assert.ok(diag);
+  });
+});
+
+// --- Chain create-step substitution: path-prefix params + body-field refs ---
+//
+// Regression: previously emitChain wrote createStep.path = parentEp.path with
+// any ':param' literals untouched, and createStep.body untouched. So
+// chain:resource-setup:members for POST /teams/:id/members produced a request
+// to literal /api/v1/teams/:id/members → 404. Fix: emitChain now applies
+// resolveResourceRefDeps to its own create step (path-prefix substitutions,
+// body overrides, dep merging) — same resolution leaf endpoints already use.
+
+describe('emitResourceSetupChains — chain create-step substitution', () => {
+  // Grandparent (POST /teams) -> parent (POST /teams/:id/members) -> grandchild
+  // (DELETE /teams/:id/members/:userId). The grandchild is what triggers
+  // emission of chain:resource-setup:members (its parent is the inviteMember
+  // endpoint), which is the chain we are validating.
+  function buildMemberChainFixture({ inviteRefs = null } = {}) {
+    const inviteExtensions = {
+      'x-resource-captures': [{ fromPath: 'userId', resource: 'user', pathParam: 'userId' }],
+    };
+    if (inviteRefs) inviteExtensions['x-probe-resource-ref'] = inviteRefs;
+    return [
+      {
+        method: 'POST',
+        path: '/api/v1/teams',
+        operationId: 'createTeam',
+        file: 'team.controller.ts',
+        zodContract: { sampleValid: { name: 'My Team' }, fields: {} },
+        swaggerDeclared: {
+          statuses: [201],
+          extensions: { 'x-resource-captures': [{ fromPath: 'id', resource: 'team', pathParam: 'id' }] },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/api/v1/teams/:id/members',
+        operationId: 'inviteMember',
+        file: 'team.controller.ts',
+        zodContract: { sampleValid: { email: 'a@b.com', role: 'MEMBER' }, fields: {} },
+        swaggerDeclared: {
+          statuses: [201],
+          extensions: inviteExtensions,
+        },
+      },
+      {
+        method: 'DELETE',
+        path: '/api/v1/teams/:id/members/:userId',
+        operationId: 'removeMember',
+        file: 'team.controller.ts',
+        swaggerDeclared: { statuses: [204], extensions: {} },
+      },
+    ];
+  }
+
+  it('substitutes path-prefix :param in chain create step and adds parent dep', () => {
+    const endpoints = buildMemberChainFixture();
+    const flows = emitResourceSetupChains(endpoints, { uniqueFieldSet: new Set(), diagnostics: [] });
+    const memberChain = flows.find((f) => f.id === 'chain:resource-setup:members');
+    assert.ok(memberChain, 'expected chain:resource-setup:members');
+
+    const createStep = memberChain.steps.find((s) => s.kind === 'api');
+    assert.equal(createStep.path, '/api/v1/teams/${resource:teams:id}/members',
+      'path :id must be substituted with parent resource sigil');
+    assert.ok(memberChain.dependsOn.includes('chain:resource-setup:teams'),
+      'parent chain must be declared as dependency');
+  });
+
+  it('applies body override from x-probe-resource-ref to chain create step and merges dep', () => {
+    const endpoints = [
+      {
+        method: 'POST',
+        path: '/api/v1/auth/register',
+        operationId: 'register',
+        file: 'auth.controller.ts',
+        zodContract: { sampleValid: { email: 'x@y.com', password: 'pw' }, fields: {} },
+        swaggerDeclared: {
+          statuses: [201],
+          extensions: { 'x-resource-captures': [{ fromPath: 'email', resource: 'user', pathParam: 'email' }] },
+        },
+      },
+      ...buildMemberChainFixture({
+        inviteRefs: [{
+          parentField: 'email',
+          parentCreate: { operationId: 'register' },
+          captureFrom: '$.email',
+        }],
+      }),
+    ];
+    const flows = emitResourceSetupChains(endpoints, {
+      uniqueFieldSet: new Set(['email']),
+      diagnostics: [],
+    });
+    const memberChain = flows.find((f) => f.id === 'chain:resource-setup:members');
+    assert.ok(memberChain, 'expected chain:resource-setup:members');
+
+    const createStep = memberChain.steps.find((s) => s.kind === 'api');
+    assert.equal(createStep.body.email, '${resource:email:id}',
+      'body.email must be substituted with captured-email sigil from register chain');
+    assert.equal(createStep.body.role, 'MEMBER', 'untouched body fields preserved');
+    assert.ok(memberChain.dependsOn.includes('chain:resource-setup:email'),
+      'invitee-creation chain must be a dep of the member chain');
+    assert.ok(memberChain.dependsOn.includes('chain:resource-setup:teams'),
+      'parent path-prefix chain must remain a dep of the member chain');
+  });
+
+  it('substitutes EVERY :param along a deep path, not just the immediate parent', () => {
+    // Path: /orgs/:orgId/projects/:projId/tasks
+    // Without ancestor walking, only :projId is substituted (immediate parent),
+    // and :orgId stays literal → runtime 404. Walker must resolve both.
+    const endpoints = [
+      {
+        method: 'POST',
+        path: '/api/v1/orgs',
+        operationId: 'createOrg',
+        file: 'org.controller.ts',
+        zodContract: { sampleValid: { name: 'Acme' }, fields: {} },
+        swaggerDeclared: {
+          statuses: [201],
+          extensions: { 'x-resource-captures': [{ fromPath: 'id', resource: 'org', pathParam: 'orgId' }] },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/api/v1/orgs/:orgId/projects',
+        operationId: 'createProject',
+        file: 'project.controller.ts',
+        zodContract: { sampleValid: { name: 'Proj' }, fields: {} },
+        swaggerDeclared: {
+          statuses: [201],
+          extensions: { 'x-resource-captures': [{ fromPath: 'id', resource: 'project', pathParam: 'projId' }] },
+        },
+      },
+      {
+        method: 'POST',
+        path: '/api/v1/orgs/:orgId/projects/:projId/tasks',
+        operationId: 'createTask',
+        file: 'task.controller.ts',
+        zodContract: { sampleValid: { title: 'T' }, fields: {} },
+        swaggerDeclared: {
+          statuses: [201],
+          extensions: { 'x-resource-captures': [{ fromPath: 'id', resource: 'task', pathParam: 'taskId' }] },
+        },
+      },
+      {
+        method: 'GET',
+        path: '/api/v1/orgs/:orgId/projects/:projId/tasks/:taskId',
+        operationId: 'getTask',
+        file: 'task.controller.ts',
+        swaggerDeclared: { statuses: [200], extensions: {} },
+      },
+    ];
+    const flows = emitResourceSetupChains(endpoints, { uniqueFieldSet: new Set(), diagnostics: [] });
+    const tasksChain = flows.find((f) => f.id === 'chain:resource-setup:tasks');
+    assert.ok(tasksChain, 'expected chain:resource-setup:tasks');
+    const create = tasksChain.steps.find((s) => s.kind === 'api');
+    assert.equal(
+      create.path,
+      '/api/v1/orgs/${resource:orgs:id}/projects/${resource:projects:id}/tasks',
+      'BOTH :orgId and :projId must be substituted, even though only :projId is the immediate parent',
+    );
+    assert.ok(tasksChain.dependsOn.includes('chain:resource-setup:projects'));
+    assert.ok(tasksChain.dependsOn.includes('chain:resource-setup:orgs'),
+      'transitive ancestor must be a dep, not just the immediate parent');
+  });
+
+  it('does not add self as dep when chain references its own resource', () => {
+    const endpoints = buildMemberChainFixture();
+    const flows = emitResourceSetupChains(endpoints, { uniqueFieldSet: new Set(), diagnostics: [] });
+    const teamsChain = flows.find((f) => f.id === 'chain:resource-setup:teams');
+    assert.ok(teamsChain);
+    assert.ok(!teamsChain.dependsOn.includes('chain:resource-setup:teams'),
+      'a chain must not depend on itself');
+  });
+});
+
+// --- fanOutMutableChains: stateful resource-setup chain duplication ---
+//
+// Bug class fixed: a chain like chain:resource-setup:members creates a
+// stateful record. The runner shares its captured bindings session-wide,
+// so the FIRST mutating dependent (DELETE/PATCH) consumes the record and
+// the SECOND mutator sees "X not found". Generator must emit one chain
+// copy per mutating dependent with renamed binding keys, and rewrite the
+// dependents' references. Detection is graph + HTTP-method-based; no name
+// patterns.
+
+describe('fanOutMutableChains', () => {
+  function buildChain(id, capturedKey) {
+    return {
+      id,
+      contract: { kind: 'chain-resource-setup', endpoint: 'POST /x', source: '' },
+      dependsOn: [],
+      steps: [
+        { kind: 'api', method: 'POST', path: '/x', body: { name: 'a' } },
+        { kind: 'expect', status: 201 },
+        { kind: 'capture', bindings: { [capturedKey]: '$.id' } },
+      ],
+    };
+  }
+
+  function buildLeaf(id, dependsOn, method, sigil) {
+    return {
+      id,
+      contract: { kind: 'endpoint-happy', endpoint: `${method} /x/:id`, source: '' },
+      dependsOn,
+      steps: [
+        { kind: 'api', method, path: `/x/${sigil}` },
+        { kind: 'expect', status: method === 'DELETE' ? 204 : 200 },
+      ],
+    };
+  }
+
+  it('does not fan out when only one mutating dependent exists', () => {
+    const chain = buildChain('chain:resource-setup:members', 'resource:members:id');
+    const leaf = buildLeaf('only:delete:happy', ['chain:resource-setup:members'], 'DELETE', '${resource:members:id}');
+    const out = fanOutMutableChains([chain, leaf]);
+    assert.equal(out.length, 2, 'no copies emitted for single mutator');
+    assert.equal(out.find((f) => f.id === 'only:delete:happy').dependsOn[0], 'chain:resource-setup:members');
+  });
+
+  it('does not fan out for GET dependents (read-only)', () => {
+    const chain = buildChain('chain:resource-setup:members', 'resource:members:id');
+    const get1 = buildLeaf('a:get', ['chain:resource-setup:members'], 'GET', '${resource:members:id}');
+    const get2 = buildLeaf('b:get', ['chain:resource-setup:members'], 'GET', '${resource:members:id}');
+    const out = fanOutMutableChains([chain, get1, get2]);
+    assert.equal(out.length, 3, 'GET dependents share the chain');
+  });
+
+  it('fans out when 2+ mutating dependents (DELETE + PATCH) reference the captured sigil', () => {
+    const chain = buildChain('chain:resource-setup:members', 'resource:members:id');
+    const del = buildLeaf('teams-id-members-userId:delete:happy', ['chain:resource-setup:members'], 'DELETE', '${resource:members:id}');
+    const patch = buildLeaf('teams-id-members-userId:patch:happy', ['chain:resource-setup:members'], 'PATCH', '${resource:members:id}');
+    const out = fanOutMutableChains([chain, del, patch]);
+
+    // 2 copies + 2 leaves = 4. Original chain is pruned because all its
+    // dependents were redirected to copies and nothing else references it
+    // (orphan elimination).
+    assert.equal(out.length, 4);
+    const copies = out.filter((f) => f.id.startsWith('chain:resource-setup:members:for:'));
+    assert.equal(copies.length, 2, 'one copy per mutating dependent');
+    assert.ok(!out.find((f) => f.id === 'chain:resource-setup:members'),
+      'orphaned original chain should be pruned');
+
+    // Each copy's binding key is uniquely renamed
+    for (const copy of copies) {
+      const cap = copy.steps.find((s) => s.kind === 'capture');
+      const keys = Object.keys(cap.bindings);
+      assert.equal(keys.length, 1);
+      assert.match(keys[0], /^resource:members:id:for:/);
+    }
+
+    // Each mutator's dependsOn now points at its assigned copy, and its
+    // step path uses the renamed sigil.
+    const delOut = out.find((f) => f.id === 'teams-id-members-userId:delete:happy');
+    assert.equal(delOut.dependsOn.length, 1);
+    assert.match(delOut.dependsOn[0], /^chain:resource-setup:members:for:/);
+    assert.match(delOut.steps[0].path, /\$\{resource:members:id:for:/);
+    assert.ok(!delOut.steps[0].path.includes('${resource:members:id}'),
+      'old sigil must be rewritten away');
+
+    const patchOut = out.find((f) => f.id === 'teams-id-members-userId:patch:happy');
+    assert.notEqual(delOut.dependsOn[0], patchOut.dependsOn[0],
+      'each mutator gets its own copy id');
+  });
+
+  it('rewrites sigils inside body and query, not just path, when fan-out is triggered by path', () => {
+    // Mutation TARGET detection uses path final segment (REST convention),
+    // but once fan-out fires the rewriter must still rename sigils anywhere
+    // they appear (body, query, headers) so the dependent's request lines
+    // up with the renamed binding key.
+    const chain = buildChain('chain:resource-setup:foo', 'resource:foo:id');
+    const a = {
+      id: 'mut-a',
+      dependsOn: ['chain:resource-setup:foo'],
+      steps: [
+        { kind: 'api', method: 'PUT', path: '/bar/${resource:foo:id}', body: { fooId: '${resource:foo:id}', name: 'x' }, query: { ref: '${resource:foo:id}' } },
+        { kind: 'expect', status: 200 },
+      ],
+    };
+    const b = {
+      id: 'mut-b',
+      dependsOn: ['chain:resource-setup:foo'],
+      steps: [
+        { kind: 'api', method: 'PATCH', path: '/baz/${resource:foo:id}' },
+        { kind: 'expect', status: 200 },
+      ],
+    };
+    const out = fanOutMutableChains([chain, a, b]);
+    const aOut = out.find((f) => f.id === 'mut-a');
+    assert.match(aOut.steps[0].path, /\$\{resource:foo:id:for:/);
+    assert.match(aOut.steps[0].body.fooId, /\$\{resource:foo:id:for:/);
+    assert.match(aOut.steps[0].query.ref, /\$\{resource:foo:id:for:/);
+    assert.equal(aOut.steps[0].body.name, 'x', 'unrelated fields untouched');
+  });
+
+
+  it('does NOT fan out a chain when its sigil is only in path scope (non-final), not target', () => {
+    // /teams/:id/members/:userId — DELETE/PATCH mutates the member (last
+    // segment), team is just scope. Teams chain must NOT fan out for the
+    // member mutators.
+    const teams = buildChain('chain:resource-setup:teams', 'resource:teams:id');
+    const members = buildChain('chain:resource-setup:members', 'resource:members:id');
+    members.dependsOn = ['chain:resource-setup:teams'];
+    members.steps[0].path = '/teams/${resource:teams:id}/members';
+    const del = {
+      id: 'member-delete',
+      dependsOn: ['chain:resource-setup:teams', 'chain:resource-setup:members'],
+      steps: [
+        { kind: 'api', method: 'DELETE', path: '/teams/${resource:teams:id}/members/${resource:members:id}' },
+        { kind: 'expect', status: 204 },
+      ],
+    };
+    const patch = {
+      id: 'member-patch',
+      dependsOn: ['chain:resource-setup:teams', 'chain:resource-setup:members'],
+      steps: [
+        { kind: 'api', method: 'PATCH', path: '/teams/${resource:teams:id}/members/${resource:members:id}' },
+        { kind: 'expect', status: 200 },
+      ],
+    };
+    const out = fanOutMutableChains([teams, members, del, patch]);
+
+    const memberCopies = out.filter((f) => f.id.startsWith('chain:resource-setup:members:for:'));
+    assert.equal(memberCopies.length, 2,
+      'members chain (mutation TARGET in last segment) fans out per mutator');
+
+    const teamsCopies = out.filter((f) => f.id.startsWith('chain:resource-setup:teams:for:'));
+    assert.equal(teamsCopies.length, 2,
+      'teams chain duplicates transitively because members depends on it; it is NOT triggered directly by the scope-only references in the leaf paths');
+
+    // Each member copy points at its own team copy (consequence of recursion),
+    // not the original shared teams chain.
+    for (const m of memberCopies) {
+      const suffix = m.id.split(':for:')[1];
+      assert.ok(m.dependsOn.includes(`chain:resource-setup:teams:for:${suffix}`),
+        `${m.id} depends on its own teams copy`);
+    }
+  });
+
+  it('preserves original chain so non-mutator (GET) dependents still share state', () => {
+    const chain = buildChain('chain:resource-setup:items', 'resource:items:id');
+    const del = buildLeaf('item:delete', ['chain:resource-setup:items'], 'DELETE', '${resource:items:id}');
+    const put = buildLeaf('item:put', ['chain:resource-setup:items'], 'PUT', '${resource:items:id}');
+    const get = buildLeaf('item:get', ['chain:resource-setup:items'], 'GET', '${resource:items:id}');
+    const out = fanOutMutableChains([chain, del, put, get]);
+    const original = out.find((f) => f.id === 'chain:resource-setup:items');
+    assert.ok(original, 'original chain stays for the GET dependent');
+
+    const getOut = out.find((f) => f.id === 'item:get');
+    assert.equal(getOut.dependsOn[0], 'chain:resource-setup:items',
+      'GET still points at the original chain');
+  });
+
+  it('skips non-resource-setup chains (e.g. chain:auth-bootstrap)', () => {
+    const auth = {
+      id: 'chain:auth-bootstrap',
+      contract: { kind: 'chain-auth-bootstrap', endpoint: 'POST /auth/login' },
+      dependsOn: [],
+      steps: [
+        { kind: 'api', method: 'POST', path: '/auth/login' },
+        { kind: 'capture', bindings: { accessToken: '$.accessToken' } },
+      ],
+    };
+    const a = buildLeaf('a', ['chain:auth-bootstrap'], 'DELETE', '${accessToken}');
+    const b = buildLeaf('b', ['chain:auth-bootstrap'], 'PATCH', '${accessToken}');
+    const out = fanOutMutableChains([auth, a, b]);
+    assert.equal(out.length, 3, 'auth-bootstrap is not duplicated even with mutating dependents');
+  });
+});
+
+describe('fanOutMutableChains — recursive dep duplication', () => {
+  it('duplicates resource-setup deps recursively per mutator; auth shared', () => {
+    const auth = { id: 'chain:auth-bootstrap', contract: { kind: 'chain-auth-bootstrap' }, dependsOn: [], steps: [{ kind: 'capture', bindings: { accessToken: '$.t' } }] };
+    const email = { id: 'chain:resource-setup:email', contract: { kind: 'chain-body-resource-ref' }, dependsOn: [], steps: [{ kind: 'api', method: 'POST', path: '/auth/register', body: { email: '${uniqEmail}' } }, { kind: 'capture', bindings: { 'resource:email:id': '$.email' } }] };
+    const teams = { id: 'chain:resource-setup:teams', contract: { kind: 'chain-resource-setup' }, dependsOn: ['chain:auth-bootstrap'], steps: [{ kind: 'api', method: 'POST', path: '/teams' }, { kind: 'capture', bindings: { 'resource:teams:id': '$.id' } }] };
+    const members = { id: 'chain:resource-setup:members', contract: { kind: 'chain-resource-setup' }, dependsOn: ['chain:auth-bootstrap', 'chain:resource-setup:teams', 'chain:resource-setup:email'], steps: [{ kind: 'api', method: 'POST', path: '/teams/${resource:teams:id}/members', body: { email: '${resource:email:id}' } }, { kind: 'capture', bindings: { 'resource:members:id': '$.userId' } }] };
+    const del = { id: 'mem:delete', dependsOn: ['chain:resource-setup:members'], steps: [{ kind: 'api', method: 'DELETE', path: '/teams/${resource:teams:id}/members/${resource:members:id}' }] };
+    const patch = { id: 'mem:patch', dependsOn: ['chain:resource-setup:members'], steps: [{ kind: 'api', method: 'PATCH', path: '/teams/${resource:teams:id}/members/${resource:members:id}' }] };
+    const out = fanOutMutableChains([auth, email, teams, members, del, patch]);
+
+    assert.equal(out.filter((f) => f.id.startsWith('chain:resource-setup:members:for:')).length, 2);
+    assert.equal(out.filter((f) => f.id.startsWith('chain:resource-setup:teams:for:')).length, 2,
+      'teams chain duplicated recursively per mutator');
+    assert.equal(out.filter((f) => f.id.startsWith('chain:resource-setup:email:for:')).length, 2,
+      'email chain duplicated recursively per mutator');
+    assert.equal(out.filter((f) => f.id.startsWith('chain:auth-bootstrap:for:')).length, 0,
+      'auth-bootstrap stays shared');
+
+    for (const copy of out.filter((f) => f.id.startsWith('chain:resource-setup:members:for:'))) {
+      const suffix = copy.id.split(':for:')[1];
+      assert.ok(copy.dependsOn.includes(`chain:resource-setup:teams:for:${suffix}`));
+      assert.ok(copy.dependsOn.includes(`chain:resource-setup:email:for:${suffix}`));
+      assert.ok(copy.dependsOn.includes('chain:auth-bootstrap'));
+      const api = copy.steps.find((s) => s.kind === 'api');
+      assert.match(api.body.email, /\$\{resource:email:id:for:/);
+      assert.match(api.path, /\$\{resource:teams:id:for:/);
+    }
   });
 });

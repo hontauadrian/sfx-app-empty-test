@@ -39,6 +39,7 @@
  */
 
 import { z } from 'zod';
+import * as fs from 'fs';
 import type { MergedContract } from '../contract-flows-merger';
 import type {
   TypedError,
@@ -115,8 +116,33 @@ function failure(actorName: string, scheme: string, reason: string): FlowAuthBoo
     actorName,
     scheme,
     reason,
+    sourceFile: '',
     message: `Auth bootstrap failed for actor '${actorName}' (scheme '${scheme}'): ${reason}`,
   };
+}
+
+/**
+ * Recursively wrap every nested z.object() in a schema with .strict() so
+ * unknown keys at any depth surface as `unrecognized_keys` issues. Used
+ * only for drift detection — the original (lenient) schema is still what
+ * the handler dispatches against.
+ */
+function makeStrictRecursive(schema: z.ZodTypeAny): z.ZodTypeAny {
+  const def = (schema as { _def?: { typeName?: string; shape?: () => Record<string, z.ZodTypeAny>; innerType?: z.ZodTypeAny } })._def;
+  if (!def) return schema;
+  if (def.typeName === 'ZodObject' && typeof def.shape === 'function') {
+    const shape = def.shape();
+    const newShape: Record<string, z.ZodTypeAny> = {};
+    for (const [k, v] of Object.entries(shape)) newShape[k] = makeStrictRecursive(v);
+    return z.object(newShape).strict();
+  }
+  if (def.innerType) {
+    // ZodOptional / ZodNullable / ZodDefault — recurse into inner.
+    const inner = makeStrictRecursive(def.innerType);
+    if (def.typeName === 'ZodOptional') return inner.optional();
+    if (def.typeName === 'ZodNullable') return inner.nullable();
+  }
+  return schema;
 }
 
 interface ActorAuth {
@@ -380,10 +406,63 @@ export async function bootstrapActors(
       result = await entry.handler(name, auth, options.baseUrl, fetchImpl, timeoutMs);
     }
 
+    // Schema drift detection: schemas in AUTH_SCHEME_REGISTRY define the
+    // exact set of allowed fields per scheme + nested block. zod's default
+    // parse silently drops unknown keys at the loader stage, so by the
+    // time we reach this dispatch the typo (e.g. `tokenPath` instead of
+    // `key`) is already gone from `auth`. Re-read the raw JSON from the
+    // source file for THIS actor and run a .strict() recursive parse
+    // against the same schema to surface the typo. Handler still runs
+    // (and may fail with the original symptom), but the agent now sees
+    // the schema-drift line first and knows exactly which lead-owned
+    // file to point at.
+    if (entry && attributed.sourceFile) {
+      let rawActorAuth: unknown;
+      try {
+        const rawJson = JSON.parse(fs.readFileSync(attributed.sourceFile, 'utf8')) as { actors?: { name?: string; auth?: unknown }[] };
+        const rawActor = (rawJson.actors || []).find((x) => x && x.name === name);
+        rawActorAuth = rawActor && rawActor.auth;
+      } catch {
+        rawActorAuth = undefined;
+      }
+      const strictSchema = makeStrictRecursive(entry.schema);
+      const strictResult = rawActorAuth !== undefined ? strictSchema.safeParse(rawActorAuth) : { success: true } as { success: true };
+      if (!strictResult.success) {
+        const unknownKeys: string[] = [];
+        for (const issue of strictResult.error.issues) {
+          if (issue.code === 'unrecognized_keys' && Array.isArray((issue as z.ZodIssue & { keys?: string[] }).keys)) {
+            const path = issue.path.length > 0 ? `auth.${issue.path.join('.')}` : 'auth';
+            for (const k of (issue as z.ZodIssue & { keys: string[] }).keys) {
+              unknownKeys.push(`${path}.${k}`);
+            }
+          }
+        }
+        if (unknownKeys.length > 0) {
+          diagnostics.push({
+            code: 'FLOW_AUTH_BOOTSTRAP_ACTOR_FAILED',
+            actorName: name,
+            scheme,
+            reason: `actor schema drift: unknown field(s) ${unknownKeys.join(', ')} for scheme '${scheme}'. Allowed fields are defined in the zod schema for this scheme — verify the actor block (most common typo: 'tokenPath' instead of 'key' on bearer-in-body login).`,
+            sourceFile: attributed.sourceFile || '',
+            message: `Auth bootstrap schema drift for actor '${name}' (scheme '${scheme}'): unknown ${unknownKeys.join(', ')} [declared in ${attributed.sourceFile || 'unknown'} — lead-owned]`,
+          });
+        }
+      }
+    }
+
     if (result.credential) {
       tokens[name] = result.credential;
     }
     if (result.error) {
+      // Attach sourceFile so the agent reading the diagnostic knows which
+      // flow file (lead-owned) declared the broken actor and can mail
+      // lead with the precise file path. AttributedActor already carries
+      // sourceFile from the contract-flows-merger.
+      const errWithSource = result.error as FlowAuthBootstrapActorFailedError;
+      if (errWithSource && errWithSource.code === 'FLOW_AUTH_BOOTSTRAP_ACTOR_FAILED') {
+        errWithSource.sourceFile = attributed.sourceFile || '';
+        errWithSource.message = `${errWithSource.message} [declared in ${attributed.sourceFile || 'unknown'} — lead-owned, mail lead with this diagnostic]`;
+      }
       diagnostics.push(result.error);
     }
   }

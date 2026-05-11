@@ -369,6 +369,8 @@ export interface FlowAuthBootstrapActorFailedError {
   actorName: string;
   scheme: string;
   reason: string;
+  /** File the actor was declared in (e.g. .overstory/runtime-contract.flows/<task-id>.json). Empty when unknown. */
+  sourceFile: string;
   message: string;
 }
 

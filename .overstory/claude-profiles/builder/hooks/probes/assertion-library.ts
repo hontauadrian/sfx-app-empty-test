@@ -760,13 +760,14 @@ export async function probeFlowWithBindings(
     apiClient?: HttpClient;
   } = {},
 ): Promise<ProbeFlowResult> {
-  // Seed per-flow unique values. flows-generator emits `${uniqEmail}`,
-  // `${uniqString}`, `${uniqUuid}` into bodies wherever a Prisma-declared
-  // @unique field appears. http-smoke.ts pipes `sharedBindings` across
-  // flows (intentional for accessToken/userId), so stale uniqEmail from
-  // a prior flow would leak and collide. Fresh seed MUST override inherited
-  // shared bindings for the unique keys — hence uniqueSeed spreads LAST.
   const uniqueSeed: Record<string, string> = seedUniqueBindings();
+
+  const inheritedBindings = _options.bindings ?? {};
+  const filteredInherited: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(inheritedBindings)) {
+    if (key.startsWith("uniq:")) continue;
+    filteredInherited[key] = value;
+  }
 
   // Cookie jar: prefer the runner-provided shared jar (carries cookies from
   // dependsOn flows). When none is provided, fall back to a fresh jar per
@@ -786,7 +787,7 @@ export async function probeFlowWithBindings(
     httpClient: client,
     webClient: _options.webClient ?? null,
     apiClient: _options.apiClient ?? null,
-    bindings: { ...(_options.bindings ?? {}), ...uniqueSeed },
+    bindings: { ...filteredInherited, ...uniqueSeed },
     authHeader: _options.bearer ?? null,
     authSchemeConfig: null,
     lastResponse: null,

@@ -38,6 +38,36 @@ description: |
 
 # task-flow-authoring
 
+## CRITICAL: Variable interpolation syntax
+
+**Use `${name}` — NEVER `{{name}}`, `<name>`, `:name`, or any other template style.**
+
+The probe runner only recognizes `${var}` placeholders (resolved from `capture` step bindings, actor credentials, or built-in sigils like `${uniqEmail}` / `${uniqUuid}` / `${resource:<name>:id}`). Any other template syntax is sent VERBATIM as part of the URL/body — the API returns 404 because no resource has id `{{teamId}}` literally.
+
+```jsonc
+// WRONG — runner sends "/teams/{{teamId}}" literally → 404
+{ "kind": "api", "method": "GET", "path": "/teams/{{teamId}}" }
+
+// RIGHT — runner substitutes the captured binding
+{ "kind": "api", "method": "GET", "path": "/teams/${teamId}" }
+```
+
+Same rule applies to body, query, headers, and bodyHas expected values:
+
+```jsonc
+// WRONG
+"body":  { "ownerId": "{{userId}}" }
+"query": { "team": "{{teamSlug}}" }
+"bodyHas": { "$.teamId": "{{teamId}}" }
+
+// RIGHT
+"body":  { "ownerId": "${userId}" }
+"query": { "team": "${teamSlug}" }
+"bodyHas": { "$.teamId": "${teamId}" }
+```
+
+If a `${var}` reference is unbound (no earlier `capture` step nor actor binding declares it), the lead-side `validate-flow-file` hook blocks the save and tells you which variable is missing.
+
 ## Pre-flight gate — read code BEFORE authoring
 
 **Mandatory.** Before writing any flow content, walk

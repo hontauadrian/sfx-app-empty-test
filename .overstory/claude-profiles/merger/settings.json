@@ -218,7 +218,7 @@
 				"hooks": [
 					{
 						"type": "command",
-						"command": "pnpm exec tsx .claude/hooks/probes/http-smoke.ts --full --matrix .claude/hooks/.matrix.json --report .claude/hooks/.http-smoke.json"
+						"command": "pnpm probe:smoke:full"
 					}
 				]
 			},

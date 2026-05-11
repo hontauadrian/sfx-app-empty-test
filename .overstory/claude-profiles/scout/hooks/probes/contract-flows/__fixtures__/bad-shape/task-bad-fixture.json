@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "task_id": "task-bad-fixture",
+  "owns": [
+    {
+      "resource": "r"
+    }
+  ],
+  "resources": [
+    {
+      "name": "r",
+      "create": {
+        "method": "POST",
+        "path": "/api/v1/r"
+      },
+      "capture": {
+        "bindings": {
+          "id": "$.id"
+        }
+      }
+    }
+  ],
+  "special_flows": [
+    {
+      "id": "task-bad-fixture:upload",
+      "contract": {
+        "kind": "http",
+        "source": "plan §1"
+      },
+      "steps": [
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/api/v1/r",
+          "bodyKind": "multipart",
+          "multipart": [
+            {
+              "name": "file",
+              "file": {
+                "fixtureRef": "missing-fixture.png",
+                "mimeType": "image/png"
+              }
+            }
+          ]
+        },
+        {
+          "kind": "expect",
+          "status": 201
+        }
+      ]
+    }
+  ]
+}

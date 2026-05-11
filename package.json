@@ -49,8 +49,8 @@
     "probe:matrix:test": "node .overstory/claude-profiles/builder/hooks/probes/__tests__/derive-test-matrix.test.js",
     "openapi:check": "node scripts/check-openapi-dump.mjs apps/api/.openapi.json",
     "db:reset:fast": "bash scripts/db-reset-fast.sh",
-    "probe:smoke": "pnpm db:reset:fast && pnpm openapi:check && pnpm exec tsx .overstory/claude-profiles/${PROBE_PROFILE:-builder}/hooks/probes/http-smoke.ts --matrix .claude/hooks/.matrix.json --report .claude/hooks/.http-smoke.json --human-report .claude/hooks/.http-smoke.md",
-    "probe:smoke:full": "pnpm db:reset:fast && pnpm openapi:check && pnpm exec tsx .overstory/claude-profiles/${PROBE_PROFILE:-builder}/hooks/probes/http-smoke.ts --full --matrix .claude/hooks/.matrix.json --report .claude/hooks/.http-smoke.json --human-report .claude/hooks/.http-smoke.md"
+    "probe:smoke": "bash scripts/probe-bootstrap.sh && pnpm openapi:check && pnpm exec tsx .overstory/claude-profiles/${PROBE_PROFILE:-builder}/hooks/probes/http-smoke.ts --matrix .claude/hooks/.matrix.json --report .claude/hooks/.http-smoke.json --human-report .claude/hooks/.http-smoke.md",
+    "probe:smoke:full": "bash scripts/probe-bootstrap.sh && pnpm openapi:check && pnpm exec tsx .overstory/claude-profiles/${PROBE_PROFILE:-builder}/hooks/probes/http-smoke.ts --full --matrix .claude/hooks/.matrix.json --report .claude/hooks/.http-smoke.json --human-report .claude/hooks/.http-smoke.md"
   },
   "devDependencies": {
     "@eslint/js": "9.18.0",

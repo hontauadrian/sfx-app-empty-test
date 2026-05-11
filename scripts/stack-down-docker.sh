@@ -13,7 +13,11 @@ LOG="$PROJECT_DIR/.stack.stop.log"
 cd "$PROJECT_DIR"
 
 basename_dir="$(basename "$PROJECT_DIR")"
-PROJECT_NAME="app-${basename_dir}"
+APP_DEV_PROJECT_RESERVED="${APP_DEV_PROJECT:-app-dev-host}"
+if [ "$basename_dir" = "workspace" ] && [ -z "${PROJECT_NAME:-}" ]; then
+  PROJECT_NAME="$APP_DEV_PROJECT_RESERVED"
+fi
+PROJECT_NAME="${PROJECT_NAME:-app-${basename_dir}}"
 
 echo "[stack-down-docker] Project=${PROJECT_NAME}" | tee "$LOG"
 

@@ -64,6 +64,16 @@ export interface SmokeReport {
   cases: SmokeCaseEntry[];
   runtimeDiagnostics?: RuntimeDiagnostic[];
   /**
+   * Auth-bootstrap failures from the curated-flows runner. Each entry is a
+   * TypedError shaped like FlowAuthBootstrapActorFailedError ({ code,
+   * actorName, scheme, reason, message }) — the runner produces them when an
+   * actor's `auth` block can't be resolved (unknown scheme, login HTTP
+   * error, missing required field). Surfaced here so JSON consumers + the
+   * human report can show the agent which actor failed to authenticate
+   * BEFORE listing the N derived flow failures it caused.
+   */
+  bootstrapDiagnostics?: ReadonlyArray<{ code: string; message: string } & Record<string, unknown>>;
+  /**
    * Last lines of stack stderr captured by the boot orchestrator when boot
    * fails. Surfaced verbatim in formatSummary so an agent that pipes the
    * probe output to `tail -N` sees the actual TypeError / crash, not just
@@ -112,6 +122,28 @@ export function formatHumanReport(report: SmokeReport): string {
     lines.push('## Block codes');
     lines.push('');
     for (const code of report.blockCodes) lines.push(`- ${code}`);
+    lines.push('');
+  }
+  // Bootstrap diagnostics surface FIRST among defect sections so the agent
+  // sees auth-actor failures before scrolling through N flow failures that
+  // cascade from them. Every authed flow downstream of a failed actor gets
+  // 401 from the server and shows up below — fixing the actor here resolves
+  // the whole cluster in one edit.
+  if (report.bootstrapDiagnostics && report.bootstrapDiagnostics.length > 0) {
+    lines.push('## Bootstrap diagnostics');
+    lines.push('');
+    lines.push('Authed flows depending on these actors will fail or be skipped — fix here to clear the cascade:');
+    lines.push('');
+    for (const diag of report.bootstrapDiagnostics) {
+      const actor = (diag as Record<string, unknown>).actorName;
+      const scheme = (diag as Record<string, unknown>).scheme;
+      const reason = (diag as Record<string, unknown>).reason;
+      if (typeof actor === 'string') {
+        lines.push(`- **actor=${actor}** scheme=${String(scheme ?? 'unknown')} — ${String(reason ?? diag.message)}`);
+      } else {
+        lines.push(`- **${diag.code}** ${diag.message}`);
+      }
+    }
     lines.push('');
   }
   const failed = report.cases.filter((c) => !c.passed);
@@ -303,6 +335,25 @@ export function formatSummary(report: SmokeReport): string {
     lines.push(`[http-smoke-runtime-diagnostics] ${smkDiags.length} diagnostic(s):`);
     for (const diag of smkDiags) {
       lines.push(`  [${diag.level}] ${diag.code}: ${JSON.stringify(diag.details)}`);
+    }
+  }
+  // Bootstrap-failure summary in the stdout block too — same data, now next
+  // to the case list so an agent doing `tail -N` sees actor→reason inline
+  // without separately greping `bootstrap-FAIL` (which is also emitted, for
+  // those who pipe the full stream).
+  const bootDiags = report.bootstrapDiagnostics ?? [];
+  if (bootDiags.length > 0) {
+    lines.push('');
+    lines.push(`[http-smoke-bootstrap-FAIL] ${bootDiags.length} actor(s) failed authentication:`);
+    for (const diag of bootDiags) {
+      const actor = (diag as Record<string, unknown>).actorName;
+      const scheme = (diag as Record<string, unknown>).scheme;
+      const reason = (diag as Record<string, unknown>).reason;
+      if (typeof actor === 'string') {
+        lines.push(`  - actor=${actor} scheme=${String(scheme ?? 'unknown')} reason=${JSON.stringify(reason ?? diag.message)}`);
+      } else {
+        lines.push(`  - ${diag.code}: ${diag.message}`);
+      }
     }
   }
   lines.push('');

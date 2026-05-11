@@ -60,6 +60,7 @@ PG_PORT="${PG_PORT:-$(find_free_port "$(( 6000 + index ))" 6999)}"
 API_PORT="${API_PORT:-$(find_free_port "$(( 16000 + index ))" 16999)}"
 NEXT_PORT="${NEXT_PORT:-$(find_free_port "$(( 26000 + index ))" 26999)}"
 export PG_PORT API_PORT NEXT_PORT
+PROJECT_NAME_FROM_ENV="${PROJECT_NAME:-}"
 PROJECT_NAME="${PROJECT_NAME:-app-${basename_dir}}"
 
 # Guard against worker worktrees hijacking the host-side main-app compose
@@ -83,6 +84,22 @@ case "$PROJECT_DIR" in
     ;;
 esac
 
+if [ "$basename_dir" = "workspace" ] && [ -z "$PROJECT_NAME_FROM_ENV" ]; then
+  current_branch="$(git -C "$PROJECT_DIR" branch --show-current 2>/dev/null || echo '')"
+  canonical_branch=""
+  if [ -f "$PROJECT_DIR/.overstory/config.yaml" ]; then
+    canonical_branch="$(grep -E '^[[:space:]]*canonicalBranch:' "$PROJECT_DIR/.overstory/config.yaml" | head -1 | sed -E 's/^[[:space:]]*canonicalBranch:[[:space:]]*//; s/[[:space:]]+$//' | tr -d '"' | tr -d "'")"
+  fi
+  canonical_branch="${canonical_branch:-main}"
+  if [ -n "$current_branch" ] && [ "$current_branch" != "$canonical_branch" ]; then
+    echo "ERROR: stack:up from $PROJECT_DIR requires branch '$canonical_branch' (currently on '$current_branch')." >&2
+    echo "       The canonical workspace stack runs under PROJECT_NAME=$APP_DEV_PROJECT_RESERVED only on the canonical branch." >&2
+    echo "       Either checkout '$canonical_branch' here, run stack:up from a worktree path, or set PROJECT_NAME explicitly." >&2
+    exit 1
+  fi
+  PROJECT_NAME="$APP_DEV_PROJECT_RESERVED"
+fi
+
 # Per-worker panel bridge spawn. The panel-side bridge runs against the
 # connected workspace + `app-dev-host`; this one is scoped to THIS worktree
 # + THIS compose project, so prisma migrations / env edits / lockfile bumps
@@ -90,6 +107,10 @@ esac
 # for merge. Idempotent: skip if a live PID is already on disk. Graceful
 # no-op when `node` is missing (non-Node panel images).
 spawn_worker_bridge() {
+  if [ "$basename_dir" = "workspace" ]; then
+    echo "[stack-up-docker] canonical workspace - panel-mode bridge owns this scope, skipping worker spawn" | tee -a "$LOG"
+    return 0
+  fi
   local bridge_script="$PROJECT_DIR/scripts/panel-bridge.mjs"
   local pid_file="$PROJECT_DIR/.bridge.pid"
   local log_file="$PROJECT_DIR/.bridge.log"

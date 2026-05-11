@@ -38,7 +38,19 @@ export function buildSwaggerDocument(app: INestApplication): ReturnType<typeof S
   const builder = new DocumentBuilder()
     .setTitle(prettifyName(pkg.name))
     .setVersion(pkg.version)
-    .addBearerAuth()
+    // Bearer scheme registered as 'accessToken' to match the controller-side
+    // convention prescribed by the SFX `nestjs-probe-coverage` skill:
+    // controllers annotate authed endpoints with `@ApiBearerAuth('accessToken')`,
+    // which emits `security: [{accessToken: []}]` in the OpenAPI spec. If this
+    // name is not registered here, the spec references an unknown scheme; the
+    // probe matrix detector reports `authRequired: false` for every authed
+    // endpoint, no setAuth step is emitted into chains, and authed flows hit
+    // the 403 cascade silently. Keep the name aligned with `@ApiBearerAuth(...)`
+    // usage everywhere in the project.
+    .addBearerAuth(
+      { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+      'accessToken',
+    )
     .addApiKey(
       { type: 'apiKey', name: 'x-api-key', in: 'header' },
       'apiKeyHeader',

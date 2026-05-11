@@ -44,6 +44,11 @@ mulch:
 merge:
   aiResolveEnabled: true
   reimagineEnabled: false
+canonicalRebuild:
+  command: bash scripts/post-merge-canonical.sh
+  timeoutMs: 1800000
+  notifyAgent: coordinator
+  tailLines: 200
 providers:
   anthropic:
     type: native
