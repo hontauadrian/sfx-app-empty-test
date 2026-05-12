@@ -15,6 +15,7 @@
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
     "docker:prod": "docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build",
+    "keycloak:bootstrap:dev": "node scripts/keycloak-bootstrap.mjs",
     "db:migrate": "bash scripts/db-migrate.sh",
     "db:migrate:deploy": "pnpm --filter @sfx/database prisma migrate deploy",
     "db:seed": "pnpm --filter @sfx/database prisma db seed",
@@ -54,7 +55,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.18.0",
-    "@playwright/test": "^1.51.1",
+    "@playwright/test": "1.59.1",
     "@swc-node/register": "1.10.9",
     "@swc/core": "1.13.3",
     "@types/supertest": "6.0.2",

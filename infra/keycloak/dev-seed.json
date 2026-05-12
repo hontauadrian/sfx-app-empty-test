@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "users": [
+    {
+      "username": "admin@example.com",
+      "email": "admin@example.com",
+      "firstName": "Dev",
+      "lastName": "Admin",
+      "enabled": true,
+      "password": "password",
+      "clientRoleAssignments": [
+        {
+          "clientId": "${repoName}-dev-api",
+          "roles": ["admin"]
+        }
+      ]
+    },
+    {
+      "username": "viewer@example.com",
+      "email": "viewer@example.com",
+      "firstName": "Dev",
+      "lastName": "Viewer",
+      "enabled": true,
+      "password": "password",
+      "clientRoleAssignments": [
+        {
+          "clientId": "${repoName}-dev-api",
+          "roles": ["viewer"]
+        }
+      ]
+    }
+  ]
+}

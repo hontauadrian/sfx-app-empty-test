@@ -59,7 +59,9 @@ find_free_port() {
 PG_PORT="${PG_PORT:-$(find_free_port "$(( 6000 + index ))" 6999)}"
 API_PORT="${API_PORT:-$(find_free_port "$(( 16000 + index ))" 16999)}"
 NEXT_PORT="${NEXT_PORT:-$(find_free_port "$(( 26000 + index ))" 26999)}"
-export PG_PORT API_PORT NEXT_PORT
+APP_PROXY_PORT="${APP_PROXY_PORT:-$(find_free_port "$(( 36000 + index ))" 36999)}"
+KEYCLOAK_PORT="${KEYCLOAK_PORT:-$(find_free_port "$(( 37000 + index ))" 37999)}"
+export PG_PORT API_PORT NEXT_PORT APP_PROXY_PORT KEYCLOAK_PORT
 PROJECT_NAME_FROM_ENV="${PROJECT_NAME:-}"
 PROJECT_NAME="${PROJECT_NAME:-app-${basename_dir}}"
 
@@ -140,7 +142,7 @@ spawn_worker_bridge() {
   echo "[stack-up-docker] spawned panel-bridge (pid ${spawned_pid}) -> ${log_file}" | tee -a "$LOG"
 }
 
-echo "[stack-up-docker] Project=${PROJECT_NAME} PG=${PG_PORT} API=${API_PORT} WEB=${NEXT_PORT}" | tee "$LOG"
+echo "[stack-up-docker] Project=${PROJECT_NAME} PG=${PG_PORT} API=${API_PORT} WEB=${NEXT_PORT} PROXY=${APP_PROXY_PORT} KEYCLOAK=${KEYCLOAK_PORT}" | tee "$LOG"
 
 BUILD_FLAG=""
 FORCE_RECREATE_FLAG=""
@@ -169,14 +171,20 @@ if [ -z "$BUILD_FLAG" ] && [ -z "$FORCE_RECREATE_FLAG" ] && [ "${running_count:-
   ACTUAL_PG_PORT="$(docker compose -p "$PROJECT_NAME" port postgres 5432 2>/dev/null | awk -F: 'END{print $NF}')"
   ACTUAL_API_PORT="$(docker compose -p "$PROJECT_NAME" port api 3001 2>/dev/null | awk -F: 'END{print $NF}')"
   ACTUAL_WEB_PORT="$(docker compose -p "$PROJECT_NAME" port web 3000 2>/dev/null | awk -F: 'END{print $NF}')"
+  ACTUAL_PROXY_PORT="$(docker compose -p "$PROJECT_NAME" port app-oauth2-proxy 4180 2>/dev/null | awk -F: 'END{print $NF}')"
+  ACTUAL_KEYCLOAK_PORT="$(docker compose -p "$PROJECT_NAME" port keycloak 9080 2>/dev/null | awk -F: 'END{print $NF}')"
   ACTUAL_PG_PORT="${ACTUAL_PG_PORT:-$PG_PORT}"
   ACTUAL_API_PORT="${ACTUAL_API_PORT:-$API_PORT}"
   ACTUAL_WEB_PORT="${ACTUAL_WEB_PORT:-$NEXT_PORT}"
+  ACTUAL_PROXY_PORT="${ACTUAL_PROXY_PORT:-$APP_PROXY_PORT}"
+  ACTUAL_KEYCLOAK_PORT="${ACTUAL_KEYCLOAK_PORT:-$KEYCLOAK_PORT}"
   cat > "$PROJECT_DIR/.stack.json" <<JSON
 {
   "pg_port": ${ACTUAL_PG_PORT},
   "api_port": ${ACTUAL_API_PORT},
   "web_port": ${ACTUAL_WEB_PORT},
+  "proxy_port": ${ACTUAL_PROXY_PORT},
+  "keycloak_port": ${ACTUAL_KEYCLOAK_PORT},
   "host": "${STATE_HEALTH_HOST}",
   "is_worktree": true,
   "compose_project": "${PROJECT_NAME}",
@@ -534,12 +542,16 @@ for attempt in $(seq 1 60); do
     echo "=== Stack ready ===" | tee -a "$LOG"
     echo "    web: http://${HEALTH_HOST}:${NEXT_PORT}" | tee -a "$LOG"
     echo "    api: http://${HEALTH_HOST}:${API_PORT}" | tee -a "$LOG"
+    echo "    proxy: http://${HEALTH_HOST}:${APP_PROXY_PORT}" | tee -a "$LOG"
+    echo "    keycloak: http://${HEALTH_HOST}:${KEYCLOAK_PORT}" | tee -a "$LOG"
     echo "    pg:  ${HEALTH_HOST}:${PG_PORT}" | tee -a "$LOG"
     cat > "$PROJECT_DIR/.stack.json" <<JSON
 {
   "pg_port": ${PG_PORT},
   "api_port": ${API_PORT},
   "web_port": ${NEXT_PORT},
+  "proxy_port": ${APP_PROXY_PORT},
+  "keycloak_port": ${KEYCLOAK_PORT},
   "host": "${HEALTH_HOST}",
   "is_worktree": true,
   "compose_project": "${PROJECT_NAME}",

@@ -18,7 +18,9 @@ describe("docker-compose oauth2-proxy baseline", () => {
     assert.match(compose, /--pass-authorization-header=true/);
     assert.match(compose, /--pass-access-token=true/);
     assert.match(compose, /--cookie-secure=\$\{OAUTH2_PROXY_COOKIE_SECURE:-false\}/);
-    assert.match(compose, /keycloak\.localtest\.me:host-gateway/);
+    assert.match(compose, /keycloak:/);
+    assert.match(compose, /keycloak-bootstrap:/);
+    assert.match(compose, /condition: service_completed_successfully/);
     assert.doesNotMatch(compose, /\.\/apps\/api\/\.env:\/app\/apps\/api\/\.env/);
     assert.doesNotMatch(compose, /\.\/apps\/web\/\.env\.local:\/app\/apps\/web\/\.env\.local/);
   });

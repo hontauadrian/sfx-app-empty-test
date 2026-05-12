@@ -22,9 +22,10 @@
 # 3. Use `${VAR:-default}` for every published port so the panel's slot
 #    manager + per-worker hash port mapping can override at runtime
 #    without forking the file. NEXT_PORT (web), API_PORT (api), and
-#    PG_PORT (postgres) are the contract — do not introduce new port
-#    env names without updating `scripts/stack-up-docker.sh` and
-#    `src/lib/server/test-slot-manager.ts` in the panel repo.
+#    PG_PORT (postgres), APP_PROXY_PORT (oauth2-proxy), and KEYCLOAK_PORT
+#    are the contract — do not introduce new port env names without updating
+#    `scripts/stack-up-docker.sh` and `src/lib/server/test-slot-manager.ts`
+#    in the panel repo.
 #
 # 4. Postgres healthcheck MUST pin `-d $POSTGRES_DB`. `pg_isready -U <user>`
 #    alone defaults to db named after the user, which never exists, and
@@ -42,6 +43,45 @@
 #    inside the panel container.
 # =============================================================================
 services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0
+    command:
+      - start-dev
+      - --http-port=9080
+      - --hostname-strict=false
+    ports:
+      - "${KEYCLOAK_PORT:-9080}:9080"
+    environment:
+      - KC_HTTP_PORT=9080
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/localhost/9080'"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+
+  keycloak-bootstrap:
+    image: node:22-alpine
+    working_dir: /workspace
+    command: ["node", "scripts/keycloak-bootstrap.mjs"]
+    volumes:
+      - ./scripts:/workspace/scripts
+      - ./infra/keycloak:/workspace/infra/keycloak
+      - ./package.json:/workspace/package.json
+    environment:
+      - KEYCLOAK_INTERNAL_URL=http://keycloak:9080
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      - APP_PROXY_PORT=${APP_PROXY_PORT:-4181}
+      - OAUTH2_PROXY_CLIENT_SECRET=${OAUTH2_PROXY_CLIENT_SECRET:-dev-generated-app-proxy-secret}
+      - OAUTH_API_CLIENT_SECRET=${OAUTH_API_CLIENT_SECRET:-dev-generated-app-api-secret}
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    restart: "no"
+
   web:
     image: sfx-app-web:dev
     build:
@@ -84,10 +124,10 @@ services:
       # POSTGRES_USER=sfx / POSTGRES_DB=sfx_db / POSTGRES_PASSWORD=sfx.
       - DATABASE_URL=postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@postgres:5432/${POSTGRES_DB:-app_db}
       - JWT_SECRET=${JWT_SECRET:-dev-secret-minimum-16-chars}
-      - OAUTH_ISSUER_URL=${OAUTH_ISSUER_URL:-http://keycloak.localtest.me:9080/realms/sfx-panel}
-      - OAUTH_JWKS_URL=${OAUTH_JWKS_URL:-http://keycloak.localtest.me:9080/realms/sfx-panel/protocol/openid-connect/certs}
-      - OAUTH_API_CLIENT_ID=${OAUTH_API_CLIENT_ID:-sfx-app-dev-api}
-      - OAUTH_AUDIENCE=${OAUTH_AUDIENCE:-sfx-app-dev-api}
+      - OAUTH_ISSUER_URL=${OAUTH_ISSUER_URL:-http://keycloak.localtest.me:9080/realms/sfx-webapp-boilerplate}
+      - OAUTH_JWKS_URL=${OAUTH_JWKS_URL:-http://keycloak.localtest.me:9080/realms/sfx-webapp-boilerplate/protocol/openid-connect/certs}
+      - OAUTH_API_CLIENT_ID=${OAUTH_API_CLIENT_ID:-sfx-webapp-boilerplate-dev-api}
+      - OAUTH_AUDIENCE=${OAUTH_AUDIENCE:-sfx-webapp-boilerplate-dev-api}
       # CORS allowlist. Default tracks the worktree's web port for
       # auto-isolated worker stacks. Override in .env to a panel
       # subdomain (http://app.localhost) or a prod origin
@@ -100,6 +140,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      keycloak-bootstrap:
+        condition: service_completed_successfully
 
   app-oauth2-proxy:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.2
@@ -112,8 +154,8 @@ services:
       - --skip-provider-button=true
       - --upstream=http://api:3001/api/v1/
       - --upstream=http://web:3000/
-      - --oidc-issuer-url=${OAUTH_ISSUER_URL:-http://keycloak.localtest.me:9080/realms/sfx-panel}
-      - --client-id=${OAUTH2_PROXY_CLIENT_ID:-sfx-app-dev-proxy}
+      - --oidc-issuer-url=${OAUTH_ISSUER_URL:-http://keycloak.localtest.me:9080/realms/sfx-webapp-boilerplate}
+      - --client-id=${OAUTH2_PROXY_CLIENT_ID:-sfx-webapp-boilerplate-dev-proxy}
       - --client-secret=${OAUTH2_PROXY_CLIENT_SECRET:-dev-generated-app-proxy-secret}
       - --cookie-secret=${OAUTH2_PROXY_COOKIE_SECRET:-0123456789abcdef0123456789abcdef}
       - --redirect-url=${OAUTH2_PROXY_REDIRECT_URL:-http://app.localtest.me:4181/oauth2/callback}
@@ -128,8 +170,12 @@ services:
     extra_hosts:
       - "keycloak.localtest.me:host-gateway"
     depends_on:
-      - api
-      - web
+      keycloak-bootstrap:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+      web:
+        condition: service_started
 
   postgres:
     image: postgres:16-alpine

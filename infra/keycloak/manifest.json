@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "realm": {
+    "name": "${repoName}",
+    "displayName": "${repoName}"
+  },
+  "clients": {
+    "proxy": {
+      "clientId": "${repoName}-dev-proxy",
+      "redirectUris": ["http://app.localtest.me:${appProxyPort}/oauth2/callback"],
+      "webOrigins": ["http://app.localtest.me:${appProxyPort}"],
+      "audienceClientIds": ["${repoName}-dev-api"]
+    },
+    "api": {
+      "clientId": "${repoName}-dev-api",
+      "audience": "${repoName}-dev-api",
+      "roles": ["viewer", "editor", "admin"]
+    }
+  },
+  "oauth2Proxy": {
+    "callbackPath": "/oauth2/callback",
+    "forwardBearerToken": true
+  },
+  "reconciliation": {
+    "allowDestructive": false
+  }
+}

@@ -1,6 +1,7 @@
 {
   "version": 1,
   "appSlug": "sfx-app",
+  "sourceOfTruth": "infra/keycloak/manifest.json",
   "environments": ["dev", "preprod", "prod"],
   "clients": {
     "proxyClientIdPattern": "${appSlug}-${environment}-proxy",
