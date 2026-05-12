@@ -240,6 +240,12 @@ export interface PrismaModelInfo {
   uniqueFields: string[];
   compositeUniques: string[][];
   fieldTypes: Record<string, string>;
+  relations?: Array<{
+    relationField: string;
+    parentModel: string;
+    fkFields: string[];
+    referencedFields: string[];
+  }>;
 }
 
 export interface PrismaModels {

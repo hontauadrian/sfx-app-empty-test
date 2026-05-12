@@ -559,8 +559,38 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
   // half-authored folder cannot break the existing probe path.
   const curatedSummary = loadCuratedContract(PROJECT_ROOT);
   process.stderr.write(formatCuratedSummary(curatedSummary) + '\n');
+  // Structured loader diagnostics — written to the report so downstream
+  // tooling (probe-run-with-ownership-check.sh) can dispatch remediation
+  // mail by error code without parsing stdout.
+  const loaderDiagnostics: ReadonlyArray<{ code: string; message: string } & Record<string, unknown>> =
+    curatedSummary.errors.map((err) => ({ ...(err as Record<string, unknown>), code: err.code, message: err.message }));
   for (const err of curatedSummary.errors) {
     process.stderr.write(`[contract-flows] ${err.code}: ${err.message}\n`);
+  }
+  const attachLoaderDiagnostics = (report: SmokeReport): SmokeReport => {
+    if (loaderDiagnostics.length > 0) report.loaderDiagnostics = loaderDiagnostics;
+    // generatorDiagnostics is populated when flows-generator output is read
+    // below. Re-attach on every writeReport call so failure paths surface them.
+    if (generatorDiagnostics && generatorDiagnostics.length > 0) {
+      report.generatorDiagnostics = generatorDiagnostics;
+    }
+    return report;
+  };
+  // Filled in once flowsFile loads (see below). Declared here so the closure
+  // above can read it; early-exit paths emit reports before flows load and
+  // they get an empty list, which is correct.
+  let generatorDiagnostics: ReadonlyArray<{ code: string; message: string } & Record<string, unknown>> = [];
+
+  try {
+    const earlyFlowsPath = join(PROJECT_ROOT, '.claude', 'hooks', '.flows.generated.json');
+    if (existsSync(earlyFlowsPath)) {
+      const earlyFlowsFile = JSON.parse(readFileSync(earlyFlowsPath, 'utf8')) as GeneratedFlowsFile;
+      const earlyDiagnostics = earlyFlowsFile.diagnostics ?? [];
+      generatorDiagnostics = earlyDiagnostics.map((diag) => ({ ...(diag as Record<string, unknown>), code: diag.code, message: diag.message }));
+    }
+  } catch {
+    // best-effort — if the file is missing or unreadable, fall through.
+    // The later loadGeneratedFlows call will surface a real failure.
   }
 
   // -1. Probe preflight — fail fast if the stack isn't booted, the API isn't
@@ -576,7 +606,7 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
       report.exitCode = 2;
       report.blockCodes = ['PROBE_INTERNAL_ERROR'];
       report.blockReason = formatBlockReason('PROBE_INTERNAL_ERROR', 'preflight', preflight.reason);
-      writeReport(report, { reportPath: options.reportPath, humanReportPath: options.humanReportPath });
+      writeReport(attachLoaderDiagnostics(report), { reportPath: options.reportPath, humanReportPath: options.humanReportPath });
       return { exitCode: 2, report, blockReason: report.blockReason };
     }
   }
@@ -599,7 +629,7 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
       report.exitCode = 2;
       report.blockCodes = ['PROBE_INTERNAL_ERROR'];
       report.blockReason = formatBlockReason('PROBE_INTERNAL_ERROR', 'regen', regenFailure);
-      writeReport(report, { reportPath: options.reportPath, humanReportPath: options.humanReportPath });
+      writeReport(attachLoaderDiagnostics(report), { reportPath: options.reportPath, humanReportPath: options.humanReportPath });
       return { exitCode: 2, report, blockReason: report.blockReason };
     }
   }
@@ -624,7 +654,7 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
       report.blockReason = formatBlockReason('PROBE_INTERNAL_ERROR', 'matrix', error instanceof Error ? error.message : String(error));
       report.blockCodes = ['PROBE_INTERNAL_ERROR'];
     }
-    writeReport(report, { reportPath: options.reportPath, humanReportPath: options.humanReportPath });
+    writeReport(attachLoaderDiagnostics(report), { reportPath: options.reportPath, humanReportPath: options.humanReportPath });
     return { exitCode: report.exitCode, report, blockReason: report.blockReason };
   }
 
@@ -653,7 +683,7 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
     // a function`) verbatim in the agent-visible probe output.
     if (boot.error?.logs) report.bootLogs = boot.error.logs;
     report.summary.durationMs = Date.now() - started;
-    writeReport(report, { reportPath: options.reportPath, humanReportPath: options.humanReportPath });
+    writeReport(attachLoaderDiagnostics(report), { reportPath: options.reportPath, humanReportPath: options.humanReportPath });
     return { exitCode: 2, report, blockReason: report.blockReason };
   }
 
@@ -676,7 +706,7 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
       report.exitCode = 2;
       report.blockCodes = ['PROBE_INTERNAL_ERROR'];
       report.blockReason = formatBlockReason('PROBE_INTERNAL_ERROR', 'regen-post-boot', regenFailure);
-      writeReport(report, { reportPath: options.reportPath, humanReportPath: options.humanReportPath });
+      writeReport(attachLoaderDiagnostics(report), { reportPath: options.reportPath, humanReportPath: options.humanReportPath });
       return { exitCode: 2, report, blockReason: report.blockReason };
     }
     // Re-load matrix so steps 3+ use the freshly-regenerated artifacts.
@@ -698,7 +728,7 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
         report.blockReason = formatBlockReason('PROBE_INTERNAL_ERROR', 'matrix-post-boot', error instanceof Error ? error.message : String(error));
         report.blockCodes = ['PROBE_INTERNAL_ERROR'];
       }
-      writeReport(report, { reportPath: options.reportPath, humanReportPath: options.humanReportPath });
+      writeReport(attachLoaderDiagnostics(report), { reportPath: options.reportPath, humanReportPath: options.humanReportPath });
       return { exitCode: report.exitCode, report, blockReason: report.blockReason };
     }
   }
@@ -766,6 +796,11 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
       const flowsFile = loadGeneratedFlows(flowsPath);
       generatedFlows = flowsFile.flows;
       flowsDiagnostics = flowsFile.diagnostics ?? [];
+      // Mirror flowsDiagnostics into the closure-scoped variable that
+      // attachLoaderDiagnostics() reads, so every subsequent writeReport
+      // call carries them in `report.generatorDiagnostics`. The wrapper
+      // (probe-run-with-ownership-check.sh) reads that field.
+      generatorDiagnostics = flowsDiagnostics.map((diag) => ({ ...(diag as Record<string, unknown>), code: diag.code, message: diag.message }));
     } catch (error) {
       if (error instanceof FlowsLoadError) {
         cases.push({
@@ -805,15 +840,26 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
         }
       }
 
-      // Shared bindings, auth header, and envelope key persist across
-      // dependent flows. envelopeKey is seeded from matrix.responseEnvelope
-      // (extracted statically at matrix:regen time from the bootstrap file +
-      // global interceptor/middleware source — e.g. NestJS TransformInterceptor
-      // → ['data']). Downstream capture paths resolve transparently without
-      // runtime sniffing.
-      const sharedBindings: Record<string, unknown> = {};
-      let sharedBearer: string | null = authContext.bearer;
-      let sharedEnvelopeKey: string[] | null = matrix.responseEnvelope.successWrapper;
+      const initialEnvelopeKey: string[] | null = matrix.responseEnvelope.successWrapper;
+      interface FlowFinalState {
+        bindings: Record<string, unknown>;
+        bearer: string | null;
+        envelopeKey: string[] | null;
+      }
+      const flowFinalState = new Map<string, FlowFinalState>();
+      function bindingsForFlow(dependsOn: readonly string[]): FlowFinalState {
+        const merged: Record<string, unknown> = {};
+        let bearer: string | null = authContext.bearer;
+        let envelopeKey: string[] | null = initialEnvelopeKey;
+        for (const parentId of dependsOn) {
+          const parentState = flowFinalState.get(parentId);
+          if (!parentState) continue;
+          Object.assign(merged, parentState.bindings);
+          if (parentState.bearer !== null) bearer = parentState.bearer;
+          if (parentState.envelopeKey !== null) envelopeKey = parentState.envelopeKey;
+        }
+        return { bindings: merged, bearer, envelopeKey };
+      }
       // Per-flow cookie jar registry. Each flow's starting jar is built
       // by inheriting from its declared dependsOn parents' FINAL jar state
       // (see jarForFlow). A flow with empty dependsOn gets a fresh jar.
@@ -835,6 +881,8 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
 
       for (const flow of sortedFlows) {
         const flowJar = jarForFlow(flow.dependsOn ?? [], flowFinalJars);
+        const inherited = bindingsForFlow(flow.dependsOn ?? []);
+        const flowBindings: Record<string, unknown> = { ...inherited.bindings };
         // Per-flow primary client: api steps run against apiClient, pure
         // navigate/wait flows run against webClient. Both clients are
         // forwarded to probeFlowWithBindings so individual steps can route
@@ -848,9 +896,9 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
 
         const flowResult = await probeFlowWithBindings(primaryClient, flow, matrix, {
           readOnly: options.readOnly,
-          bearer: sharedBearer,
-          bindings: sharedBindings,
-          envelopeKey: sharedEnvelopeKey,
+          bearer: inherited.bearer,
+          bindings: flowBindings,
+          envelopeKey: inherited.envelopeKey,
           sharedCookieJar: flowJar,
           webClient: webClient ?? undefined,
           apiClient: apiClient ?? undefined,
@@ -862,15 +910,14 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
         // reflected in flowJar at this point.
         flowFinalJars.set(flow.id, flowJar);
 
-        // Merge returned bindings, auth state, and envelope detection for
-        // downstream flows.
-        Object.assign(sharedBindings, flowResult.bindings);
-        if (flowResult.authHeader !== null) {
-          sharedBearer = flowResult.authHeader;
-        }
-        if (flowResult.envelopeKey !== null) {
-          sharedEnvelopeKey = flowResult.envelopeKey;
-        }
+        Object.assign(flowBindings, flowResult.bindings);
+        const finalBearer = flowResult.authHeader !== null ? flowResult.authHeader : inherited.bearer;
+        const finalEnvelopeKey = flowResult.envelopeKey !== null ? flowResult.envelopeKey : inherited.envelopeKey;
+        flowFinalState.set(flow.id, {
+          bindings: flowBindings,
+          bearer: finalBearer,
+          envelopeKey: finalEnvelopeKey,
+        });
 
         for (const entry of flowResult.cases) {
           cases.push({ ...entry, category: 'flow', label: `flow:${flow.id}:${entry.label}` });
@@ -1038,7 +1085,7 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
       : undefined,
   };
 
-  writeReport(report, { reportPath: options.reportPath, humanReportPath: options.humanReportPath });
+  writeReport(attachLoaderDiagnostics(report), { reportPath: options.reportPath, humanReportPath: options.humanReportPath });
 
   // 8. Teardown if we own the stack and caller didn't opt out.
   if (boot.ownership === 'owner' && !options.keepStack && process.env.HTTP_SMOKE_KEEP_STACK !== '1') {

@@ -9,21 +9,45 @@ if [ ! -f "packages/database/.env" ] || ! grep -q '^DATABASE_URL=' packages/data
   exit 1
 fi
 
-# Truncate every public table and verify the truncate actually ran. Locks held
-# by the running api/web prisma pools can otherwise cause TRUNCATE to silently
-# wait forever or fail without surfacing the error. lock_timeout makes the
-# command return an error fast; the verify loop turns any surviving row into a
-# hard exception so the caller never proceeds with a half-clean DB.
-run_truncate() {
-  pnpm --silent --filter @sfx/database prisma db execute --stdin <<'SQL'
-SET lock_timeout = '5s';
-SET statement_timeout = '30s';
+# Truncate every public table once postgres confirms no other backend is
+# holding a transaction. We poll pg_stat_activity *inside* the DO block so
+# the wait is exactly as long as needed — not a magic sleep — and bounded
+# (≤ wait_max_steps × wait_step_seconds). lock_timeout is the fallback if
+# a connection becomes non-idle between the poll and the TRUNCATE.
+# The post-truncate verify loop raises an exception on any surviving row,
+# turning silent no-ops into hard failures.
+pnpm --silent --filter @sfx/database prisma db execute --stdin <<'SQL'
+SET lock_timeout = '10s';
+SET statement_timeout = '60s';
 DO $$
 DECLARE
   table_name TEXT;
   leftover_table TEXT;
   leftover_count BIGINT;
+  busy_count INT;
+  wait_step INT := 0;
+  wait_max_steps INT := 60;        -- 60 × 0.5s = 30s ceiling
 BEGIN
+  -- Smart wait: poll until every non-self backend on this DB is idle.
+  -- Right after `stack:reload-api`, prisma's reopened pool walks
+  -- 'authenticating' → 'idle' over a few hundred ms. TRUNCATE only needs
+  -- ACCESS EXCLUSIVE so as soon as no other backend is mid-statement or
+  -- mid-transaction, we proceed. If something is genuinely stuck non-idle
+  -- past the ceiling we fall through and let lock_timeout report it.
+  LOOP
+    SELECT COUNT(*) INTO busy_count
+    FROM pg_stat_activity
+    WHERE datname = current_database()
+      AND pid <> pg_backend_pid()
+      AND state IS DISTINCT FROM 'idle';
+    EXIT WHEN busy_count = 0 OR wait_step >= wait_max_steps;
+    PERFORM pg_sleep(0.5);
+    wait_step := wait_step + 1;
+  END LOOP;
+  IF busy_count > 0 THEN
+    RAISE NOTICE '[db-reset-fast] proceeding with % non-idle backend(s) after % steps — lock_timeout will gate', busy_count, wait_step;
+  END IF;
+
   FOR table_name IN
     SELECT tablename
     FROM pg_tables
@@ -47,24 +71,6 @@ BEGIN
 END
 $$;
 SQL
-}
-
-attempt=1
-max_attempts=3
-while [ "$attempt" -le "$max_attempts" ]; do
-  if run_truncate >/dev/null 2>&1; then
-    break
-  fi
-  echo "[db-reset-fast] truncate attempt $attempt failed; retrying after 1s..." >&2
-  attempt=$((attempt + 1))
-  sleep 1
-done
-
-if [ "$attempt" -gt "$max_attempts" ]; then
-  echo "[db-reset-fast] FATAL: truncate failed after $max_attempts attempts. Run truncate manually:" >&2
-  echo "  pnpm --filter @sfx/database prisma db execute --stdin < scripts/db-reset-fast.sh" >&2
-  exit 1
-fi
 
 if pnpm --silent run 2>/dev/null | grep -q '^  db:seed$'; then
   pnpm --silent db:seed >/dev/null 2>&1 || {

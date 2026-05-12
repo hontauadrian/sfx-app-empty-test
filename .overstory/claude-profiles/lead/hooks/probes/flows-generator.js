@@ -18,6 +18,8 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { buildErrorAssertions } = require('./lib/error-shape');
+const { buildResourceGraph } = require('./resource-graph');
+const { transformOverrides } = require('./body-overrides');
 const { detectAuthFlows } = require('./detectors/auth-flows');
 const { emitCookieRefreshRotation } = require('./emitters/cookie-refresh-rotation');
 const { emitCookieSession } = require('./emitters/cookie-session');
@@ -1133,19 +1135,50 @@ function emitDuplicateConflictFlow(ep, happyFlowId, options = {}) {
   // now that each flow has its own runId. Self-contained is robust + fast.
   const base = pathToId(ep.path);
   const flowId = `${base}:duplicate-conflict`;
-  const body = buildSampleBody(ep.zodContract, effectiveUniqueFieldSet(ep, options.uniqueFieldSet));
+  let body = buildSampleBody(ep.zodContract, effectiveUniqueFieldSet(ep, options.uniqueFieldSet));
+  let path = ep.path;
+  const deps = [happyFlowId];
+
+  const _resourceRefResult = resolveResourceRefDeps(ep, options.endpoints || []);
+  if (_resourceRefResult.overrides && Object.keys(_resourceRefResult.overrides).length > 0) {
+    if (body && typeof body === 'object') {
+      body = { ...body, ..._resourceRefResult.overrides };
+    }
+  }
+  if (_resourceRefResult.pathSubstitutions && Object.keys(_resourceRefResult.pathSubstitutions).length > 0) {
+    for (const [param, sigil] of Object.entries(_resourceRefResult.pathSubstitutions)) {
+      path = path.replace(`:${param}`, sigil);
+    }
+  }
+  if (Array.isArray(_resourceRefResult.deps)) {
+    for (const depId of _resourceRefResult.deps) {
+      if (!deps.includes(depId)) deps.push(depId);
+    }
+  }
+
+  const authFlowsOpts = options.authFlows || {};
+  const isBootstrapEndpoint = ep.method === 'POST' && (
+    (authFlowsOpts.tokenIssuer && ep.path === authFlowsOpts.tokenIssuer.path) ||
+    (authFlowsOpts.register && ep.path === authFlowsOpts.register.path)
+  );
+  const needsAuth = Boolean(ep.authDecorators && ep.authDecorators.authRequired);
+  const useChain = needsAuth && Boolean(options.authBootstrapAvailable) && !isBootstrapEndpoint;
+  const steps = [];
+  if (useChain) {
+    steps.push({ binding: 'accessToken', kind: 'setAuth' });
+    if (!deps.includes('chain:auth-bootstrap')) deps.push('chain:auth-bootstrap');
+  }
+  steps.push({ body, kind: 'api', method: ep.method, path });
+  steps.push({ kind: 'expect', statusAnyOf: [200, 201] });
+  steps.push({ body, kind: 'api', method: ep.method, path });
+  steps.push({ kind: 'expect', statusAnyOf: [400, 409, 422] });
 
   return {
     id: flowId,
     contract: { endpoint: epKey(ep.method, ep.path), kind: 'duplicate-conflict', source: ep.file },
-    dependsOn: [happyFlowId],
+    dependsOn: deps,
     onFail: { check: [ep.file], implies: `${ep.method} ${ep.path} does not reject duplicate submission.` },
-    steps: [
-      { body, kind: 'api', method: ep.method, path: ep.path },
-      { kind: 'expect', statusAnyOf: [200, 201] },
-      { body, kind: 'api', method: ep.method, path: ep.path },
-      { kind: 'expect', statusAnyOf: [400, 409, 422] },
-    ],
+    steps,
   };
 }
 
@@ -1243,9 +1276,34 @@ function emitStatusReachabilityFlows(ep, coveredStatuses, diagnostics, options) 
       // can check resource existence and return 404.
       if (['POST', 'PUT', 'PATCH'].includes(ep.method) && ep.zodContract) {
         const body404 = buildSampleBody(ep.zodContract, opts.uniqueFieldSet) || {};
-        // Apply body-field overrides from resource-ref
+        // Replace body resource-ref FK fields with a VALID-FORMAT but
+        // non-existent placeholder instead of the @BodyResourceRefs
+        // valid-substitution override. Without this, status-reach:404 for
+        // an endpoint declaring @BodyResourceRefs gets a valid FK
+        // substituted and returns 201, not 404. We pick the sigil based
+        // on the field's declared format so validation pipes pass and
+        // the controller's "not found" branch is reached:
+        //   format=uuid  → ${uniqUuid}     (valid v4 UUID, random, never seeded)
+        //   format=email → ${uniqEmail}    (valid email, random local-part)
+        //   otherwise    → ${uniqString}   (random alphanumeric)
         if (refResult404.overrides && Object.keys(refResult404.overrides).length > 0) {
-          Object.assign(body404, refResult404.overrides);
+          const zodFieldsMap = (() => {
+            const out = {};
+            const fields = ep.zodContract.fields;
+            if (Array.isArray(fields)) {
+              for (const field of fields) if (field && field.name) out[field.name] = field;
+            } else if (fields && typeof fields === 'object') {
+              for (const [key, val] of Object.entries(fields)) out[key] = val;
+            }
+            return out;
+          })();
+          const transform = transformOverrides(refResult404.overrides, 'status-reach-404', {
+            zodFieldsMap,
+            resourceGraph: opts && opts.resourceGraph,
+            endpoint: ep,
+          });
+          for (const diag of transform.diagnostics || []) diagnostics.push(diag);
+          Object.assign(body404, transform.result);
         }
         apiStep404.body = body404;
       }
@@ -1792,6 +1850,32 @@ function emitCrudRoundtrips(endpoints, options = {}) {
       create.authDecorators && create.authDecorators.authRequired
     );
     const authBootstrapAvail = Boolean(options.authBootstrapAvailable);
+
+    const requiredParentRole = (create.swaggerDeclared && create.swaggerDeclared.extensions
+      && create.swaggerDeclared.extensions['x-requires-parent-role']) || null;
+    if (requiredParentRole && options.resourceGraph) {
+      const fkInfo = options.resourceGraph.fkLookup(requiredParentRole.parentField);
+      const grantPath = fkInfo ? options.resourceGraph.resolveGrantPath(fkInfo.parentModel) : null;
+      const declaredRole = (grantPath && grantPath.role) || null;
+      const acceptable = (requiredParentRole.acceptableRoles && requiredParentRole.acceptableRoles.length > 0)
+        ? requiredParentRole.acceptableRoles
+        : [requiredParentRole.minimumRole];
+      const matches = declaredRole && acceptable.includes(declaredRole);
+      if (!matches) {
+        (options.diagnostics || []).push({
+          code: 'CHAIN_AUTH_UNRESOLVABLE',
+          endpoint: `${create.method} ${create.path}`,
+          field: requiredParentRole.parentField,
+          parentModel: fkInfo ? fkInfo.parentModel : null,
+          requiredRole: requiredParentRole.minimumRole,
+          acceptableRoles: acceptable,
+          grantPathFound: grantPath,
+          file: create.file || '(controller file unknown)',
+          message: `${create.method} ${create.path} declares @x-requires-parent-role for "${requiredParentRole.parentField}" (minimum role: ${requiredParentRole.minimumRole}), but the parent model ${fkInfo ? fkInfo.parentModel : '?'}'s create endpoint does not declare @x-on-create-grant-role with a matching role. Add @ApiExtension('x-on-create-grant-role', { role: '${requiredParentRole.minimumRole}', toCaller: true }) to the parent's create endpoint, OR remove the role requirement from this endpoint. Chain emission skipped to avoid emitting a flow that 403s at runtime.`,
+        });
+        continue;
+      }
+    }
 
     const steps = [];
     const deps = [];
@@ -4512,11 +4596,23 @@ function resolveResourceRefDeps(ep, endpoints) {
 
       if (!parentEp) continue;
 
-      const chainId = `chain:resource-setup:${resourceLabel}`;
+      const isArray = ref.kind === 'array';
+      const count = isArray ? Math.max(1, Number(ref.count) || 2) : 1;
+      const chainId = isArray
+        ? `chain:resource-setup:${resourceLabel}:array:${count}`
+        : `chain:resource-setup:${resourceLabel}`;
       if (!result.deps.includes(chainId)) {
         result.deps.push(chainId);
       }
-      result.overrides[parentField] = `\${resource:${resourceLabel}:id}`;
+      if (isArray) {
+        const sigils = [];
+        for (let i = 0; i < count; i++) {
+          sigils.push(`\${resource:${resourceLabel}:id:${i}}`);
+        }
+        result.overrides[parentField] = sigils;
+      } else {
+        result.overrides[parentField] = `\${resource:${resourceLabel}:id}`;
+      }
     }
   }
 
@@ -4705,11 +4801,95 @@ function emitResourceSetupChains(endpoints, options) {
         }
       }
 
-      emitChain(`chain:resource-setup:${resourceLabel}`, parentEp, resourceLabel, captureFrom);
+      if (ref.kind === 'array') {
+        const count = Math.max(1, Number(ref.count) || 2);
+        emitArrayChain(
+          `chain:resource-setup:${resourceLabel}:array:${count}`,
+          parentEp,
+          resourceLabel,
+          captureFrom,
+          count,
+        );
+      } else {
+        emitChain(`chain:resource-setup:${resourceLabel}`, parentEp, resourceLabel, captureFrom);
+      }
     }
   }
 
   return flows;
+
+  function emitArrayChain(chainId, parentEp, resourceLabel, captureFrom, count) {
+    if (emittedChains.has(chainId)) return;
+    emittedChains.add(chainId);
+
+    const uniqueFieldSet = effectiveUniqueFieldSet(parentEp, opts.uniqueFieldSet);
+    const parentBody = parentEp.zodContract
+      ? buildSampleBody(parentEp.zodContract, uniqueFieldSet)
+      : null;
+
+    const steps = [];
+    const deps = [];
+
+    const parentNeedsAuth = Boolean(
+      parentEp.authDecorators && parentEp.authDecorators.authRequired,
+    );
+    if (parentNeedsAuth && opts.authBootstrapAvailable) {
+      steps.push({ kind: 'setAuth', binding: 'accessToken' });
+      deps.push('chain:auth-bootstrap');
+    }
+
+    const declaredStatuses = (parentEp.swaggerDeclared && parentEp.swaggerDeclared.statuses) || [];
+    const expectStatus = declaredStatuses.find((s) => s >= 200 && s < 300) || 201;
+
+    const _chainRefs = resolveResourceRefDeps(parentEp, endpoints);
+    if (_chainRefs.deps && _chainRefs.deps.length > 0) {
+      for (const dep of _chainRefs.deps) {
+        if (dep !== chainId && !deps.includes(dep)) deps.push(dep);
+      }
+    }
+
+    const setupEnvelope = opts.envelopeWrapper || null;
+    let envelopedCapture = captureFrom;
+    if (setupEnvelope && captureFrom.startsWith('$.')) {
+      const leaf = captureFrom.slice(2);
+      const prefix = Array.isArray(setupEnvelope) ? setupEnvelope.join('.') : setupEnvelope;
+      envelopedCapture = `$.${prefix}.${leaf}`;
+    }
+
+    for (let i = 0; i < count; i++) {
+      const createStep = { kind: 'api', method: 'POST', path: parentEp.path };
+      if (parentBody) createStep.body = { ...parentBody };
+      if (_chainRefs.pathSubstitutions && Object.keys(_chainRefs.pathSubstitutions).length > 0) {
+        for (const [param, sigil] of Object.entries(_chainRefs.pathSubstitutions)) {
+          createStep.path = createStep.path.replace(`:${param}`, sigil);
+        }
+      }
+      if (_chainRefs.overrides && Object.keys(_chainRefs.overrides).length > 0 && createStep.body) {
+        createStep.body = { ...createStep.body, ..._chainRefs.overrides };
+      }
+      steps.push(createStep);
+      steps.push({ kind: 'expect', status: expectStatus });
+      steps.push({
+        kind: 'capture',
+        bindings: { [`resource:${resourceLabel}:id:${i}`]: envelopedCapture },
+      });
+    }
+
+    flows.push({
+      id: chainId,
+      contract: {
+        endpoint: epKey(parentEp.method, parentEp.path),
+        kind: 'chain-resource-setup-array',
+        source: parentEp.file,
+      },
+      dependsOn: deps,
+      onFail: {
+        check: [parentEp.file],
+        implies: `Array resource setup for '${resourceLabel}' x${count} via ${parentEp.operationId || parentEp.path} failed.`,
+      },
+      steps,
+    });
+  }
 }
 
 function generate(matrix, logical, overlay) {
@@ -4722,6 +4902,64 @@ function generate(matrix, logical, overlay) {
   );
   const pages = (matrix.pages || []);
   const logicalRows = (logical && logical.rows) || [];
+
+  const resourceGraph = buildResourceGraph(matrix, diagnostics);
+
+  const fkColumnIndex = new Map();
+  for (const node of resourceGraph.resources.values()) {
+    for (const fk of node.fks) {
+      if (!fkColumnIndex.has(fk.column)) fkColumnIndex.set(fk.column, []);
+      fkColumnIndex.get(fk.column).push({ parentModel: fk.parent, fkType: resourceGraph.parentIdType(fk.parent) });
+    }
+  }
+
+  function findParentPostEndpoint(parentModelName) {
+    const parentNode = resourceGraph.findResourceByModel(parentModelName);
+    return parentNode ? parentNode.createEndpoint : null;
+  }
+
+  for (const ep of endpoints) {
+    if (!ep.zodContract || !ep.zodContract.fields) continue;
+    if (!['POST', 'PUT', 'PATCH'].includes(ep.method)) continue;
+    const declaredRefsRaw = (ep.swaggerDeclared && ep.swaggerDeclared.extensions
+      && ep.swaggerDeclared.extensions['x-probe-resource-ref']) || [];
+    const declaredRefList = Array.isArray(declaredRefsRaw) ? declaredRefsRaw : [declaredRefsRaw];
+    const declaredRefFields = new Set(
+      declaredRefList.map((ref) => ref && ref.parentField).filter(Boolean),
+    );
+    const fieldNames = Array.isArray(ep.zodContract.fields)
+      ? ep.zodContract.fields.map((field) => field && field.name).filter(Boolean)
+      : Object.keys(ep.zodContract.fields);
+    for (const fieldName of fieldNames) {
+      if (declaredRefFields.has(fieldName)) continue;
+      const fkInfos = fkColumnIndex.get(fieldName);
+      if (!fkInfos || fkInfos.length === 0) continue;
+      const fkInfo = fkInfos[0];
+      const parentEp = findParentPostEndpoint(fkInfo.parentModel);
+      if (!parentEp) {
+        diagnostics.push({
+          code: 'MISSING_BODY_RESOURCE_REF_PARENT_UNRESOLVED',
+          endpoint: `${ep.method} ${ep.path}`,
+          field: fieldName,
+          parentModel: fkInfo.parentModel,
+          parentFkType: fkInfo.fkType,
+          file: ep.file || '(controller file unknown)',
+          message: `Field "${fieldName}" in ${ep.method} ${ep.path} is a Prisma FK to model "${fkInfo.parentModel}", but no POST endpoint declares @ResourceCaptures({ resource: '${fkInfo.parentModel.charAt(0).toLowerCase() + fkInfo.parentModel.slice(1)}', ... }) — cannot locate the parent's create endpoint. Either add @ResourceCaptures to the parent's POST endpoint or declare @BodyResourceRefs([{ parentField: '${fieldName}', resource: '/<path-to-parent>' }]) on this endpoint.`,
+        });
+        continue;
+      }
+      diagnostics.push({
+        code: 'MISSING_BODY_RESOURCE_REF',
+        endpoint: `${ep.method} ${ep.path}`,
+        field: fieldName,
+        parentModel: fkInfo.parentModel,
+        parentFkType: fkInfo.fkType,
+        resourcePath: parentEp.path,
+        file: ep.file || '(controller file unknown)',
+        message: `Field "${fieldName}" in ${ep.method} ${ep.path} is a Prisma FK to ${fkInfo.parentModel} (created at ${parentEp.method} ${parentEp.path}). Endpoint does not declare @BodyResourceRefs — generator substitutes random junk → 404 cascade in auto-gen chain flows.`,
+      });
+    }
+  }
 
   // Prisma-declared uniques → sigil substitution set. Consumed by every
   // emitter that calls buildSampleBody so unique fields (e.g. User.email)
@@ -4851,7 +5089,7 @@ function generate(matrix, logical, overlay) {
     }
   }
 
-  const emitOpts = { uniqueFieldSet, authBootstrapAvailable, envelopeWrapper, errorEnvelopeWrapper, authFlows: authFlowsDetected, securitySchemes, securityCoveredPaths, cookieFlows: matrix.cookieFlows || [], diagnostics, overlay, pageRoles, endpoints };
+  const emitOpts = { uniqueFieldSet, authBootstrapAvailable, envelopeWrapper, errorEnvelopeWrapper, authFlows: authFlowsDetected, securitySchemes, securityCoveredPaths, cookieFlows: matrix.cookieFlows || [], diagnostics, overlay, pageRoles, endpoints, prismaModels: (matrix && matrix.prismaModels && matrix.prismaModels.models) || {}, resourceGraph };
 
   // --- Per-endpoint flows (rules 1-5) ---
   for (const ep of endpoints) {

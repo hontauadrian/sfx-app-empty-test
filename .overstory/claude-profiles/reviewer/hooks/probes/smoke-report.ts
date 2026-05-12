@@ -74,6 +74,23 @@ export interface SmokeReport {
    */
   bootstrapDiagnostics?: ReadonlyArray<{ code: string; message: string } & Record<string, unknown>>;
   /**
+   * Contract-flows loader/schema errors detected before any case runs
+   * (FLOW_FILE_MISSING_OWNS_OR_EXTENDS, FLOW_MERGE_CONFLICT, FLOW_DUPLICATE_ID,
+   * FLOW_TASK_ID_MISMATCH, FLOW_COVERAGE_TEMPLATE_UNKNOWN, etc). Each entry is
+   * a TypedError from `contract-flows/errors.ts` — JSON-shaped so external
+   * tooling (e.g. probe-run-with-ownership-check.sh) can dispatch
+   * remediation mail by `code` without stdout regex.
+   */
+  loaderDiagnostics?: ReadonlyArray<{ code: string; message: string } & Record<string, unknown>>;
+  /**
+   * Diagnostics emitted by flows-generator.js when it generates the auto
+   * battery — MISSING_BODY_RESOURCE_REF, CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE,
+   * and similar codes that indicate the controller is missing an
+   * x-probe-* extension the generator needs to produce a valid flow.
+   * Same shape as loaderDiagnostics so the wrapper handles both uniformly.
+   */
+  generatorDiagnostics?: ReadonlyArray<{ code: string; message: string } & Record<string, unknown>>;
+  /**
    * Last lines of stack stderr captured by the boot orchestrator when boot
    * fails. Surfaced verbatim in formatSummary so an agent that pipes the
    * probe output to `tail -N` sees the actual TypeError / crash, not just

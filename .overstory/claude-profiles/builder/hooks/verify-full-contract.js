@@ -255,21 +255,29 @@ function buildActionableHints(combined) {
 }
 
 /**
- * Invoke the TS probe runner. Extracted so we can retry once after an
- * auto-regen of the matrix without duplicating spawn boilerplate.
+ * Invoke the probe chain through the canonical `pnpm probe:smoke` script.
+ * That script chains `bash scripts/probe-bootstrap.sh` (db:reset:fast +
+ * stack health) → `pnpm openapi:check` → the full probe chain entrypoint
+ * (.overstory/claude-profiles/<profile>/hooks/probes/index.ts), so this
+ * hook stays the single source of truth with the May 9 stop-hook fix.
+ *
+ * `entryPath` is retained in the signature for callsite compatibility but
+ * is no longer used — index.ts location lives in package.json now.
  */
-function runProbeChain(entryPath, env) {
-  return spawnSync(
-    'node',
-    ['-r', '@swc-node/register', '-r', 'reflect-metadata', entryPath],
-    {
-      cwd: PROJECT_ROOT,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env,
-      timeout: 120_000, // 2 minutes — probes should be much faster in practice
-      encoding: 'utf8',
-    },
-  );
+function runProbeChain(_entryPath, _env) {
+  // Inherit caller env (process.env). Do NOT layer .env.example values —
+  // those declare DATABASE_URL=localhost:5432 which collides with the real
+  // per-worktree URL (host.docker.internal:<dynamic-port>) that
+  // packages/database/.env holds. The bootstrap script + pnpm scripts that
+  // probe:smoke chains all read packages/database/.env themselves and
+  // resolve the correct URL.
+  return spawnSync('pnpm', ['probe:smoke'], {
+    cwd: PROJECT_ROOT,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: process.env,
+    timeout: 300_000, // 5 minutes — bootstrap + reset + full chain
+    encoding: 'utf8',
+  });
 }
 
 /**
@@ -415,6 +423,7 @@ function main() {
     ...buildProbeEnv(),
     ...(existsSync(apiTsConfig) ? { TS_NODE_PROJECT: apiTsConfig } : {}),
   };
+
   let result = runProbeChain(entryPath, env);
   let stdout = result.stdout ?? '';
   let stderr = result.stderr ?? '';

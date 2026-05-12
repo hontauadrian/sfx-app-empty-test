@@ -23,7 +23,8 @@
  *         idField: 'id',
  *         uniqueFields: ['email'],
  *         compositeUniques: [],   // array of arrays, e.g. [['orgId', 'slug']]
- *         fieldTypes: { email: 'String', id: 'String', ... }
+ *         fieldTypes: { email: 'String', id: 'String', ... },
+ *         relations: [{ relationField, parentModel, fkFields, referencedFields }]
  *       },
  *       ...
  *     },
@@ -111,12 +112,12 @@ function parseModelBody(body) {
   const uniqueFields = [];
   const compositeUniques = [];
   const fieldTypes = {};
+  const relations = [];
 
   for (const rawLine of body.split('\n')) {
     const line = rawLine.trim();
     if (!line) continue;
 
-    // Model-level attribute: @@unique([a, b])
     const compositeMatch = line.match(/^@@unique\s*\(\s*\[([^\]]+)\]/);
     if (compositeMatch) {
       const fields = compositeMatch[1]
@@ -127,12 +128,8 @@ function parseModelBody(body) {
       continue;
     }
 
-    // Skip other model-level attributes.
     if (line.startsWith('@@')) continue;
 
-    // Field line. `<name> <Type>[?|[]] @attr1 @attr2(...)`.
-    // The field name is the first token; the type is the second (minus
-    // trailing `?` or `[]`).
     const fieldMatch = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)(\??|\[\])?(.*)$/);
     if (!fieldMatch) continue;
     const [, fieldName, fieldType, , attrs] = fieldMatch;
@@ -140,6 +137,23 @@ function parseModelBody(body) {
 
     if (/\B@id\b/.test(attrs)) idFields.push(fieldName);
     if (/\B@unique\b/.test(attrs)) uniqueFields.push(fieldName);
+
+    const relMatch = attrs.match(/@relation\s*\(([^)]*)\)/);
+    if (relMatch) {
+      const inner = relMatch[1];
+      const fkMatch = inner.match(/fields\s*:\s*\[([^\]]+)\]/);
+      const refMatch = inner.match(/references\s*:\s*\[([^\]]+)\]/);
+      if (fkMatch && refMatch) {
+        const fkCols = fkMatch[1].split(',').map((s) => s.trim()).filter(Boolean);
+        const refCols = refMatch[1].split(',').map((s) => s.trim()).filter(Boolean);
+        relations.push({
+          relationField: fieldName,
+          parentModel: fieldType,
+          fkFields: fkCols,
+          referencedFields: refCols,
+        });
+      }
+    }
   }
 
   return {
@@ -147,6 +161,7 @@ function parseModelBody(body) {
     uniqueFields,
     compositeUniques,
     fieldTypes,
+    relations,
   };
 }
 

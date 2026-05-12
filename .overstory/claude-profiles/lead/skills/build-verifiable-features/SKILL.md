@@ -312,10 +312,12 @@ explicitly removed in commit 8a652f2; declarations are the only signal.
 
 | Field          | What it is                                                                                                  | Example                                  |
 |----------------|-------------------------------------------------------------------------------------------------------------|------------------------------------------|
-| `parentField`  | Body field name                                                                                             | `'email'`, `'ownerId'`, `'projectSlug'`  |
+| `parentField`  | Body field name                                                                                             | `'email'`, `'ownerId'`, `'projectSlug'`, `'<arrayFkField>'` |
 | `parentCreate` | `{ operationId }` of the creator endpoint                                                                   | `{ operationId: 'register' }`            |
 | `resource`     | Alternative to `parentCreate`: path of the creator POST                                                     | `'/api/v1/auth/register'`                |
 | `captureFrom`  | JSONPath into creator's success response body (envelope-aware). Defaults to creator's `@ResourceCaptures`.  | `'$.email'`, `'$.data.user.id'`          |
+| `kind`         | Field shape. `'scalar'` (default) substitutes a single captured id. `'array'` pre-creates `count` parents and substitutes an array of ids. | `'scalar'`, `'array'` |
+| `count`        | For `kind: 'array'`: number of parents to pre-create. Default `2`.                                          | `2`, `3`                                 |
 
 ```ts
 import { BodyResourceRefs } from '@/common/decorators/body-resource-refs.decorator';
@@ -339,6 +341,26 @@ inviteMember(...) { ... }
 createProject(...) { ... }
 ```
 
+#### Array-of-FK body fields — `kind: 'array'`
+
+Bulk endpoints whose body field is an **array of foreign-key ids** (`<arrayFkField>: string[]`) need the array shape. The probe pre-creates `count` parents and substitutes the body field with an array of captured ids — `[${resource:<label>:id:0}, ${resource:<label>:id:1}]`. Cascading parent chains are handled transparently (e.g. each created child first chains through its own `@BodyResourceRefs` dependencies).
+
+```ts
+// Bulk endpoint: body field is an array of FK ids referring to EXISTING records.
+@Post('<sub-path>')
+@BodyResourceRefs({
+  parentField: '<arrayFkField>',
+  resource: '/<api-prefix>/<parent-path>',
+  kind: 'array',
+  count: 2,
+})
+<handler>(...) { ... }
+```
+
+The generator emits `chain:resource-setup:<label>:array:<count>` (distinct from the scalar `chain:resource-setup:<label>`), so a single resource can be referenced both as scalar and as array across the API without colliding.
+
+**Never modify the handler to silence the probe.** If the bulk handler validates id existence (404 on first missing) or auth (403 on non-member), keep that behavior — the decorator's job is to teach the probe to send real ids, not to soften the handler. Patching the handler to accept bogus ids weakens auth and is a conduct failure (see CLAUDE.md § "No gate-gaming").
+
 #### Failure mode without it
 
 `pnpm probe:smoke` reports the consumer endpoint failing with `4xx X not found` — the probe sent body containing `${uniqEmail}` / `${uniqString}` etc., the value resolves to a fresh random per-flow seed, the referenced record does not exist. **Do not debug your handler** — it is correct per its contract. The gap is the missing declaration. Add `@BodyResourceRefs` to teach the probe to seed the foreign record first.
@@ -357,6 +379,59 @@ A `chain:resource-setup:*` creates a stateful record (membership, post, comment,
 Implication: do NOT debug a `404 X not found` on the second mutator (e.g. PATCH:happy after DELETE:happy passed). The chain will fan out automatically next regen. If your handler is correct, the issue is upstream.
 
 If an endpoint with a mutating verb is actually idempotent (PUT upsert, POST query) and should keep sharing chain state, declare `@ApiExtension('x-idempotent', true)` (extension hook reserved for this — currently treated as a passive marker).
+
+---
+
+### Example 5: `@ApiExtension('x-requires-parent-role', ...)` + `@ApiExtension('x-on-create-grant-role', ...)` — chain auth threading
+
+`@BodyResourceRefs` makes the probe pre-create the referenced parent record. That works when the parent's create endpoint is open to any authenticated user. It fails when the **child** endpoint additionally requires the caller to hold a role on the parent — e.g. child create has `await this.requireRole(body.<parentFkField>, userId, '<minimumRole>')`. The chain emitter would otherwise emit `register user A → user A creates parent → user A creates child` and 403 at runtime because the role check looks at a membership row the chain hasn't asserted exists.
+
+**Two declarations make this deterministic. Both required.**
+
+| Decorator | Where | Semantic |
+|---|---|---|
+| `@ApiExtension('x-on-create-grant-role', { role: '<role>', toCaller: true })` | The **parent's** create endpoint | The user calling this POST automatically becomes `<role>` on the new resource. Encode in code via the create handler also writing the membership/ownership row. |
+| `@ApiExtension('x-requires-parent-role', { parentField: '<fkField>', minimumRole: '<role>', acceptableRoles: ['<roleA>', '<roleB>'] })` | The **child's** create endpoint | The caller must hold one of `acceptableRoles` on the resource referenced by the body's `<fkField>`. |
+
+```ts
+// Parent: the resource whose creation grants its creator a role.
+@Post()
+@ResourceCaptures({ fromPath: '<idField>', resource: '<parent-resource>', pathParam: '<idField>' })
+@ApiExtension('x-on-create-grant-role', { role: '<role>', toCaller: true })
+async create<Parent>(...) {
+  const created = await this.repo.create({ ..., ownerId: caller.sub });
+  await this.repo.addMember(created.id, caller.sub, '<role>');
+  return this.toDto(created);
+}
+
+// Child: the resource whose creation requires the caller already hold a role
+// on the parent named in body.<fkField>.
+@Post()
+@ResourceCaptures({ fromPath: '<idField>', resource: '<child-resource>', pathParam: '<idField>' })
+@BodyResourceRefs([{ parentField: '<fkField>', resource: '/api/v1/<parent-path>' }])
+@ApiExtension('x-requires-parent-role', {
+  parentField: '<fkField>',
+  minimumRole: '<role>',
+  acceptableRoles: ['<role>', '<higherRole>'],
+})
+async create<Child>(...) {
+  await this.requireRole(body.<fkField>, caller.sub, '<role>');
+}
+```
+
+#### Failure mode without it
+
+`chain:crud-roundtrip` emits a flow using the same auth-bootstrap token for both create steps. If the parent's create doesn't grant the required role (declaration absent OR runtime grant logic missing), the child step returns 403 at runtime. The chain looks correct on paper but always fails.
+
+With both declarations present, the chain emitter validates the granted role covers the requirement. If it does, the flow emits with auto-threaded auth. If grant is declared but doesn't cover requirement (parent grants role X but child requires role Y where Y is not in `acceptableRoles`), the emitter emits `CHAIN_AUTH_UNRESOLVABLE` and **does NOT emit the chain flow** — better to surface the missing declaration than ship a 403-failing flow.
+
+#### When NOT to declare
+
+Endpoints that only require generic authentication (no role check on a parent) don't need either decorator. Skip both. The emitter falls back to the standard chain.
+
+#### Symmetry note
+
+The two decorators are independent. A resource may grant a role on creation without any child consumer requiring it (declare the grant for future use). A child may require a role on a parent without that parent declaring a grant (the chain will emit `CHAIN_AUTH_UNRESOLVABLE` until the parent's grant is declared OR the child's requirement is removed). The pairing is enforced by the generator at flow-emit time, not by NestJS — your runtime guards still must enforce the same rule independently.
 
 ---
 

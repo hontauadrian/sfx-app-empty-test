@@ -4,7 +4,7 @@ import { ApiExtension } from '@nestjs/swagger';
 export const BODY_RESOURCE_REFS_KEY = 'sfx:body-resource-refs';
 
 export interface BodyResourceRef {
-  /** Body field that references an existing foreign resource. Examples: 'email', 'ownerId', 'projectSlug'. */
+  /** Body field that references an existing foreign resource. Examples: 'email', 'ownerId', 'projectSlug', 'taskIds'. */
   parentField: string;
   /** Creator endpoint discovered via NestJS operationId. Mutually exclusive with `resource`. */
   parentCreate?: { operationId: string };
@@ -12,6 +12,10 @@ export interface BodyResourceRef {
   resource?: string;
   /** JSONPath into creator's success response (envelope-applied automatically). Example: '$.email', '$.data.user.id'. Defaults to `@ResourceCaptures` declaration on the creator if omitted. */
   captureFrom?: string;
+  /** Field shape. 'scalar' (default) substitutes a single captured id. 'array' pre-creates `count` parents and substitutes an array of ids — used by bulk endpoints whose body field is an array of FKs (e.g. `taskIds: string[]`). */
+  kind?: 'scalar' | 'array';
+  /** For `kind: 'array'`: number of parents to pre-create. Default 2. */
+  count?: number;
 }
 
 /**

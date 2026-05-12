@@ -766,6 +766,16 @@ async function runRebuild(triggers) {
       `rebuild failed in ${failedPhase}: ${tailString(stderrCombined.trim(), 400)}`,
     );
   }
+  if (rebuildCtx.composeProject === "app-dev-host") {
+    notifyCoordinatorOfRebuild({
+      success,
+      failedPhase,
+      triggers,
+      durationMs,
+      stdoutTail: tailString(stdoutCombined.trim(), 1500),
+      stderrTail: tailString(stderrCombined.trim(), 1500),
+    });
+  }
   rebuildCtx.inFlight = false;
   if (rebuildCtx.queued) {
     rebuildCtx.queued = false;
@@ -1042,12 +1052,120 @@ function handleStdinCommand(line) {
   }
 }
 
+function notifyCoordinatorOfRebuild({ success, failedPhase, triggers, durationMs, stdoutTail, stderrTail }) {
+  // Send mail to coordinator with rebuild status. Failures get the full
+  // tail so the lead doesn't have to dig through logs. ov mail send is
+  // CLI-only — no library import needed. Best-effort: any failure to
+  // notify is logged but doesn't fail the rebuild itself.
+  const triggerStr = Array.isArray(triggers) ? triggers.join(", ") : String(triggers);
+  const subject = success
+    ? `canonical rebuild OK: ${triggerStr}`
+    : `canonical rebuild FAILED in ${failedPhase}: ${triggerStr}`;
+  const body =
+    `Trigger: ${triggerStr}\n` +
+    `Result: ${success ? "OK" : `FAILED (phase=${failedPhase})`}\n` +
+    `Duration: ${durationMs}ms\n` +
+    `---\n` +
+    `stderr tail:\n${stderrTail || "(empty)"}\n` +
+    `---\n` +
+    `stdout tail:\n${stdoutTail || "(empty)"}\n`;
+  const args = [
+    "mail",
+    "send",
+    "--to",
+    "coordinator",
+    "--subject",
+    subject,
+    "--body",
+    body,
+  ];
+  if (!success) args.splice(2, 0, "--priority", "high", "--type", "error");
+  const child = spawn("ov", args, {
+    cwd: workspaceRoot,
+    env: { ...process.env, OVERSTORY_AGENT_NAME: "system" },
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  let errBuf = "";
+  child.stderr?.on("data", (chunk) => {
+    errBuf += chunk.toString();
+  });
+  child.on("error", (err) => {
+    emitLog("warn", `coordinator notify failed to spawn: ${err.message}`);
+  });
+  child.on("close", (code) => {
+    if (code !== 0) {
+      emitLog("warn", `coordinator notify exit=${code} stderr=${tailString(errBuf, 200)}`);
+    }
+  });
+}
+
+function startCanonicalHeadWatcher(manifest) {
+  // Auto-rebuild when canonical's HEAD advances. Catches every merge path
+  // (ov merge, raw git merge, panel UI merge, manual push) — no agent has
+  // to remember to fire rebuild.trigger. Worker stacks skip this watcher
+  // (they rebuild on their own lockfile/source events).
+  if (!rebuildCtx) return false;
+  if (rebuildCtx.composeProject !== "app-dev-host") return false;
+
+  const branch =
+    (manifest.canonicalRebuild && typeof manifest.canonicalRebuild.branch === "string"
+      ? manifest.canonicalRebuild.branch
+      : null) ||
+    (manifest.project && typeof manifest.project.canonicalBranch === "string"
+      ? manifest.project.canonicalBranch
+      : null) ||
+    "master";
+
+  const refPath = join(workspaceRoot, ".git", "refs", "heads", branch);
+  const headPath = join(workspaceRoot, ".git", "HEAD");
+
+  function readSha() {
+    try {
+      const head = readFileSync(headPath, "utf8").trim();
+      if (head.startsWith("ref: ")) {
+        const targetRef = head.slice(5);
+        const targetPath = join(workspaceRoot, ".git", targetRef);
+        if (existsSync(targetPath)) {
+          return readFileSync(targetPath, "utf8").trim();
+        }
+        return null;
+      }
+      return head;
+    } catch {
+      return null;
+    }
+  }
+
+  let lastSha = readSha();
+  emitLog(
+    "info",
+    `canonical head watcher: ${branch} (sha=${lastSha ? lastSha.slice(0, 8) : "unknown"}) -> rebuild on advance`,
+  );
+
+  const POLL_MS = 1000;
+  const timer = setInterval(() => {
+    const sha = readSha();
+    if (!sha) return;
+    if (sha === lastSha) return;
+    const prev = lastSha;
+    lastSha = sha;
+    emitLog(
+      "info",
+      `canonical ${branch} advanced ${prev ? prev.slice(0, 8) : "none"} -> ${sha.slice(0, 8)} - queueing rebuild`,
+    );
+    queueRebuildTrigger(`git:${branch}:${sha.slice(0, 8)}`);
+  }, POLL_MS);
+  timer.unref?.();
+  return true;
+}
+
 function main() {
   const manifest = loadManifest();
   const capabilities = [];
   if (startMigrationWatcher(manifest)) capabilities.push("migrations");
   if (startEnvRequestWatcher(manifest)) capabilities.push("env_requests");
   if (startRebuildWatcher(manifest)) capabilities.push("rebuild");
+  if (startCanonicalHeadWatcher(manifest)) capabilities.push("canonical_head");
   if (startEnvFileWatcher(manifest)) capabilities.push("env_files");
   emit({ type: "bridge.ready", capabilities });
   const modeLabel = workerWorkspace

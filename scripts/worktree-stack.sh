@@ -109,6 +109,35 @@ compute_ports() {
 
 # ── Status helpers ─────────────────────────────────────────────────
 
+# Query a service's state in a compose project. Prints: up | starting | stale | down
+# Reads compose's own State/Health fields — declarative truth, not a probe.
+# Args: $1 = compose project name, $2 = service name (postgres|api|web)
+docker_compose_service_state() {
+  local project=$1
+  local service=$2
+  local row
+  row=$(docker compose -p "$project" ps "$service" --all --format json 2>/dev/null | head -n 1)
+  if [ -z "$row" ]; then
+    echo "down"
+    return
+  fi
+  local state health
+  state=$(echo "$row" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{console.log(JSON.parse(d).State||'')}catch{console.log('')}})" 2>/dev/null)
+  health=$(echo "$row" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{console.log(JSON.parse(d).Health||'')}catch{console.log('')}})" 2>/dev/null)
+  case "$state" in
+    running)
+      case "$health" in
+        unhealthy)   echo "stale" ;;
+        starting)    echo "starting" ;;
+        *)           echo "up" ;;
+      esac
+      ;;
+    restarting|created|paused) echo "starting" ;;
+    exited|dead|removing)      echo "stale" ;;
+    *)                         echo "down" ;;
+  esac
+}
+
 # Probe a component. Prints one of: up | down | stale
 # Args: $1 = component name (pg|api|web|turbo_watch), $2 = port (for pg/api/web)
 component_status() {
@@ -1093,15 +1122,30 @@ cmd_status() {
   local pg_port="" api_port="" web_port=""
   local pg_state="down" api_state="down" web_state="down"
   local has_stack=false
+  local compose_project=""
 
   if [ -f "$STACK_FILE" ]; then
     has_stack=true
     pg_port=$(node -e "console.log(require('$STACK_FILE').pg_port || '')" 2>/dev/null)
     api_port=$(node -e "console.log(require('$STACK_FILE').api_port || '')" 2>/dev/null)
     web_port=$(node -e "console.log(require('$STACK_FILE').web_port || '')" 2>/dev/null)
-    [ -n "$pg_port" ]  && pg_state=$(component_status pg  "$pg_port")
-    [ -n "$api_port" ] && api_state=$(component_status api "$api_port")
-    [ -n "$web_port" ] && web_state=$(component_status web "$web_port")
+    compose_project=$(node -e "console.log(require('$STACK_FILE').compose_project || '')" 2>/dev/null)
+
+    # When the stack runs under docker compose (declared in .stack.json via
+    # stack-up-docker.sh), the legacy host-process probes (pg_isready / curl
+    # localhost / lsof) are wrong: the panel container's `localhost` is the
+    # container's own loopback, not the docker host where published ports
+    # bind. Truth lives in the compose project. Query it directly. Pure
+    # declarative path — no string-pattern inference, no ENV guessing.
+    if [ -n "$compose_project" ] && command -v docker >/dev/null 2>&1; then
+      pg_state=$(docker_compose_service_state  "$compose_project" postgres)
+      api_state=$(docker_compose_service_state "$compose_project" api)
+      web_state=$(docker_compose_service_state "$compose_project" web)
+    else
+      [ -n "$pg_port" ]  && pg_state=$(component_status pg  "$pg_port")
+      [ -n "$api_port" ] && api_state=$(component_status api "$api_port")
+      [ -n "$web_port" ] && web_state=$(component_status web "$web_port")
+    fi
   fi
   local watch_state
   watch_state=$(component_status turbo_watch)

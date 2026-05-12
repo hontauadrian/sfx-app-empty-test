@@ -657,11 +657,23 @@ const STACK_FILE = path.join(PROJECT_DIR, '.stack.json');
 function loadStackInfo() {
   try {
     const raw = JSON.parse(fs.readFileSync(STACK_FILE, 'utf8'));
+    // host: where the docker host is reachable from the panel/agent container.
+    // stack-up-docker.sh records 'host.docker.internal' on the docker-out-of-
+    // docker path so the Playwright MCP (running inside the panel container)
+    // can navigate to the worktree's published web port. The agent does NOT
+    // have to derive this — it's declarative in .stack.json.
+    const host = typeof raw.host === 'string' && raw.host ? raw.host : 'localhost';
+    const webPort = typeof raw.web_port === 'number' ? raw.web_port : null;
+    const apiPort = typeof raw.api_port === 'number' ? raw.api_port : null;
     return {
-      apiPort: typeof raw.api_port === 'number' ? raw.api_port : null,
+      host,
+      apiPort,
+      webPort,
+      webBaseUrl: webPort ? `http://${host}:${webPort}` : null,
+      apiBaseUrl: apiPort ? `http://${host}:${apiPort}` : null,
     };
   } catch {
-    return { apiPort: null };
+    return { host: 'localhost', apiPort: null, webPort: null, webBaseUrl: null, apiBaseUrl: null };
   }
 }
 
@@ -1115,9 +1127,29 @@ function renderBlock(block) {
 }
 
 const body = blocks.map(renderBlock).join('\n\n');
-const matrixRouteList = changedPages.map((page) => `  ${page.route}`).join('\n') || '  (none)';
+const matrixRouteList = changedPages
+  .map((page) => {
+    if (STACK_INFO.webBaseUrl) {
+      return `  ${page.route}    →  navigate to: ${STACK_INFO.webBaseUrl}${page.route}`;
+    }
+    return `  ${page.route}`;
+  })
+  .join('\n') || '  (none)';
+
+const baseUrlBanner = STACK_INFO.webBaseUrl
+  ? `LIVE WEB BASE URL (Playwright MCP runs inside the panel container — use this,
+not http://localhost:<port>, which resolves to the panel container's loopback):
+  WEB:  ${STACK_INFO.webBaseUrl}${STACK_INFO.apiBaseUrl ? `
+  API:  ${STACK_INFO.apiBaseUrl}` : ''}
+
+Derived from .stack.json fields { host, web_port, api_port } written by
+stack-up-docker.sh. Read .stack.json directly if you need a different field.
+`
+  : '.stack.json is missing or unreadable. Run: bash scripts/stack-up.sh first.';
 
 const reason = `E2E VERIFICATION REQUIRED — PRODUCT QUALITY GATE
+
+${baseUrlBanner}
 
 You changed UI files this session. Before ending the turn, YOU (this same
 agent — do NOT spawn a sub-agent) must verify each affected route in the

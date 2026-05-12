@@ -34,6 +34,14 @@ worktrees:
   preTeardown:
     command: pnpm stack:down
     timeoutMs: 90000
+    # Deterministic fallback when `command` is missing, exits non-zero, or
+    # times out. ov stop runs this with the same env (incl
+    # OVERSTORY_WORKTREE_BASENAME) and cwd. The per-worktree compose project
+    # is `app-<basename>` per scripts/stack-up-docker.sh, so we can
+    # reproduce it without poking at .env. Remove this field if the project
+    # doesn't use docker.
+    fallbackCommand: docker compose -p app-${OVERSTORY_WORKTREE_BASENAME} down -v
+    fallbackTimeoutMs: 60000
 taskTracker:
   backend: auto
   enabled: true

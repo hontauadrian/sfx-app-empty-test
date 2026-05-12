@@ -101,7 +101,16 @@ fi
 
 if has_script db:reset:fast; then
   step "6/6 reset db data (truncate + seed)"
-  pnpm --silent db:reset:fast >/dev/null 2>&1 || fail "db:reset:fast failed — run 'pnpm db:reset:fast' directly to see error"
+  # db-reset-fast.sh runs its own smart wait on pg_stat_activity (waits for
+  # api prisma connections to reach 'idle' before TRUNCATE), so the
+  # bootstrap doesn't need a magic sleep here. We do still capture stderr
+  # so the real reason surfaces on failure instead of an opaque FATAL.
+  reset_output="$(pnpm --silent db:reset:fast 2>&1)"
+  reset_exit=$?
+  if [ "$reset_exit" -ne 0 ]; then
+    printf '%s\n' "$reset_output" >&2
+    fail "db:reset:fast failed (exit=$reset_exit) — see output above"
+  fi
 fi
 
 step "ready — probe can now run"
