@@ -12,6 +12,60 @@ has_script() {
   node -e "const p=require('./package.json'); process.exit(p.scripts&&p.scripts['$1']?0:1)" 2>/dev/null
 }
 
+hydrate_stack_runtime_env() {
+  [ -f ".stack.json" ] || return 0
+
+  local runtime_env_file
+  runtime_env_file="$(mktemp)"
+  node > "$runtime_env_file" <<'NODE'
+const fs = require('node:fs');
+
+function shellQuote(value) {
+  return "'" + String(value).replace(/'/g, "'\\''") + "'";
+}
+
+function normalizeRealmName(rawName) {
+  return String(rawName || 'sfx-webapp-boilerplate')
+    .replace(/^@[^/]+\//, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'sfx-webapp-boilerplate';
+}
+
+const stack = JSON.parse(fs.readFileSync('.stack.json', 'utf8'));
+const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const realmName = normalizeRealmName(packageJson.name);
+const stackHost = typeof stack.host === 'string' && stack.host.length > 0
+  ? stack.host
+  : 'host.docker.internal';
+const keycloakPort = stack.keycloak_port;
+const proxyPort = stack.proxy_port;
+
+const values = {
+  OAUTH_ISSUER_URL: stack.oauth_issuer_url || (keycloakPort
+    ? 'http://' + stackHost + ':' + keycloakPort + '/realms/' + realmName
+    : undefined),
+  OAUTH_JWKS_URL: stack.oauth_jwks_url || (keycloakPort
+    ? 'http://' + stackHost + ':' + keycloakPort + '/realms/' + realmName + '/protocol/openid-connect/certs'
+    : undefined),
+  OAUTH_API_CLIENT_ID: realmName + '-dev-api',
+  OAUTH_AUDIENCE: realmName + '-dev-api',
+  OAUTH2_PROXY_CLIENT_ID: realmName + '-dev-proxy',
+  OAUTH2_PROXY_CLIENT_SECRET: process.env.OAUTH2_PROXY_CLIENT_SECRET || 'dev-generated-app-proxy-secret',
+  OAUTH2_PROXY_REDIRECT_URL: stack.oauth2_proxy_redirect_url || (proxyPort
+    ? 'http://app.localtest.me:' + proxyPort + '/oauth2/callback'
+    : undefined),
+};
+
+for (const [key, value] of Object.entries(values)) {
+  if (value) console.log('export ' + key + '=' + shellQuote(value));
+}
+NODE
+  # shellcheck disable=SC1090
+  . "$runtime_env_file"
+  rm -f "$runtime_env_file"
+}
+
 step "1/6 ensure stack is up"
 
 declare -A env_targets=()
@@ -66,6 +120,8 @@ fi
 if has_script stack:up; then
   pnpm --silent stack:up >/dev/null || fail "stack:up failed — run 'pnpm stack:up' directly to see error"
 fi
+
+hydrate_stack_runtime_env
 
 if has_script db:migrate:deploy; then
   step "2/6 apply pending migrations"
