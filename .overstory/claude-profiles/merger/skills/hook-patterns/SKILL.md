@@ -1,6 +1,6 @@
 ---
 name: hook-patterns
-description: Hook composition patterns including shared base hooks, useCallback wrapping, navigation handler pattern, and UIModel mapper. Use when creating hooks, composing shared logic, or implementing navigation in any project variant.
+description: Use when creating custom React hooks, composing shared logic, or implementing navigation. Covers useCallback wrapping, navigation handler pattern, shared base hooks, and UIModel mapper pattern.
 ---
 
 # Hook Patterns

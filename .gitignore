@@ -102,6 +102,7 @@ packages/database/prisma/*.db-journal
 .claude/hook-reports/no-hook-author-*.md
 .claude/hook-reports/no-node-modules-write-*.md
 .claude/hook-reports/bash-allowlist-*.md
+.claude/hook-reports/qa-test-*.md
 
 # git worktrees (project-local isolated workspaces)
 .worktrees/

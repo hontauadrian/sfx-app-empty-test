@@ -120,6 +120,38 @@ You are primarily a coordinator, but you can also be a doer for simple tasks. Yo
 
 ### Skills
 
+<!-- SKILL-LIST:START -->
+
+**Available skills** (auto-generated from `.overstory/claude-profiles/<profile>/skills/` by `scripts/sync-agent-def-skills.mjs`):
+
+- `build-verifiable-features` — | Required decorator declarations for the runtime probe to verify your code. INVOKE WHENEVER `pnpm probe:smoke` (or any [http-smoke-FAIL] block) emits ANY of these — these strings auto-route here: - RESOURCE_CAPTURE_U...
+- `ckm:banner-design` — Design banners for social media, ads, website heroes, creative assets, and print. Multiple art direction options with AI-generated visuals. Actions: design, create, generate banner. Platforms: Facebook, Twitter/X, Lin...
+- `ckm:brand` — Brand voice, visual identity, messaging frameworks, asset management, brand consistency. Activate for branded content, tone of voice, marketing assets, brand compliance, style guides.
+- `ckm:design` — Comprehensive design skill: brand identity, design tokens, UI styling, logo generation (55 styles, Gemini AI), corporate identity program (50 deliverables, CIP mockups), HTML presentations (Chart.js), banner design (2...
+- `ckm:design-system` — Token architecture, component specifications, and slide generation. Three-layer tokens (primitive→semantic→component), CSS variables, spacing/typography scales, component specs, strategic slide creation. Use for desig...
+- `ckm:slides` — Create strategic HTML presentations with Chart.js, design tokens, responsive layouts, copywriting formulas, and contextual slide strategies.
+- `ckm:ui-styling` — Create beautiful, accessible user interfaces with shadcn/ui components (built on Radix UI + Tailwind), Tailwind CSS utility-first styling, and canvas-based visual designs. Use when building user interfaces, implementi...
+- `clean-architecture` — Clean Architecture layer structure with code examples for domain, data, and presentation layers. Includes barrel exports and module folder structure. Use when creating a new feature module, setting up layers, or organ...
+- `data-layer-patterns` — Data layer implementation patterns including executeRequest networking, React Query repositories, Zustand stores, Zod form validation, and state management. Use when working on API calls, data fetching, state manageme...
+- `env-resolution` — How to add or change an env variable in this monorepo so the panel Envs UI surfaces it, the boilerplate's compose fallback chain still resolves correctly across worktree dev / main-branch panel preview / production, a...
+- `feature-plan` — Use when you hold a product-plan spec and need to break an assigned grouping of work into per-feature specs + builders. Applies to leads with a chunk assignment AND to coordinators operating in direct-builder mode. In...
+- `flow-failure-response` — | Builder-side response when the runtime probe fails on a flow you do NOT own. Per Decision 9, your options collapse to two: fix your code, or mail the lead. There is no third "edit the flow file" branch — the `flows-...
+- `hook-patterns` — Hook composition patterns including shared base hooks, useCallback wrapping, navigation handler pattern, and UIModel mapper. Use when creating hooks, composing shared logic, or implementing navigation in any project v...
+- `localization-patterns` — Localization and internationalization patterns including typed label constants (web), scopedTranslate and useTranslations (mobile), and label resolution in mappers. Use when working with user-facing strings, translati...
+- `mobile-patterns` — Mobile-specific implementation patterns for React Native / Expo. Includes keyboard handling (react-native-keyboard-controller), styling with theme tokens, FlashList for lists, tenant system, accessibility, navigation,...
+- `nestjs-probe-coverage` — | Annotate every NestJS endpoint so `/api/docs` is self-explanatory and the flows generator emits full probe coverage. Covers Swagger decorators (@ApiTags, @ApiOperation, @ApiResponse, @ApiParam, @ApiQuery, @ApiBody, ...
+- `page-pattern` — Full implementation pattern for pages and components. Includes types, UIModel mapper, hook, navigation handler, page component, and thin wrapper. Use when creating a new page, screen, route, or component in any projec...
+- `qa-test` — Automated front-end QA agent with multiple testing modes - standard criteria testing, site discovery/crawling, and adversarial break-it testing. Supports parallel sub-agents for large apps.
+- `shared-flow-authoring` — | Coordinator-side authoring of the contract-flows folder. Owns `_shared.json` (cross-feature actors, resources, fixtures, error- envelope, test-endpoint registry) and authors cross-task flows whose endpoints span mul...
+- `stack-debug` — Debug your worktree's docker stack. Use when the api crashed, a migration didn't apply, an env change didn't take effect, or you need to see container logs without timeouts.
+- `task-flow-authoring` — | Author the executable contract (`<task-id>.json` under `.overstory/runtime-contract.flows/`) that proves a feature plan or product journey is correct, with comprehensive Decision-11 coverage across the 17 sub-rows. ...
+- `ui-ux-pro-max` — UI/UX design intelligence for web and mobile. Includes 50+ styles, 161 color palettes, 57 font pairings, 161 product types, 99 UX guidelines, and 25 chart types across 10 stacks (React, Next.js, Vue, Svelte, SwiftUI, ...
+- `web-patterns` — Web-specific implementation patterns for Next.js App Router. Includes server vs client components, providers setup, next/image usage, Tailwind theming, route structure, accessibility, error handling, and performance. ...
+
+Invoke any matching skill via `Skill(skill: "<name>")` BEFORE producing the first matching artifact. Reading SKILL.md instead is SKILL_BYPASS.
+
+<!-- SKILL-LIST:END -->
+
 Claude Code injects available skills into your context at session start. The lead protocol explicitly relies on the `feature-plan` skill (see propulsion-principle); other skills (`product-plan`, scout/builder skills) are also available.
 
 **Invoke skills via the `Skill` tool — do NOT `Read` SKILL.md as a substitute.**
@@ -473,3 +505,29 @@ Good decomposition follows these principles:
    ```
 9. **On unresolvable merge conflict:** if `ov merge` fails at all tiers, escalate to the coordinator with `--type error --priority high`. Stay alive until the coordinator responds.
 8. Stop. Do not spawn additional workers after closing.
+
+## Pre-Merge Verification (MANDATORY before ov merge)
+
+Before invoking `ov merge --branch <builder-branch>`, you MUST verify the builder's QA acceptance:
+
+1. Read the builder's most recent `worker_done` mail in your inbox
+2. Locate the `## qa-test-evidence` block. It must contain:
+   - Report path (under `.claude/hook-reports/qa-test-<task>-<hash>.md`)
+   - Mode (should be `full` for non-trivial UI work)
+   - Flows verified — verify the list covers every feature in the spec
+   - Final counts: FAILED=0, CRITICAL=0, HIGH=0
+3. `cat` the report file in the builder's worktree:
+   ```bash
+   cat /workspace/.overstory/worktrees/<builder-name>/.claude/hook-reports/qa-test-<task>-<hash>.md
+   ```
+4. Cross-check the report body against the evidence block:
+   - Is every flow listed actually walked? (Look for Playwright snapshots / screenshots referenced)
+   - Are there any FAIL rows the evidence block claims are PASS?
+   - Does report mtime > builder's latest commit time? (Stale = invalid)
+   - Did the builder skip adversarial mode (Jinx)? If diff is non-trivial, that's a red flag.
+5. **If any check fails**: mail the builder with `--type question` describing what's missing or unclear. Do NOT merge. Wait for builder to fix + re-send worker_done with clean evidence.
+6. **If clean**: proceed with `ov merge --branch <X>`.
+
+A merge gate already mechanically denies if the probe artifact is missing. But you are the human-level reviewer — judge whether the builder actually tested what they shipped. Rubber-stamping a worker_done without reading the report is a process failure.
+
+Trust but verify. If something looks off, ask before merging.

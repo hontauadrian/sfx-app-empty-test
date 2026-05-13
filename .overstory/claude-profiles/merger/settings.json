@@ -200,7 +200,7 @@
 				"hooks": [
 					{
 						"type": "command",
-						"command": "node .claude/hooks/probes/derive-test-matrix.js --full"
+						"command": "node .claude/hooks/probes/derive-test-matrix.js"
 					}
 				]
 			},
@@ -218,7 +218,7 @@
 				"hooks": [
 					{
 						"type": "command",
-						"command": "pnpm probe:smoke:full"
+						"command": "pnpm probe:smoke"
 					}
 				]
 			},
@@ -274,10 +274,6 @@
 					{
 						"type": "command",
 						"command": "node .claude/hooks/bash-allowlist.js"
-					},
-					{
-						"type": "command",
-						"command": "node .claude/hooks/no-stop-clean-before-merge.js"
 					}
 				]
 			},
@@ -304,6 +300,15 @@
 				"hooks": [
 					{
 						"type": "command",
+						"command": "node .claude/hooks/block-commit-if-missing.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
 						"command": "node .claude/hooks/pre-close-gate.js"
 					}
 				]
@@ -313,7 +318,7 @@
 				"hooks": [
 					{
 						"type": "command",
-						"command": "node .claude/hooks/block-commit-if-missing.js"
+						"command": "node .claude/hooks/qa-test-gate.js"
 					}
 				]
 			},
@@ -592,6 +597,15 @@
 					{
 						"type": "command",
 						"command": "node .claude/hooks/flows-pre-sling.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/worker-done-evidence.js"
 					}
 				]
 			},

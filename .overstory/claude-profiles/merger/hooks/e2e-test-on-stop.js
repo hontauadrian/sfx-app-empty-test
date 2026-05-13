@@ -737,6 +737,109 @@ function classifyNetworkFailure(failure, openApiPatterns, stack) {
 const STACK_INFO = loadStackInfo();
 const OPENAPI_PATH_PATTERNS = loadOpenApiPathPatterns();
 
+// ── qa-test short-circuit ─────────────────────────────────────────
+// If the qa-test skill already produced a clean report for the current
+// code+stack state, it has already exercised every route via Playwright
+// (Quinn does navigate + snapshot + verify; Jinx adds adversarial passes).
+// That report is the canonical UI acceptance evidence — skip the per-route
+// playwright_navigate evidence walk below.
+//
+// Cache key matches qa-test-gate.js exactly so both gates agree.
+try {
+  const crypto = require('crypto');
+  const { execSync } = require('child_process');
+  const sh = (cmd) => {
+    try {
+      return execSync(cmd, { cwd: PROJECT_DIR, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch {
+      return '';
+    }
+  };
+  const baseBranch = (sh('git symbolic-ref refs/remotes/origin/HEAD').trim().replace('refs/remotes/origin/', '')) || 'master';
+  const mergeBase = sh(`git merge-base HEAD origin/${baseBranch}`).trim();
+  const rawStateDiff = mergeBase ? sh(`git diff --name-only ${mergeBase} HEAD`) : sh('git diff --name-only HEAD');
+  const stateDiff = rawStateDiff
+    .split('\n')
+    .filter((file) => !/^\.claude\/hook-reports\//.test(file) && !/^\.overstory\/qa-reports\//.test(file))
+    .join('\n');
+  const branch = sh('git rev-parse --abbrev-ref HEAD').trim();
+  const taskMatch =
+    branch.match(/sfx-[a-z0-9-]+-[a-f0-9]{4}$/) ||
+    PROJECT_DIR.match(/sfx-[a-z0-9-]+-[a-f0-9]{4}$/);
+  const taskId = (taskMatch && taskMatch[0]) || branch.replace(/[^a-zA-Z0-9-]/g, '_') || 'unknown-task';
+  const stackJsonText = fs.existsSync(STACK_FILE) ? fs.readFileSync(STACK_FILE, 'utf8') : '';
+  const specPath = path.join(PROJECT_DIR, '.overstory', 'specs', `${taskId}.md`);
+  const specText = fs.existsSync(specPath) ? fs.readFileSync(specPath, 'utf8') : '';
+  const stateHash = crypto
+    .createHash('sha1')
+    .update(stateDiff + '\n----\n' + specText)
+    .digest('hex')
+    .slice(0, 12);
+  const reportPath = path.join(PROJECT_DIR, '.claude', 'hook-reports', `qa-test-${taskId}-${stateHash}.md`);
+
+  // Only require qa-test when UI files were actually touched. Pure-backend
+  // turns shouldn't be blocked on a frontend playwright report.
+  const uiTouched = stateDiff
+    .split('\n')
+    .some((file) => /^apps\/web\/src\/(app|features|stores|components)\//.test(file));
+
+  if (uiTouched) {
+    const webBaseUrl = STACK_INFO && STACK_INFO.webBaseUrl
+      ? STACK_INFO.webBaseUrl
+      : 'http://host.docker.internal:<web-port-from-.stack.json>';
+    if (!fs.existsSync(reportPath)) {
+      // No qa-test report for current state — REQUIRE one before the e2e
+      // verification runs. The legacy per-route playwright walk is the
+      // SECOND verification layer that runs only after qa-test is clean.
+      const reason = [
+        `qa-test required (Stop hook) — UI changes touched but no qa-test report found for current code state.`,
+        '',
+        `Run the qa-test skill first against the live stack:`,
+        '',
+        `  /qa-test ${webBaseUrl} --full`,
+        '',
+        `Quinn derives success criteria from the spec at .overstory/specs/${taskId}.md and the diff,`,
+        `then verifies each criterion. Jinx runs adversarial break-it testing in parallel.`,
+        '',
+        `Save the combined report to: ${path.relative(PROJECT_DIR, reportPath)}`,
+        '',
+        `The report is content-addressed by state hash ${stateHash}. Same code state → reuse;`,
+        `meaningful code changes → new hash → fresh qa-test run required.`,
+        '',
+        `Once the report exists and is clean, this hook proceeds to the per-route playwright`,
+        `evidence verification (existing legacy walk) — qa-test is the prerequisite, not a replacement.`,
+      ].join('\n');
+      console.log(JSON.stringify({ decision: 'block', reason }));
+      process.exit(0);
+    }
+    const reportText = fs.readFileSync(reportPath, 'utf8');
+    const criticalCount = (reportText.match(/\[CRITICAL\]|\*\*Severity:\*\*\s*Critical|Priority:\s*P0[\s\S]*?Status:\s*FAIL/gi) || []).length;
+    const highCount = (reportText.match(/\[HIGH\]|\*\*Severity:\*\*\s*High|Priority:\s*P1[\s\S]*?Status:\s*FAIL/gi) || []).length;
+    const failCount = (reportText.match(/\bStatus:\s*FAIL\b|\|\s*FAIL\s*\|/gi) || []).length;
+    if (criticalCount + highCount + failCount > 0) {
+      const reason = [
+        `qa-test report has unresolved issues (Stop hook):`,
+        `  CRITICAL: ${criticalCount}`,
+        `  HIGH:     ${highCount}`,
+        `  FAIL:     ${failCount}`,
+        '',
+        `Report: ${path.relative(PROJECT_DIR, reportPath)}`,
+        '',
+        `Fix the issues, then re-run: /qa-test ${webBaseUrl} --full`,
+        `Same state hash (${stateHash}) — overwrite the existing report.`,
+      ].join('\n');
+      console.log(JSON.stringify({ decision: 'block', reason }));
+      process.exit(0);
+    }
+    // Clean qa-test report — fall through to the legacy per-route evidence
+    // walk as the second verification layer.
+  }
+  // UI not touched OR clean qa-test report present → continue to legacy walk.
+} catch {
+  // Any failure in the qa-test check falls through to the legacy walk so the
+  // stop hook is never silently broken by an environmental issue.
+}
+
 // ── Main correlation loop ───────────────────────────────────────────
 const blocks = [];
 const warnings = [];

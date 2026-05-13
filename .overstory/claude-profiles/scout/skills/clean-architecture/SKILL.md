@@ -1,6 +1,6 @@
 ---
 name: clean-architecture
-description: Clean Architecture layer structure with code examples for domain, data, and presentation layers. Includes barrel exports and module folder structure. Use when creating a new feature module, setting up layers, or organizing code.
+description: Use when creating a new feature module, organizing layer structure, or setting up barrel exports. Covers domain, data, and presentation layer structure with examples.
 ---
 
 # Clean Architecture Layers

@@ -92,6 +92,29 @@ You are a validation specialist. Given code to review, you check it for correctn
 
 ### Skills
 
+<!-- SKILL-LIST:START -->
+
+**Available skills** (auto-generated from `.overstory/claude-profiles/<profile>/skills/` by `scripts/sync-agent-def-skills.mjs`):
+
+- `build-verifiable-features` — | Required decorator declarations for the runtime probe to verify your code. INVOKE WHENEVER `pnpm probe:smoke` (or any [http-smoke-FAIL] block) emits ANY of these — these strings auto-route here: - RESOURCE_CAPTURE_U...
+- `ckm:banner-design` — Design banners for social media, ads, website heroes, creative assets, and print. Multiple art direction options with AI-generated visuals. Actions: design, create, generate banner. Platforms: Facebook, Twitter/X, Lin...
+- `ckm:brand` — Brand voice, visual identity, messaging frameworks, asset management, brand consistency. Activate for branded content, tone of voice, marketing assets, brand compliance, style guides.
+- `ckm:design` — Comprehensive design skill: brand identity, design tokens, UI styling, logo generation (55 styles, Gemini AI), corporate identity program (50 deliverables, CIP mockups), HTML presentations (Chart.js), banner design (2...
+- `ckm:design-system` — Token architecture, component specifications, and slide generation. Three-layer tokens (primitive→semantic→component), CSS variables, spacing/typography scales, component specs, strategic slide creation. Use for desig...
+- `ckm:slides` — Create strategic HTML presentations with Chart.js, design tokens, responsive layouts, copywriting formulas, and contextual slide strategies.
+- `ckm:ui-styling` — Create beautiful, accessible user interfaces with shadcn/ui components (built on Radix UI + Tailwind), Tailwind CSS utility-first styling, and canvas-based visual designs. Use when building user interfaces, implementi...
+- `clean-architecture` — Clean Architecture layer structure with code examples for domain, data, and presentation layers. Includes barrel exports and module folder structure. Use when creating a new feature module, setting up layers, or organ...
+- `env-resolution` — How to add or change an env variable in this monorepo so the panel Envs UI surfaces it, the boilerplate's compose fallback chain still resolves correctly across worktree dev / main-branch panel preview / production, a...
+- `flow-failure-response` — | Builder-side response when the runtime probe fails on a flow you do NOT own. Per Decision 9, your options collapse to two: fix your code, or mail the lead. There is no third "edit the flow file" branch — the `flows-...
+- `nestjs-probe-coverage` — | Annotate every NestJS endpoint so `/api/docs` is self-explanatory and the flows generator emits full probe coverage. Covers Swagger decorators (@ApiTags, @ApiOperation, @ApiResponse, @ApiParam, @ApiQuery, @ApiBody, ...
+- `qa-test` — Automated front-end QA agent with multiple testing modes - standard criteria testing, site discovery/crawling, and adversarial break-it testing. Supports parallel sub-agents for large apps.
+- `stack-debug` — Debug your worktree's docker stack. Use when the api crashed, a migration didn't apply, an env change didn't take effect, or you need to see container logs without timeouts.
+- `ui-ux-pro-max` — UI/UX design intelligence for web and mobile. Includes 50+ styles, 161 color palettes, 57 font pairings, 161 product types, 99 UX guidelines, and 25 chart types across 10 stacks (React, Next.js, Vue, Svelte, SwiftUI, ...
+
+Invoke any matching skill via `Skill(skill: "<name>")` BEFORE producing the first matching artifact. Reading SKILL.md instead is SKILL_BYPASS.
+
+<!-- SKILL-LIST:END -->
+
 Claude Code injects available skills into your context at session start. **Invoke a matching skill via the `Skill` tool — do NOT `Read` its SKILL.md as a substitute.**
 
 ```
@@ -101,7 +124,7 @@ Skill(skill: "<skill-name>")
 - `Skill` activates the skill's full prompt as binding guidance in your context.
 - `Read /path/to/SKILL.md` returns reference bytes the model may ignore. Treating SKILL.md as a doc instead of invoking the skill is a failure mode (SKILL_BYPASS).
 
-When reviewing diffs that touch a domain covered by a skill (e.g. `nestjs-probe-coverage` for NestJS controllers, `clean-architecture` for module structure), invoke that skill so the review is held to the same conventions the builder should have applied.
+When reviewing diffs that touch a domain covered by any skill in the SKILL-LIST block above, invoke that skill so the review is held to the same conventions the builder should have applied. Examples: `ui-ux-pro-max` for UI changes, `nestjs-probe-coverage` for NestJS controllers, `clean-architecture` for module structure. Treat SKILL-LIST as the source of truth, not these examples.
 
 ### Expertise
 - **Load conventions:** `ml prime [domain]` to understand project standards

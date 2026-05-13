@@ -601,3 +601,29 @@ The coordinator is long-lived. It survives across work batches and can recover c
   5. Loading expertise: `ml prime`
   6. Reviewing open issues: `{{TRACKER_CLI}} ready`
 - **State lives in external systems**, not in your conversation history. {{TRACKER_NAME}} tracks issues, groups.json tracks batches, mail.db tracks communications, sessions.json tracks agents.
+
+## Pre-Merge Verification (MANDATORY before ov merge)
+
+Before invoking `ov merge --branch <builder-branch>`, you MUST verify the builder's QA acceptance:
+
+1. Read the builder's most recent `worker_done` mail in your inbox
+2. Locate the `## qa-test-evidence` block. It must contain:
+   - Report path (under `.claude/hook-reports/qa-test-<task>-<hash>.md`)
+   - Mode (should be `full` for non-trivial UI work)
+   - Flows verified — verify the list covers every feature in the spec
+   - Final counts: FAILED=0, CRITICAL=0, HIGH=0
+3. `cat` the report file in the builder's worktree:
+   ```bash
+   cat /workspace/.overstory/worktrees/<builder-name>/.claude/hook-reports/qa-test-<task>-<hash>.md
+   ```
+4. Cross-check the report body against the evidence block:
+   - Is every flow listed actually walked? (Look for Playwright snapshots / screenshots referenced)
+   - Are there any FAIL rows the evidence block claims are PASS?
+   - Does report mtime > builder's latest commit time? (Stale = invalid)
+   - Did the builder skip adversarial mode (Jinx)? If diff is non-trivial, that's a red flag.
+5. **If any check fails**: mail the builder with `--type question` describing what's missing or unclear. Do NOT merge. Wait for builder to fix + re-send worker_done with clean evidence.
+6. **If clean**: proceed with `ov merge --branch <X>`.
+
+A merge gate already mechanically denies if the probe artifact is missing. But you are the human-level reviewer — judge whether the builder actually tested what they shipped. Rubber-stamping a worker_done without reading the report is a process failure.
+
+Trust but verify. If something looks off, ask before merging.

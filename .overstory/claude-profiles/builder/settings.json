@@ -318,6 +318,15 @@
 				"hooks": [
 					{
 						"type": "command",
+						"command": "node .claude/hooks/qa-test-gate.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
 						"command": "node .claude/hooks/verify-full-contract.js"
 					}
 				]

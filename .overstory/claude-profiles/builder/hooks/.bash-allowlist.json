@@ -71,7 +71,9 @@
     "lsof",
     "kill",
     "worktree-stack.sh",
-    "turbo"
+    "turbo",
+    "python3",
+    "python"
   ],
   "subcommand_restrictions": {
     "git": [
@@ -127,6 +129,22 @@
           "127.0.0.1",
           "::1"
         ]
+      }
+    ],
+    "python3": [
+      {
+        "_no_eval_flags": true
+      },
+      {
+        "_no_inline_scripts": true
+      }
+    ],
+    "python": [
+      {
+        "_no_eval_flags": true
+      },
+      {
+        "_no_inline_scripts": true
       }
     ]
   }

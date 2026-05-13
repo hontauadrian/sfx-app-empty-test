@@ -19,6 +19,43 @@
 
 set -euo pipefail
 
+# === write-web-env-local helper (injected for per-worker NEXT_PUBLIC_API_URL) ===
+write_web_env_local() {
+  local _api_port="$1"
+  local _project_dir="${2:-$PROJECT_DIR}"
+  local _env_file="$_project_dir/apps/web/.env.local"
+  # Detect canonical vs worker stack:
+  #   - Canonical (app-dev-host, default port 3001) → http://api.localhost
+  #     (nginx-routed domain, host browser-friendly, production-like)
+  #   - Worker stack (per-worktree, dynamic port) → host.docker.internal:PORT
+  #     (so panel-container Playwright can reach the worker's isolated API)
+  local _new_url
+  if [ "${PROJECT_NAME:-}" = "app-dev-host" ] || [ "$_api_port" = "3001" ]; then
+    _new_url="http://api.localhost"
+  else
+    _new_url="http://host.docker.internal:${_api_port}"
+  fi
+  [ -d "$_project_dir/apps/web" ] || return 0
+  mkdir -p "$_project_dir/apps/web"
+  if [ -f "$_env_file" ] && grep -q '^[[:space:]]*NEXT_PUBLIC_API_URL=' "$_env_file"; then
+    # Replace existing line in-place. Use a portable tmp-file rewrite — sed -i
+    # syntax differs between BSD (macOS) and GNU.
+    awk -v url="$_new_url" '
+      BEGIN { replaced = 0 }
+      /^[[:space:]]*NEXT_PUBLIC_API_URL=/ { print "NEXT_PUBLIC_API_URL=" url; replaced = 1; next }
+      { print }
+      END { if (!replaced) print "NEXT_PUBLIC_API_URL=" url }
+    ' "$_env_file" > "$_env_file.tmp" && mv "$_env_file.tmp" "$_env_file"
+  else
+    # Append (creates file if missing) — other lines (if any) untouched.
+    printf 'NEXT_PUBLIC_API_URL=%s\n' "$_new_url" >> "$_env_file"
+  fi
+  if ! grep -q '^127\.0\.0\.1[[:space:]]\+host\.docker\.internal' /etc/hosts 2>/dev/null; then
+    echo "[worktree-stack] WARN: /etc/hosts is missing 'host.docker.internal' entry." >&2
+    echo "[worktree-stack]       Add: echo '127.0.0.1 host.docker.internal' | sudo tee -a /etc/hosts" >&2
+  fi
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 STACK_FILE="$PROJECT_DIR/.stack.json"
@@ -816,6 +853,7 @@ cmd_start() {
   done
   echo "  Web ready."
 
+  write_web_env_local "${API_PORT}" "$PROJECT_DIR"
   # Write stack info
   cat > "$STACK_FILE" <<EOF
 {

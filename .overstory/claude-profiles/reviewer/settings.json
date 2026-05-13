@@ -173,6 +173,78 @@
 				"hooks": [
 					{
 						"type": "command",
+						"command": "node .claude/hooks/pre-completion-verification.js"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/require-tests-for-changes.js"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/require-integration-tests.js"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/probes/derive-test-matrix.js"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/require-runtime-contract.js"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "pnpm probe:smoke"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/e2e-test-on-stop.js"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/verify-full-contract.js"
+					}
+				]
+			},
+			{
+				"matcher": "",
+				"hooks": [
+					{
+						"type": "command",
 						"command": "node .claude/hooks/no-ignore-for-changed-paths.js"
 					}
 				]
@@ -183,6 +255,14 @@
 					{
 						"type": "command",
 						"command": "node .claude/hooks/probe-covers-diff.js"
+					}
+				]
+			},
+			{
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/auto-commit-wip-on-stop.js"
 					}
 				]
 			}
@@ -212,6 +292,257 @@
 					{
 						"type": "command",
 						"command": "node .claude/hooks/no-hook-introspection.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/block-commit-if-missing.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/pre-close-gate.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/qa-test-gate.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/verify-full-contract.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/track-session-files.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write|MultiEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/skill-gate-block-edit.js"
+					},
+					{
+						"type": "command",
+						"command": "node .claude/hooks/validate-flow-file.js"
+					},
+					{
+						"type": "command",
+						"command": "node .claude/hooks/env-validation-example-sync.js"
+					}
+				]
+			},
+			{
+				"matcher": "Write|Edit|MultiEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/track-pending-tests.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-router-in-hooks.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-hardcoded-hex-colors.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-logic-in-pages.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-direct-fetch-axios.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-cross-app-imports.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/pinned-versions-only.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-single-letter-vars.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-inline-i18n.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-isDark-in-jsx.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-zod-in-apps.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-dependency-injection-params.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-unwrapped-hook-returns.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/mobile/no-keyboard-avoiding-view.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/web/no-raw-img-tags.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/web/no-useEffect-fetch.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/web/no-use-client-in-layout.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/shared/domain-layer-purity.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/shared/no-platform-imports-in-shared.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-silent-catch.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit|Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-generic-skeletons.js"
 					}
 				]
 			},
@@ -266,6 +597,116 @@
 					{
 						"type": "command",
 						"command": "node .claude/hooks/flows-pre-sling.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/worker-done-evidence.js"
+					}
+				]
+			},
+			{
+				"matcher": "Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/flows-path-boundary.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/flows-path-boundary.js"
+					}
+				]
+			},
+			{
+				"matcher": "MultiEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/flows-path-boundary.js"
+					}
+				]
+			},
+			{
+				"matcher": "NotebookEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/flows-path-boundary.js"
+					}
+				]
+			},
+			{
+				"matcher": "Write",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-api-exclude-endpoint.js"
+					}
+				]
+			},
+			{
+				"matcher": "Edit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-api-exclude-endpoint.js"
+					}
+				]
+			},
+			{
+				"matcher": "MultiEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-api-exclude-endpoint.js"
+					}
+				]
+			},
+			{
+				"matcher": "NotebookEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-api-exclude-endpoint.js"
+					}
+				]
+			}
+		],
+		"PostToolUse": [
+			{
+				"matcher": "mcp__playwright__.*",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/mcp-evidence-recorder.js"
+					}
+				]
+			},
+			{
+				"matcher": "Skill",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/skill-gate-track-skill.js"
+					}
+				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/skill-gate-track-probe.js"
 					}
 				]
 			}

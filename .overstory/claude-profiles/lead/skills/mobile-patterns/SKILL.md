@@ -1,6 +1,6 @@
 ---
 name: mobile-patterns
-description: Mobile-specific implementation patterns for React Native / Expo. Includes keyboard handling (react-native-keyboard-controller), styling with theme tokens, FlashList for lists, tenant system, accessibility, navigation, and error handling. Use when working on mobile screens, components, or mobile-specific features.
+description: Use when working on mobile screens, components, or React Native / Expo features. Covers keyboard handling, theme tokens, FlashList, tenant system, accessibility, navigation, error handling.
 ---
 
 # Mobile Patterns

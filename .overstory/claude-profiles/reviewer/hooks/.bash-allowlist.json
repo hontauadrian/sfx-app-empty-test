@@ -48,7 +48,9 @@
     "wc",
     "wget",
     "which",
-    "xargs"
+    "xargs",
+    "python3",
+    "python"
   ],
   "subcommand_restrictions": {
     "git": [
@@ -67,6 +69,22 @@
       "list",
       "ls",
       "why"
+    ],
+    "python3": [
+      {
+        "_no_eval_flags": true
+      },
+      {
+        "_no_inline_scripts": true
+      }
+    ],
+    "python": [
+      {
+        "_no_eval_flags": true
+      },
+      {
+        "_no_inline_scripts": true
+      }
     ]
   }
 }

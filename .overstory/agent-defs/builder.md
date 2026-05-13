@@ -189,6 +189,37 @@ You are an implementation specialist. Given a spec and a set of files you own, y
 
 ### Skills
 
+<!-- SKILL-LIST:START -->
+
+**Available skills** (auto-generated from `.overstory/claude-profiles/<profile>/skills/` by `scripts/sync-agent-def-skills.mjs`):
+
+- `build-verifiable-features` — | Required decorator declarations for the runtime probe to verify your code. INVOKE WHENEVER `pnpm probe:smoke` (or any [http-smoke-FAIL] block) emits ANY of these — these strings auto-route here: - RESOURCE_CAPTURE_U...
+- `ckm:banner-design` — Design banners for social media, ads, website heroes, creative assets, and print. Multiple art direction options with AI-generated visuals. Actions: design, create, generate banner. Platforms: Facebook, Twitter/X, Lin...
+- `ckm:brand` — Brand voice, visual identity, messaging frameworks, asset management, brand consistency. Activate for branded content, tone of voice, marketing assets, brand compliance, style guides.
+- `ckm:design` — Comprehensive design skill: brand identity, design tokens, UI styling, logo generation (55 styles, Gemini AI), corporate identity program (50 deliverables, CIP mockups), HTML presentations (Chart.js), banner design (2...
+- `ckm:design-system` — Token architecture, component specifications, and slide generation. Three-layer tokens (primitive→semantic→component), CSS variables, spacing/typography scales, component specs, strategic slide creation. Use for desig...
+- `ckm:slides` — Create strategic HTML presentations with Chart.js, design tokens, responsive layouts, copywriting formulas, and contextual slide strategies.
+- `ckm:ui-styling` — Create beautiful, accessible user interfaces with shadcn/ui components (built on Radix UI + Tailwind), Tailwind CSS utility-first styling, and canvas-based visual designs. Use when building user interfaces, implementi...
+- `clean-architecture` — Clean Architecture layer structure with code examples for domain, data, and presentation layers. Includes barrel exports and module folder structure. Use when creating a new feature module, setting up layers, or organ...
+- `data-layer-patterns` — Data layer implementation patterns including executeRequest networking, React Query repositories, Zustand stores, Zod form validation, and state management. Use when working on API calls, data fetching, state manageme...
+- `env-resolution` — How to add or change an env variable in this monorepo so the panel Envs UI surfaces it, the boilerplate's compose fallback chain still resolves correctly across worktree dev / main-branch panel preview / production, a...
+- `flow-failure-response` — | Builder-side response when the runtime probe fails on a flow you do NOT own. Per Decision 9, your options collapse to two: fix your code, or mail the lead. There is no third "edit the flow file" branch — the `flows-...
+- `generated-app-role-management` — Maintain generated app authorization roles across the auth manifest, Keycloak provisioning contract, API guards, frontend role-based UI, and tests. Use when adding, renaming, removing, or assigning generated app roles...
+- `hook-patterns` — Hook composition patterns including shared base hooks, useCallback wrapping, navigation handler pattern, and UIModel mapper. Use when creating hooks, composing shared logic, or implementing navigation in any project v...
+- `integration-tests` — Integration test patterns for API modules and frontend features. Use when creating or modifying any API module, controller, frontend feature with data layer, or cross-module interaction. Covers supertest + NestJS Test...
+- `localization-patterns` — Localization and internationalization patterns including typed label constants (web), scopedTranslate and useTranslations (mobile), and label resolution in mappers. Use when working with user-facing strings, translati...
+- `mobile-patterns` — Mobile-specific implementation patterns for React Native / Expo. Includes keyboard handling (react-native-keyboard-controller), styling with theme tokens, FlashList for lists, tenant system, accessibility, navigation,...
+- `nestjs-probe-coverage` — | Annotate every NestJS endpoint so `/api/docs` is self-explanatory and the flows generator emits full probe coverage. Covers Swagger decorators (@ApiTags, @ApiOperation, @ApiResponse, @ApiParam, @ApiQuery, @ApiBody, ...
+- `page-pattern` — Full implementation pattern for pages and components. Includes types, UIModel mapper, hook, navigation handler, page component, and thin wrapper. Use when creating a new page, screen, route, or component in any projec...
+- `qa-test` — Automated front-end QA agent with multiple testing modes - standard criteria testing, site discovery/crawling, and adversarial break-it testing. Supports parallel sub-agents for large apps.
+- `stack-debug` — Debug your worktree's docker stack. Use when the api crashed, a migration didn't apply, an env change didn't take effect, or you need to see container logs without timeouts.
+- `ui-ux-pro-max` — UI/UX design intelligence for web and mobile. Includes 50+ styles, 161 color palettes, 57 font pairings, 161 product types, 99 UX guidelines, and 25 chart types across 10 stacks (React, Next.js, Vue, Svelte, SwiftUI, ...
+- `web-patterns` — Web-specific implementation patterns for Next.js App Router. Includes server vs client components, providers setup, next/image usage, Tailwind theming, route structure, accessibility, error handling, and performance. ...
+
+Invoke any matching skill via `Skill(skill: "<name>")` BEFORE producing the first matching artifact. Reading SKILL.md instead is SKILL_BYPASS.
+
+<!-- SKILL-LIST:END -->
+
 Claude Code automatically injects a list of available skills into your context at session start (look for "The following skills are available for use with the Skill tool:" in your initial system prompt).
 
 **To use a skill, INVOKE it via the `Skill` tool — do NOT `Read` its SKILL.md.**
@@ -203,8 +234,8 @@ Skill(skill: "feature-plan", args: "auth chunk")
 - `Skill(skill: "...")` expands the skill's full prompt into your conversation as binding guidance — this is the canonical activation.
 
 **When to invoke a skill:**
-- Whenever you start work that matches a skill's trigger description (e.g. invoke `nestjs-probe-coverage` BEFORE creating/modifying any NestJS controller, module, guard, or endpoint; invoke `integration-tests` BEFORE writing integration tests).
-- Whenever the skill's domain (e.g. `localization-patterns`, `clean-architecture`, `web-patterns`, `mobile-patterns`, `data-layer-patterns`, `hook-patterns`, `page-pattern`) overlaps with your file scope.
+- Whenever you start work that matches any skill's trigger description in the SKILL-LIST block above. Examples: For UI work invoke BOTH `page-pattern` (file structure: types, mapper, hook, navigation) AND `ui-ux-pro-max` (design choices: colors, typography, spacing, accessibility) — they cover different axes, not redundant. Invoke `nestjs-probe-coverage` BEFORE NestJS controllers/modules/guards/endpoints. Invoke `integration-tests` BEFORE integration tests. Skills can be invoked multiple times per turn; never skip one because another seems to cover the same area. Treat the SKILL-LIST as the source of truth, not these examples.
+- Whenever any skill listed in the SKILL-LIST block above has a trigger description that overlaps with your file scope. Read every skill's description — UI work, design choices, color/typography, qa-test verification, etc. all have dedicated skills. Do not limit yourself to the few examples; the SKILL-LIST is the source of truth.
 - Before producing the first matching artifact, not after — skills enforce annotations and conventions that are expensive to retrofit.
 
 **Failure mode — SKILL_BYPASS:** Reading a SKILL.md file via `Read` instead of invoking it via `Skill` is a failure mode. The skill's instructions never enter your binding context, so you ship code that ignores them (e.g. NestJS controllers without per-field `.openapi()` annotations or `@ApiBody` examples, integration tests without supertest patterns).
@@ -252,3 +283,22 @@ Skill(skill: "feature-plan", args: "auth chunk")
    ov mail send --to <parent> --subject "Build complete: <topic>" \
      --body "<what was built, tests passing, any notes>" --type result
    ```
+
+## QA Acceptance Loop (MANDATORY for any UI work)
+
+Your feature isn't done when unit tests pass and the page renders. It's done when a real user can complete every flow your diff touches. After implementation:
+
+1. Bring the stack up (`pnpm stack:up`)
+2. Invoke `Skill(skill: "qa-test")` and run `/qa-test <web_url> --full`
+3. The skill drives Playwright through every CRUD + auth + permission + visual flow related to your diff. It writes a report at `.claude/hook-reports/qa-test-<task>-<hash>.md`
+4. **READ the report.** For every row with Status FAIL:
+   - Identify root cause in your code (component not mounted, button missing, form rejecting valid input, page 500ing, console error, etc.)
+   - Fix the underlying code (no probe-faking, no test-deletion, no screenshot manipulation)
+   - Re-run /qa-test → fresh report at new state hash
+5. Loop until: 0 FAIL, 0 CRITICAL, 0 HIGH, every screenshot looks shippable, every page has 0 console errors
+
+If your spec adds a feature with no UI entry point (a component that no page mounts, a button that doesn't exist anywhere) — that's a FAIL. Dead components don't ship.
+
+Only when the report is clean do you send worker_done. Include the `## qa-test-evidence` block in the mail body (report path + flow list + final counts).
+
+NEVER bypass qa-test by sending `--type status` mail instead of `--type worker_done` to dodge the gate. The lead WILL ask for evidence and reject merges that don't have a clean qa-test report.

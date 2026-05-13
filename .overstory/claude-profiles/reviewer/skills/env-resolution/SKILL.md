@@ -1,6 +1,6 @@
 ---
 name: env-resolution
-description: How to add or change an env variable in this monorepo so the panel Envs UI surfaces it, the boilerplate's compose fallback chain still resolves correctly across worktree dev / main-branch panel preview / production, and CORS does not break. Use whenever editing .env, .env.example (root or app-scoped), docker-compose.yml environment blocks, apps/api/src/main.ts CORS, or any code that calls process.env.<NEW_VAR>.
+description: Use whenever editing .env, .env.example, docker-compose.yml environment blocks, CORS, or any code that calls process.env.<NEW_VAR>. Ensures panel Envs UI, boilerplate compose fallback chain, and CORS all resolve correctly across worktree dev / panel preview / production.
 ---
 
 # Env Variable Editing — The Rule

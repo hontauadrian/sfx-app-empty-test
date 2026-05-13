@@ -12,6 +12,49 @@
 
 set -euo pipefail
 
+# === write-web-env-local helper (injected for per-worker NEXT_PUBLIC_API_URL) ===
+# Writes apps/web/.env.local with the worker's actual API port so the browser
+# (host OR container Playwright) fetches from the RIGHT backend, not the
+# stale default. Uses host.docker.internal so the URL is portable across:
+#   - host browser (requires /etc/hosts entry: 127.0.0.1 host.docker.internal)
+#   - panel container Playwright (resolves via Docker extra_hosts)
+write_web_env_local() {
+  local _api_port="$1"
+  local _project_dir="${2:-$PROJECT_DIR}"
+  local _env_file="$_project_dir/apps/web/.env.local"
+  # Detect canonical vs worker stack:
+  #   - Canonical (app-dev-host, default port 3001) → http://api.localhost
+  #     (nginx-routed domain, host browser-friendly, production-like)
+  #   - Worker stack (per-worktree, dynamic port) → host.docker.internal:PORT
+  #     (so panel-container Playwright can reach the worker's isolated API)
+  local _new_url
+  if [ "${PROJECT_NAME:-}" = "app-dev-host" ] || [ "$_api_port" = "3001" ]; then
+    _new_url="http://api.localhost"
+  else
+    _new_url="http://host.docker.internal:${_api_port}"
+  fi
+  [ -d "$_project_dir/apps/web" ] || return 0
+  mkdir -p "$_project_dir/apps/web"
+  if [ -f "$_env_file" ] && grep -q '^[[:space:]]*NEXT_PUBLIC_API_URL=' "$_env_file"; then
+    # Replace existing line in-place. Use a portable tmp-file rewrite — sed -i
+    # syntax differs between BSD (macOS) and GNU.
+    awk -v url="$_new_url" '
+      BEGIN { replaced = 0 }
+      /^[[:space:]]*NEXT_PUBLIC_API_URL=/ { print "NEXT_PUBLIC_API_URL=" url; replaced = 1; next }
+      { print }
+      END { if (!replaced) print "NEXT_PUBLIC_API_URL=" url }
+    ' "$_env_file" > "$_env_file.tmp" && mv "$_env_file.tmp" "$_env_file"
+  else
+    # Append (creates file if missing) — other lines (if any) untouched.
+    printf 'NEXT_PUBLIC_API_URL=%s\n' "$_new_url" >> "$_env_file"
+  fi
+  if ! grep -q '^127\.0\.0\.1[[:space:]]\+host\.docker\.internal' /etc/hosts 2>/dev/null; then
+    echo "[stack-up] WARN: /etc/hosts is missing 'host.docker.internal' entry." >&2
+    echo "[stack-up]       Add it once with: echo '127.0.0.1 host.docker.internal' | sudo tee -a /etc/hosts" >&2
+    echo "[stack-up]       Without it, your HOST browser cannot reach the API at the configured URL." >&2
+  fi
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 LOG="$PROJECT_DIR/.stack.start.log"
@@ -178,6 +221,7 @@ if [ -z "$BUILD_FLAG" ] && [ -z "$FORCE_RECREATE_FLAG" ] && [ "${running_count:-
   ACTUAL_WEB_PORT="${ACTUAL_WEB_PORT:-$NEXT_PORT}"
   ACTUAL_PROXY_PORT="${ACTUAL_PROXY_PORT:-$APP_PROXY_PORT}"
   ACTUAL_KEYCLOAK_PORT="${ACTUAL_KEYCLOAK_PORT:-$KEYCLOAK_PORT}"
+  write_web_env_local "${ACTUAL_API_PORT}" "$PROJECT_DIR"
   cat > "$PROJECT_DIR/.stack.json" <<JSON
 {
   "pg_port": ${ACTUAL_PG_PORT},
@@ -370,6 +414,11 @@ else
   echo "[stack-up-docker] Starting compose project ${PROJECT_NAME} (using cached images)..." | tee -a "$LOG"
 fi
 # shellcheck disable=SC2086 -- COMPOSE_OVERLAY_ARG is intentionally word-split
+# Write apps/web/.env.local BEFORE compose up so the web container's
+# `next dev` reads the correct NEXT_PUBLIC_API_URL at startup (otherwise
+# the bundle is baked with whatever .env.local existed before, and a
+# post-up rewrite is ignored until container restart).
+write_web_env_local "${API_PORT}" "$PROJECT_DIR"
 docker compose -p "$PROJECT_NAME" -f "$PROJECT_DIR/docker-compose.yml" $COMPOSE_OVERLAY_ARG up -d $BUILD_FLAG $FORCE_RECREATE_FLAG 2>&1 | tee -a "$LOG"
 
 # Inside the panel container the worker stack lives on the HOST docker
@@ -545,6 +594,7 @@ for attempt in $(seq 1 60); do
     echo "    proxy: http://${HEALTH_HOST}:${APP_PROXY_PORT}" | tee -a "$LOG"
     echo "    keycloak: http://${HEALTH_HOST}:${KEYCLOAK_PORT}" | tee -a "$LOG"
     echo "    pg:  ${HEALTH_HOST}:${PG_PORT}" | tee -a "$LOG"
+    write_web_env_local "${API_PORT}" "$PROJECT_DIR"
     cat > "$PROJECT_DIR/.stack.json" <<JSON
 {
   "pg_port": ${PG_PORT},
