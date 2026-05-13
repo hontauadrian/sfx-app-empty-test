@@ -80,6 +80,17 @@ describe('mapToHomePageUIModel', () => {
       isError: false,
     });
     expect(model.ctaLabel).toBe(translations.apiDocs);
-    expect(model.ctaHref).toMatch(/\/api\/docs$/);
+    expect(model.ctaHref).toBe('/api/docs');
+  });
+
+  it('exposes a logout action', () => {
+    const model = mapToHomePageUIModel({
+      translations,
+      health: undefined,
+      isLoading: false,
+      isError: false,
+    });
+    expect(model.logoutLabel).toBe(translations.logout);
+    expect(model.logoutHref).toBe('/oauth2/sign_out?rd=/');
   });
 });

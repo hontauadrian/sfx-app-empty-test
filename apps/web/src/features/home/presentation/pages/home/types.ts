@@ -7,6 +7,8 @@ export interface HomePageUIModel {
   readonly isError: boolean;
   readonly ctaLabel: string;
   readonly ctaHref: string;
+  readonly logoutLabel: string;
+  readonly logoutHref: string;
 }
 
 export interface UseHomeReturn {

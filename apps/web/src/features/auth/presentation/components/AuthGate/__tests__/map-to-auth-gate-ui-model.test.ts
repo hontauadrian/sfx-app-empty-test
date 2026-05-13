@@ -34,5 +34,7 @@ describe('mapToAuthGateUIModel', () => {
     expect(model.shouldRenderChildren).toBe(false);
     expect(model.title).toBe(enCommon.pendingAccessTitle);
     expect(model.message).toBe(enCommon.pendingAccessMessage);
+    expect(model.logoutLabel).toBe(enCommon.logout);
+    expect(model.logoutHref).toBe('/oauth2/sign_out?rd=/');
   });
 });

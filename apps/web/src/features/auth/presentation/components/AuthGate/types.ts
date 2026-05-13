@@ -9,6 +9,8 @@ export interface AuthGateUIModel {
   readonly isLoading: boolean;
   readonly title: string;
   readonly message: string;
+  readonly logoutLabel: string;
+  readonly logoutHref: string;
 }
 
 export interface UseAuthGateReturn {

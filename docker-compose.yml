@@ -153,13 +153,15 @@ services:
       - --scope=openid email profile
       - --skip-provider-button=true
       - --upstream=http://api:3001/api/v1/
+      - --upstream=http://api:3001/api/docs
+      - --upstream=http://api:3001/api/docs-json
       - --upstream=http://web:3000/
+      - --skip-auth-route=GET=^/api/docs.*
       - --oidc-issuer-url=${OAUTH_ISSUER_URL:-http://keycloak.localtest.me:9080/realms/sfx-webapp-boilerplate}
       - --client-id=${OAUTH2_PROXY_CLIENT_ID:-sfx-webapp-boilerplate-dev-proxy}
       - --client-secret=${OAUTH2_PROXY_CLIENT_SECRET:-dev-generated-app-proxy-secret}
       - --cookie-secret=${OAUTH2_PROXY_COOKIE_SECRET:-0123456789abcdef0123456789abcdef}
       - --redirect-url=${OAUTH2_PROXY_REDIRECT_URL:-http://app.localtest.me:4181/oauth2/callback}
-      - --cookie-domain=${OAUTH2_PROXY_COOKIE_DOMAIN:-app.localtest.me}
       - --cookie-secure=${OAUTH2_PROXY_COOKIE_SECURE:-false}
       - --set-authorization-header=true
       - --pass-authorization-header=true

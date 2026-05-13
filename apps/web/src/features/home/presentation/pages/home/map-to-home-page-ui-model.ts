@@ -1,5 +1,6 @@
 import type { CommonTranslations } from '@/features/presentation/localization';
 import type { HealthStatus } from '@/features/home/data/mapper/map-to-health';
+import { OAUTH2_PROXY_LOGOUT_HREF } from '@/features/auth/constants';
 import { API_DOCS_HREF } from '@/features/home/constants';
 import type { HomePageUIModel } from './types';
 
@@ -30,5 +31,7 @@ export function mapToHomePageUIModel(input: MapToHomePageUIModelInput): HomePage
     isError,
     ctaLabel: translations.apiDocs,
     ctaHref: API_DOCS_HREF,
+    logoutLabel: translations.logout,
+    logoutHref: OAUTH2_PROXY_LOGOUT_HREF,
   };
 }

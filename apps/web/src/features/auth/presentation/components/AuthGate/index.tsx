@@ -27,6 +27,12 @@ export function AuthGate({ children }: AuthGateProps): ReactNode {
       <section className="max-w-md rounded-lg border border-border bg-card p-6 text-center">
         <h1 className="text-2xl font-semibold text-foreground">{uiModel.title}</h1>
         <p className="mt-3 text-muted-foreground">{uiModel.message}</p>
+        <a
+          className="mt-5 inline-flex items-center rounded-md border border-border px-4 py-2 font-medium text-foreground hover:bg-muted"
+          href={uiModel.logoutHref}
+        >
+          {uiModel.logoutLabel}
+        </a>
       </section>
     </main>
   );

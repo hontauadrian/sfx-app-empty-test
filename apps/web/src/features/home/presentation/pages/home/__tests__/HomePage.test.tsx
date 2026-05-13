@@ -25,16 +25,20 @@ describe("HomePage", () => {
         isError: false,
         ctaLabel: "API Docs",
         ctaHref: "/api/docs",
+        logoutLabel: "Logout",
+        logoutHref: "/oauth2/sign_out?rd=/",
       },
     });
   });
 
-  it("renders the title, health status, and CTA from the uiModel", () => {
+  it("renders the title, health status, CTA, and logout action from the uiModel", () => {
     render(<HomePage />);
 
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("SFX");
     expect(screen.getByTestId("health")).toHaveTextContent("Connected");
     const cta = screen.getByRole("link", { name: "API Docs" });
     expect(cta).toHaveAttribute("href", "/api/docs");
+    const logout = screen.getByRole("link", { name: "Logout" });
+    expect(logout).toHaveAttribute("href", "/oauth2/sign_out?rd=/");
   });
 });
