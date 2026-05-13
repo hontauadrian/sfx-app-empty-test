@@ -1,5 +1,5 @@
 import { strict as assert } from "node:assert";
-import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, it } from "node:test";
@@ -62,9 +62,12 @@ describe("stack-up-docker worktree ports", () => {
       assert.notEqual(envOutput.KEYCLOAK_PORT, "9080");
       assert.match(envOutput.APP_PROXY_PORT, /^36\d{3}$/);
       assert.match(envOutput.KEYCLOAK_PORT, /^37\d{3}$/);
+      const expectedOauthHost = existsSync("/.dockerenv")
+        ? "host.docker.internal"
+        : "keycloak.localtest.me";
       assert.equal(
         envOutput.OAUTH_ISSUER_URL,
-        `http://keycloak.localtest.me:${envOutput.KEYCLOAK_PORT}/realms/generated-app`,
+        `http://${expectedOauthHost}:${envOutput.KEYCLOAK_PORT}/realms/generated-app`,
       );
       assert.equal(
         envOutput.OAUTH_JWKS_URL,

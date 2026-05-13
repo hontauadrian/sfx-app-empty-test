@@ -147,7 +147,7 @@ test('bearer-in-body: resolves env placeholders from worktree .stack.json', asyn
   const previousStack = existsSync(stackPath) ? readFileSync(stackPath, 'utf8') : null;
   delete process.env.OAUTH_ISSUER_URL;
   delete process.env.OAUTH2_PROXY_CLIENT_ID;
-  writeFileSync(stackPath, JSON.stringify({ keycloak_port: 37541, is_worktree: true }));
+  writeFileSync(stackPath, JSON.stringify({ keycloak_port: 37541, host: 'host.docker.internal', is_worktree: true }));
   const contract = emptyContract();
   contract.actors.set('viewer', {
     sourceFile: '_shared.json',
@@ -184,7 +184,7 @@ test('bearer-in-body: resolves env placeholders from worktree .stack.json', asyn
     assert.equal(result.tokens.viewer.bearer, 'stack-token');
     assert.equal(
       calls[0],
-      'http://keycloak.localtest.me:37541/realms/sfx-webapp-boilerplate/protocol/openid-connect/token',
+      'http://host.docker.internal:37541/realms/sfx-webapp-boilerplate/protocol/openid-connect/token',
     );
     assert.equal(
       bodies[0],

@@ -278,6 +278,7 @@ test('bootstrapAuth derives Keycloak issuer from worktree .stack.json when env i
     delete process.env.OAUTH2_PROXY_CLIENT_SECRET;
     writeFileSync(stackPath, JSON.stringify({
       keycloak_port: port,
+      host: '127.0.0.1',
       is_worktree: true,
     }));
 

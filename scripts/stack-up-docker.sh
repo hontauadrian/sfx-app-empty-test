@@ -174,9 +174,13 @@ else
 fi
 export WEB_ORIGIN
 
+REALM_NAME="$(derive_realm_name "sfx-webapp-boilerplate")"
 if [ "$IS_WORKTREE_STACK" = "true" ] && [ "${SFX_STACK_ALLOW_FIXED_PORTS:-0}" != "1" ]; then
-  REALM_NAME="$(derive_realm_name "sfx-webapp-boilerplate")"
-  OAUTH_ISSUER_URL="http://keycloak.localtest.me:${KEYCLOAK_PORT}/realms/${REALM_NAME}"
+  OAUTH_HOST="keycloak.localtest.me"
+  if [ -f "/.dockerenv" ]; then
+    OAUTH_HOST="host.docker.internal"
+  fi
+  OAUTH_ISSUER_URL="http://${OAUTH_HOST}:${KEYCLOAK_PORT}/realms/${REALM_NAME}"
   OAUTH_JWKS_URL="${OAUTH_ISSUER_URL}/protocol/openid-connect/certs"
   OAUTH2_PROXY_REDIRECT_URL="http://app.localtest.me:${APP_PROXY_PORT}/oauth2/callback"
 fi
@@ -325,6 +329,9 @@ if [ -z "$BUILD_FLAG" ] && [ -z "$FORCE_RECREATE_FLAG" ] && [ "${running_count:-
   "proxy_port": ${ACTUAL_PROXY_PORT},
   "keycloak_port": ${ACTUAL_KEYCLOAK_PORT},
   "host": "${STATE_HEALTH_HOST}",
+  "oauth_issuer_url": "http://${STATE_HEALTH_HOST}:${ACTUAL_KEYCLOAK_PORT}/realms/$(derive_realm_name "sfx-webapp-boilerplate")",
+  "oauth_jwks_url": "http://${STATE_HEALTH_HOST}:${ACTUAL_KEYCLOAK_PORT}/realms/$(derive_realm_name "sfx-webapp-boilerplate")/protocol/openid-connect/certs",
+  "oauth2_proxy_redirect_url": "http://app.localtest.me:${ACTUAL_PROXY_PORT}/oauth2/callback",
   "is_worktree": true,
   "compose_project": "${PROJECT_NAME}",
   "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -698,6 +705,9 @@ for attempt in $(seq 1 60); do
   "proxy_port": ${APP_PROXY_PORT},
   "keycloak_port": ${KEYCLOAK_PORT},
   "host": "${HEALTH_HOST}",
+  "oauth_issuer_url": "http://${HEALTH_HOST}:${KEYCLOAK_PORT}/realms/${REALM_NAME}",
+  "oauth_jwks_url": "http://${HEALTH_HOST}:${KEYCLOAK_PORT}/realms/${REALM_NAME}/protocol/openid-connect/certs",
+  "oauth2_proxy_redirect_url": "http://app.localtest.me:${APP_PROXY_PORT}/oauth2/callback",
   "is_worktree": true,
   "compose_project": "${PROJECT_NAME}",
   "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"

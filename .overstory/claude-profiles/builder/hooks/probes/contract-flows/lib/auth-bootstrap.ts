@@ -136,6 +136,7 @@ function readStackRuntimeEnvValue(key: string): string | undefined {
       oauth_issuer_url?: unknown;
       oauth_jwks_url?: unknown;
       oauth2_proxy_redirect_url?: unknown;
+      host?: unknown;
     };
     if (stack.is_worktree !== true) return undefined;
 
@@ -150,11 +151,14 @@ function readStackRuntimeEnvValue(key: string): string | undefined {
     }
 
     const realmName = deriveRealmNameFromPackage(projectRoot);
+    const stackHost = typeof stack.host === 'string' && stack.host.length > 0
+      ? stack.host
+      : 'keycloak.localtest.me';
     if (key === 'OAUTH_ISSUER_URL' && typeof stack.keycloak_port === 'number') {
-      return `http://keycloak.localtest.me:${stack.keycloak_port}/realms/${realmName}`;
+      return `http://${stackHost}:${stack.keycloak_port}/realms/${realmName}`;
     }
     if (key === 'OAUTH_JWKS_URL' && typeof stack.keycloak_port === 'number') {
-      return `http://keycloak.localtest.me:${stack.keycloak_port}/realms/${realmName}/protocol/openid-connect/certs`;
+      return `http://${stackHost}:${stack.keycloak_port}/realms/${realmName}/protocol/openid-connect/certs`;
     }
     if (key === 'OAUTH2_PROXY_REDIRECT_URL' && typeof stack.proxy_port === 'number') {
       return `http://app.localtest.me:${stack.proxy_port}/oauth2/callback`;
