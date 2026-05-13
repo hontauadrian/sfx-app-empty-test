@@ -563,7 +563,7 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
   // tooling (probe-run-with-ownership-check.sh) can dispatch remediation
   // mail by error code without parsing stdout.
   const loaderDiagnostics: ReadonlyArray<{ code: string; message: string } & Record<string, unknown>> =
-    curatedSummary.errors.map((err) => ({ ...(err as Record<string, unknown>), code: err.code, message: err.message }));
+    curatedSummary.errors.map((err) => ({ ...(err as unknown as Record<string, unknown>), code: err.code, message: err.message }));
   for (const err of curatedSummary.errors) {
     process.stderr.write(`[contract-flows] ${err.code}: ${err.message}\n`);
   }
@@ -586,7 +586,7 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
     if (existsSync(earlyFlowsPath)) {
       const earlyFlowsFile = JSON.parse(readFileSync(earlyFlowsPath, 'utf8')) as GeneratedFlowsFile;
       const earlyDiagnostics = earlyFlowsFile.diagnostics ?? [];
-      generatorDiagnostics = earlyDiagnostics.map((diag) => ({ ...(diag as Record<string, unknown>), code: diag.code, message: diag.message }));
+      generatorDiagnostics = earlyDiagnostics.map((diag) => ({ ...(diag as unknown as Record<string, unknown>), code: diag.code, message: diag.message }));
     }
   } catch {
     // best-effort — if the file is missing or unreadable, fall through.
@@ -1081,7 +1081,11 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
     cases,
     runtimeDiagnostics: dedupedRuntimeDiagnostics,
     bootstrapDiagnostics: capturedBootstrapDiagnostics.length > 0
-      ? capturedBootstrapDiagnostics
+      ? capturedBootstrapDiagnostics.map((diag) => ({
+        ...(diag as unknown as Record<string, unknown>),
+        code: diag.code,
+        message: diag.message,
+      }))
       : undefined,
   };
 
@@ -1295,6 +1299,8 @@ async function bootstrapKeycloakAuth(email: string, password: string): Promise<A
 function readRuntimeEnvValue(key: string): string | undefined {
   const liveValue = process.env[key];
   if (liveValue) return liveValue;
+  const stackValue = readStackRuntimeEnvValue(key);
+  if (stackValue) return stackValue;
   for (const envPath of [
     join(PROJECT_ROOT, '.env'),
     join(PROJECT_ROOT, 'apps/api/.env'),
@@ -1304,6 +1310,67 @@ function readRuntimeEnvValue(key: string): string | undefined {
     if (fileValue) return fileValue;
   }
   return undefined;
+}
+
+function readStackRuntimeEnvValue(key: string): string | undefined {
+  const stackPath = join(PROJECT_ROOT, '.stack.json');
+  if (!existsSync(stackPath)) return undefined;
+  try {
+    const stack = JSON.parse(readFileSync(stackPath, 'utf8')) as {
+      is_worktree?: unknown;
+      keycloak_port?: unknown;
+      proxy_port?: unknown;
+      oauth_issuer_url?: unknown;
+      oauth_jwks_url?: unknown;
+      oauth2_proxy_redirect_url?: unknown;
+    };
+    if (stack.is_worktree !== true) return undefined;
+
+    if (key === 'OAUTH_ISSUER_URL' && typeof stack.oauth_issuer_url === 'string') {
+      return stack.oauth_issuer_url;
+    }
+    if (key === 'OAUTH_JWKS_URL' && typeof stack.oauth_jwks_url === 'string') {
+      return stack.oauth_jwks_url;
+    }
+    if (key === 'OAUTH2_PROXY_REDIRECT_URL' && typeof stack.oauth2_proxy_redirect_url === 'string') {
+      return stack.oauth2_proxy_redirect_url;
+    }
+
+    const realmName = deriveRealmNameFromPackage();
+    if (key === 'OAUTH_ISSUER_URL' && typeof stack.keycloak_port === 'number') {
+      return `http://keycloak.localtest.me:${stack.keycloak_port}/realms/${realmName}`;
+    }
+    if (key === 'OAUTH_JWKS_URL' && typeof stack.keycloak_port === 'number') {
+      return `http://keycloak.localtest.me:${stack.keycloak_port}/realms/${realmName}/protocol/openid-connect/certs`;
+    }
+    if (key === 'OAUTH2_PROXY_REDIRECT_URL' && typeof stack.proxy_port === 'number') {
+      return `http://app.localtest.me:${stack.proxy_port}/oauth2/callback`;
+    }
+    if (key === 'OAUTH2_PROXY_CLIENT_ID') return `${realmName}-dev-proxy`;
+    if (key === 'OAUTH_API_CLIENT_ID' || key === 'OAUTH_AUDIENCE') return `${realmName}-dev-api`;
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function deriveRealmNameFromPackage(): string {
+  const packagePath = join(PROJECT_ROOT, 'package.json');
+  if (!existsSync(packagePath)) return 'sfx-webapp-boilerplate';
+  try {
+    const packageJson = JSON.parse(readFileSync(packagePath, 'utf8')) as { name?: unknown };
+    const rawName = typeof packageJson.name === 'string'
+      ? packageJson.name.split('/').pop() ?? packageJson.name
+      : 'sfx-webapp-boilerplate';
+    const normalizedName = rawName
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return normalizedName || 'sfx-webapp-boilerplate';
+  } catch {
+    return 'sfx-webapp-boilerplate';
+  }
 }
 
 function readEnvFileValue(envPath: string, key: string): string | undefined {

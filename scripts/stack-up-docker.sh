@@ -48,6 +48,39 @@ write_web_env_local() {
     # Append (creates file if missing) — other lines (if any) untouched.
     printf 'NEXT_PUBLIC_API_URL=%s\n' "$_new_url" >> "$_env_file"
   fi
+  # Also update apps/api/.env WEB_ORIGIN — the API's CORS allowlist must
+  # include the worker's actual web origin, otherwise browser requests from
+  # host.docker.internal:WEB_PORT get blocked by CORS (no Access-Control-
+  # Allow-Origin header in response). Canonical stays at app.localhost.
+  local _api_env="$_project_dir/apps/api/.env"
+  local _new_origin
+  if [ "${PROJECT_NAME:-}" = "app-dev-host" ] || [ "$_api_port" = "3001" ]; then
+    _new_origin="http://app.localhost"
+  else
+    # Find this worker's web port from .stack.json (post-up) OR derive from
+    # NEXT_PORT (during fresh boot). Web URL the browser hits matches the
+    # NEXT_PUBLIC_API_URL host but on the WEB port. Worker web is on the
+    # same dynamic-port hash family as api: NEXT_PORT = 26000+index.
+    local _web_port="${NEXT_PORT:-${ACTUAL_WEB_PORT:-}}"
+    if [ -n "$_web_port" ]; then
+      _new_origin="http://host.docker.internal:${_web_port}"
+    else
+      _new_origin=""
+    fi
+  fi
+  if [ -n "$_new_origin" ] && [ -d "$_project_dir/apps/api" ]; then
+    mkdir -p "$_project_dir/apps/api"
+    if [ -f "$_api_env" ] && grep -q '^[[:space:]]*WEB_ORIGIN=' "$_api_env"; then
+      awk -v origin="$_new_origin" '
+        BEGIN { replaced = 0 }
+        /^[[:space:]]*WEB_ORIGIN=/ { print "WEB_ORIGIN=" origin; replaced = 1; next }
+        { print }
+        END { if (!replaced) print "WEB_ORIGIN=" origin }
+      ' "$_api_env" > "$_api_env.tmp" && mv "$_api_env.tmp" "$_api_env"
+    else
+      printf 'WEB_ORIGIN=%s\n' "$_new_origin" >> "$_api_env"
+    fi
+  fi
   if ! grep -q '^127\.0\.0\.1[[:space:]]\+host\.docker\.internal' /etc/hosts 2>/dev/null; then
     echo "[stack-up] WARN: /etc/hosts is missing 'host.docker.internal' entry." >&2
     echo "[stack-up]       Add it once with: echo '127.0.0.1 host.docker.internal' | sudo tee -a /etc/hosts" >&2
@@ -130,6 +163,17 @@ API_PORT="${API_PORT:-$(find_free_port "$(( 16000 + index ))" 16999)}"
 NEXT_PORT="${NEXT_PORT:-$(find_free_port "$(( 26000 + index ))" 26999)}"
 APP_PROXY_PORT="${APP_PROXY_PORT:-$(find_free_port "$(( 36000 + index ))" 36999)}"
 KEYCLOAK_PORT="${KEYCLOAK_PORT:-$(find_free_port "$(( 37000 + index ))" 37999)}"
+# Set WEB_ORIGIN per-stack so the API's CORS allowlist matches the actual
+# web origin the browser uses. Canonical (app-dev-host) → app.localhost.
+# Worker stacks → host.docker.internal:<web-port> (where panel-container
+# Playwright + host browser both reach the worker's web container).
+if [ "${PROJECT_NAME:-app-${basename_dir}}" = "app-dev-host" ] || [ "${NEXT_PORT}" = "3000" ]; then
+  WEB_ORIGIN="${WEB_ORIGIN:-http://app.localhost}"
+else
+  WEB_ORIGIN="${WEB_ORIGIN:-http://host.docker.internal:${NEXT_PORT}}"
+fi
+export WEB_ORIGIN
+
 if [ "$IS_WORKTREE_STACK" = "true" ] && [ "${SFX_STACK_ALLOW_FIXED_PORTS:-0}" != "1" ]; then
   REALM_NAME="$(derive_realm_name "sfx-webapp-boilerplate")"
   OAUTH_ISSUER_URL="http://keycloak.localtest.me:${KEYCLOAK_PORT}/realms/${REALM_NAME}"
@@ -266,7 +310,13 @@ if [ -z "$BUILD_FLAG" ] && [ -z "$FORCE_RECREATE_FLAG" ] && [ "${running_count:-
   ACTUAL_WEB_PORT="${ACTUAL_WEB_PORT:-$NEXT_PORT}"
   ACTUAL_PROXY_PORT="${ACTUAL_PROXY_PORT:-$APP_PROXY_PORT}"
   ACTUAL_KEYCLOAK_PORT="${ACTUAL_KEYCLOAK_PORT:-$KEYCLOAK_PORT}"
+  _env_file_pre="$(cat "$PROJECT_DIR/apps/web/.env.local" 2>/dev/null || echo "")"
   write_web_env_local "${ACTUAL_API_PORT}" "$PROJECT_DIR"
+  _env_file_post="$(cat "$PROJECT_DIR/apps/web/.env.local" 2>/dev/null || echo "")"
+  if [ "$_env_file_pre" != "$_env_file_post" ]; then
+    echo "[stack-up-docker] apps/web/.env.local changed — restarting web container so next dev re-reads NEXT_PUBLIC_API_URL" | tee -a "$LOG"
+    docker compose -p "$PROJECT_NAME" restart web 2>&1 | tee -a "$LOG"
+  fi
   cat > "$PROJECT_DIR/.stack.json" <<JSON
 {
   "pg_port": ${ACTUAL_PG_PORT},

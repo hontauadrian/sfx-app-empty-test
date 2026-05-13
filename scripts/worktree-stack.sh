@@ -50,6 +50,39 @@ write_web_env_local() {
     # Append (creates file if missing) — other lines (if any) untouched.
     printf 'NEXT_PUBLIC_API_URL=%s\n' "$_new_url" >> "$_env_file"
   fi
+  # Also update apps/api/.env WEB_ORIGIN — the API's CORS allowlist must
+  # include the worker's actual web origin, otherwise browser requests from
+  # host.docker.internal:WEB_PORT get blocked by CORS (no Access-Control-
+  # Allow-Origin header in response). Canonical stays at app.localhost.
+  local _api_env="$_project_dir/apps/api/.env"
+  local _new_origin
+  if [ "${PROJECT_NAME:-}" = "app-dev-host" ] || [ "$_api_port" = "3001" ]; then
+    _new_origin="http://app.localhost"
+  else
+    # Find this worker's web port from .stack.json (post-up) OR derive from
+    # NEXT_PORT (during fresh boot). Web URL the browser hits matches the
+    # NEXT_PUBLIC_API_URL host but on the WEB port. Worker web is on the
+    # same dynamic-port hash family as api: NEXT_PORT = 26000+index.
+    local _web_port="${NEXT_PORT:-${ACTUAL_WEB_PORT:-}}"
+    if [ -n "$_web_port" ]; then
+      _new_origin="http://host.docker.internal:${_web_port}"
+    else
+      _new_origin=""
+    fi
+  fi
+  if [ -n "$_new_origin" ] && [ -d "$_project_dir/apps/api" ]; then
+    mkdir -p "$_project_dir/apps/api"
+    if [ -f "$_api_env" ] && grep -q '^[[:space:]]*WEB_ORIGIN=' "$_api_env"; then
+      awk -v origin="$_new_origin" '
+        BEGIN { replaced = 0 }
+        /^[[:space:]]*WEB_ORIGIN=/ { print "WEB_ORIGIN=" origin; replaced = 1; next }
+        { print }
+        END { if (!replaced) print "WEB_ORIGIN=" origin }
+      ' "$_api_env" > "$_api_env.tmp" && mv "$_api_env.tmp" "$_api_env"
+    else
+      printf 'WEB_ORIGIN=%s\n' "$_new_origin" >> "$_api_env"
+    fi
+  fi
   if ! grep -q '^127\.0\.0\.1[[:space:]]\+host\.docker\.internal' /etc/hosts 2>/dev/null; then
     echo "[worktree-stack] WARN: /etc/hosts is missing 'host.docker.internal' entry." >&2
     echo "[worktree-stack]       Add: echo '127.0.0.1 host.docker.internal' | sudo tee -a /etc/hosts" >&2

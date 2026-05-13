@@ -194,8 +194,10 @@ flow. Iterate until probes are green.
 
 Steps are FLAT (not nested `{request, expect}`). Each step has a
 `kind` (`setAuth`, `api`, `expect`, `capture`, `logout`, `navigate`,
-`wait`). Actor binding is per-flow via `setup[].by` and per-step via
-`{ kind: "setAuth", binding: <actor> }` — never on the flow object itself.
+`wait`). Actor binding is done with a step:
+`{ "kind": "setAuth", "binding": "<actor>" }`. Do NOT use
+`setup[].by` to select an actor. `setup[]` is only for creating
+declared resources and every setup entry must include `create`.
 
 To avoid id collisions, prefix every `special_flows[].id` with the task
 id: `<task-id>:<short-name>`.
@@ -285,13 +287,39 @@ Anything else fails `FLOW_FILE_SCHEMA_INVALID` at probe time.
 ```json
 {
   "name": "<actor-name>",
-  "auth": { "token": "<value-or-binding>" },
+  "auth": { "scheme": "anonymous" },
   "transport": "<optional>"
 }
 ```
 
-NO `role` / `credentials` fields. Auth is a free-form object the
-adapter interprets (e.g. `{ "token": "Bearer …" }` or `{ "session":
-"<binding>" }`).
+NO `role` / `credentials` fields. Auth must use one of the
+`AUTH_SCHEME_REGISTRY` schemes from `lib/auth-bootstrap.ts`
+(`anonymous`, `bearer-in-body`, `bearer-in-header`, `cookie`,
+`api-key`, `oauth-scoped`).
 
-For Resource (array entry) and Special-flow schema shapes, **read [runner-and-schema.md](../runner-and-schema.md) before writing them** — it is the canonical schema reference.
+### Special-flow (array entry)
+
+```json
+{
+  "id": "<task-id>:<short-name>",
+  "description": "<one-line>",
+  "contract": {
+    "kind": "http",
+    "source": "<spec-or-code-reference>",
+    "endpoint": "GET /api/v1/example"
+  },
+  "steps": [
+    { "kind": "setAuth", "binding": "<actor-name>" },
+    { "kind": "api", "transport": "http", "method": "GET", "path": "/api/v1/example" },
+    { "kind": "expect", "status": 200 }
+  ]
+}
+```
+
+Every `special_flows[].contract` MUST include `kind` and `source`.
+Every HTTP API step MUST include `transport: "http"`. Do not write
+top-level flow `source`, `steps[].request`, `setup[].by`-only entries,
+or API steps without `transport`; those are rejected by
+`FLOW_FILE_SCHEMA_INVALID`.
+
+For Resource (array entry) and the full Special-flow schema, **read [runner-and-schema.md](../runner-and-schema.md) before writing them** — it is the canonical schema reference.

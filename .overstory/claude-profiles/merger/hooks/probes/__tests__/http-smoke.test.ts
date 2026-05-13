@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -239,6 +239,67 @@ test('bootstrapAuth obtains bearer from Keycloak password grant when app auth en
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test('bootstrapAuth derives Keycloak issuer from worktree .stack.json when env is not exported', async () => {
+  const server = createServer(async (req, res) => {
+    if (req.url === '/realms/sfx-webapp-boilerplate/protocol/openid-connect/token' && req.method === 'POST') {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const params = new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
+      assert.equal(params.get('client_id'), 'sfx-webapp-boilerplate-dev-proxy');
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ access_token: 'stack-json-token' }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  const port = (server.address() as AddressInfo).port;
+  const stackPath = join(process.cwd(), '.stack.json');
+  const previousStack = existsSync(stackPath) ? readFileSync(stackPath, 'utf8') : null;
+  const priorEnv = {
+    HTTP_SMOKE_SEED_EMAIL: process.env.HTTP_SMOKE_SEED_EMAIL,
+    HTTP_SMOKE_SEED_PASSWORD: process.env.HTTP_SMOKE_SEED_PASSWORD,
+    OAUTH_ISSUER_URL: process.env.OAUTH_ISSUER_URL,
+    OAUTH2_PROXY_CLIENT_ID: process.env.OAUTH2_PROXY_CLIENT_ID,
+    OAUTH2_PROXY_CLIENT_SECRET: process.env.OAUTH2_PROXY_CLIENT_SECRET,
+  };
+
+  try {
+    process.env.HTTP_SMOKE_SEED_EMAIL = 'viewer@example.com';
+    process.env.HTTP_SMOKE_SEED_PASSWORD = 'password';
+    delete process.env.OAUTH_ISSUER_URL;
+    delete process.env.OAUTH2_PROXY_CLIENT_ID;
+    delete process.env.OAUTH2_PROXY_CLIENT_SECRET;
+    writeFileSync(stackPath, JSON.stringify({
+      keycloak_port: port,
+      is_worktree: true,
+    }));
+
+    const client = new HttpClient('http://127.0.0.1:1');
+    const ctx = await bootstrapAuth(client, {
+      raw: {}, overlay: null, compiled: null,
+      pages: [],
+      endpoints: [{ file: 'auth.ts', path: '/api/v1/auth/me', method: 'GET', guard: 'authenticated' }],
+      forms: [], middleware: [],
+      authDetection: { registerSurface: null, loginSurface: null },
+      bootPlan: { driver: 'worktree-stack' }, scope: 'session', ignoredRoutes: new Set(),
+    });
+
+    assert.equal(ctx.source, 'keycloak');
+    assert.equal(ctx.bearer, 'stack-json-token');
+  } finally {
+    for (const [key, value] of Object.entries(priorEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    if (previousStack === null) rmSync(stackPath, { force: true });
+    else writeFileSync(stackPath, previousStack);
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

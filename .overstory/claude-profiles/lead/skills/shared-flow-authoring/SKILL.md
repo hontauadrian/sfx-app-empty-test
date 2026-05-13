@@ -276,6 +276,35 @@ or the API contract to find it). Use `bearer-in-header` instead of
 (e.g. `Authorization: Bearer <token>`). Use `cookie` if the API sets a
 session cookie and gates by `Cookie:`.
 
+For generated apps backed by local Keycloak, do not hardcode the
+Keycloak host or port in shared actors. Worktree stacks assign dynamic
+ports, so login URLs must use env interpolation:
+
+```json
+{
+  "name": "authenticated-user",
+  "auth": {
+    "scheme": "bearer-in-body",
+    "login": {
+      "path": "${env:OAUTH_ISSUER_URL}/protocol/openid-connect/token",
+      "contentType": "application/x-www-form-urlencoded",
+      "body": {
+        "grant_type": "password",
+        "client_id": "${env:OAUTH2_PROXY_CLIENT_ID}",
+        "client_secret": "${env:OAUTH2_PROXY_CLIENT_SECRET}",
+        "username": "viewer@example.com",
+        "password": "Viewer123!"
+      },
+      "key": "$.access_token"
+    }
+  }
+}
+```
+
+The contract-flow bootstrap resolves `${env:...}` placeholders before
+fetching. This keeps `_shared.json` portable between the canonical
+checkout, Overstory worktrees, and CI.
+
 ### 3. Permission-scoped actor — distinct identity at a specific scope
 
 Use when the API gates on a permission tier (admin / writer / reader,

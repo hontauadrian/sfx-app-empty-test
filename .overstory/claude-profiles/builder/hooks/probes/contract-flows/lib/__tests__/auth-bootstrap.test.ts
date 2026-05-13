@@ -15,6 +15,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import type { MergedContract } from '../../contract-flows-merger';
 import { bootstrapActors } from '../auth-bootstrap';
@@ -77,6 +79,125 @@ test('bearer-in-body: login 401 produces AUTH_BOOTSTRAP_ACTOR_FAILED', async () 
   assert.equal(result.tokens.bad, undefined);
   assert.equal(result.diagnostics.length, 1);
   assert.equal(result.diagnostics[0].code, 'FLOW_AUTH_BOOTSTRAP_ACTOR_FAILED');
+});
+
+test('bearer-in-body: resolves env placeholders in absolute login URL', async () => {
+  const previousIssuer = process.env.OAUTH_ISSUER_URL;
+  const previousClientId = process.env.OAUTH2_PROXY_CLIENT_ID;
+  const previousClientSecret = process.env.OAUTH2_PROXY_CLIENT_SECRET;
+  process.env.OAUTH_ISSUER_URL = 'http://keycloak.localtest.me:37541/realms/sfx-webapp-boilerplate';
+  process.env.OAUTH2_PROXY_CLIENT_ID = 'sfx-webapp-boilerplate-dev-proxy';
+  process.env.OAUTH2_PROXY_CLIENT_SECRET = 'dev-generated-app-proxy-secret';
+  const contract = emptyContract();
+  contract.actors.set('beta-tester', {
+    sourceFile: '_shared.json',
+    actor: {
+      name: 'beta-tester',
+      auth: {
+        scheme: 'bearer-in-body',
+        login: {
+          path: '${env:OAUTH_ISSUER_URL}/protocol/openid-connect/token',
+          contentType: 'application/x-www-form-urlencoded',
+          body: {
+            grant_type: 'password',
+            client_id: '${env:OAUTH2_PROXY_CLIENT_ID}',
+            client_secret: '${env:OAUTH2_PROXY_CLIENT_SECRET}',
+            username: 'beta.tester@example.com',
+            password: 'BetaTester123!',
+          },
+          key: '$.access_token',
+        },
+      },
+    },
+  });
+  const calls: string[] = [];
+  const bodies: string[] = [];
+  const fetchStub: typeof fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : (input as URL).toString();
+    calls.push(url);
+    bodies.push(init?.body as string);
+    return jsonResponse(200, { access_token: 'keycloak-token' });
+  };
+
+  try {
+    const result = await bootstrapActors(contract, { baseUrl: 'http://api.test', fetch: fetchStub });
+    assert.deepEqual(result.diagnostics, []);
+    assert.equal(result.tokens['beta-tester'].bearer, 'keycloak-token');
+    assert.deepEqual(calls, [
+      'http://keycloak.localtest.me:37541/realms/sfx-webapp-boilerplate/protocol/openid-connect/token',
+    ]);
+    assert.equal(
+      bodies[0],
+      'grant_type=password&client_id=sfx-webapp-boilerplate-dev-proxy&client_secret=dev-generated-app-proxy-secret&username=beta.tester%40example.com&password=BetaTester123%21',
+    );
+  } finally {
+    if (previousIssuer === undefined) delete process.env.OAUTH_ISSUER_URL;
+    else process.env.OAUTH_ISSUER_URL = previousIssuer;
+    if (previousClientId === undefined) delete process.env.OAUTH2_PROXY_CLIENT_ID;
+    else process.env.OAUTH2_PROXY_CLIENT_ID = previousClientId;
+    if (previousClientSecret === undefined) delete process.env.OAUTH2_PROXY_CLIENT_SECRET;
+    else process.env.OAUTH2_PROXY_CLIENT_SECRET = previousClientSecret;
+  }
+});
+
+test('bearer-in-body: resolves env placeholders from worktree .stack.json', async () => {
+  const previousIssuer = process.env.OAUTH_ISSUER_URL;
+  const previousClientId = process.env.OAUTH2_PROXY_CLIENT_ID;
+  const stackPath = join(process.cwd(), '.stack.json');
+  const previousStack = existsSync(stackPath) ? readFileSync(stackPath, 'utf8') : null;
+  delete process.env.OAUTH_ISSUER_URL;
+  delete process.env.OAUTH2_PROXY_CLIENT_ID;
+  writeFileSync(stackPath, JSON.stringify({ keycloak_port: 37541, is_worktree: true }));
+  const contract = emptyContract();
+  contract.actors.set('viewer', {
+    sourceFile: '_shared.json',
+    actor: {
+      name: 'viewer',
+      auth: {
+        scheme: 'bearer-in-body',
+        login: {
+          path: '${env:OAUTH_ISSUER_URL}/protocol/openid-connect/token',
+          contentType: 'application/x-www-form-urlencoded',
+          body: {
+            grant_type: 'password',
+            client_id: '${env:OAUTH2_PROXY_CLIENT_ID}',
+            username: 'viewer@example.com',
+            password: 'Viewer123!',
+          },
+          key: '$.access_token',
+        },
+      },
+    },
+  });
+  const calls: string[] = [];
+  const bodies: string[] = [];
+  const fetchStub: typeof fetch = async (input, init) => {
+    const url = typeof input === 'string' ? input : (input as URL).toString();
+    calls.push(url);
+    bodies.push(init?.body as string);
+    return jsonResponse(200, { access_token: 'stack-token' });
+  };
+
+  try {
+    const result = await bootstrapActors(contract, { baseUrl: 'http://api.test', fetch: fetchStub });
+    assert.deepEqual(result.diagnostics, []);
+    assert.equal(result.tokens.viewer.bearer, 'stack-token');
+    assert.equal(
+      calls[0],
+      'http://keycloak.localtest.me:37541/realms/sfx-webapp-boilerplate/protocol/openid-connect/token',
+    );
+    assert.equal(
+      bodies[0],
+      'grant_type=password&client_id=sfx-webapp-boilerplate-dev-proxy&username=viewer%40example.com&password=Viewer123%21',
+    );
+  } finally {
+    if (previousIssuer === undefined) delete process.env.OAUTH_ISSUER_URL;
+    else process.env.OAUTH_ISSUER_URL = previousIssuer;
+    if (previousClientId === undefined) delete process.env.OAUTH2_PROXY_CLIENT_ID;
+    else process.env.OAUTH2_PROXY_CLIENT_ID = previousClientId;
+    if (previousStack === null) rmSync(stackPath, { force: true });
+    else writeFileSync(stackPath, previousStack);
+  }
 });
 
 test('bearer-in-header: Authorization stripped of "Bearer " prefix', async () => {

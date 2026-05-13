@@ -13,7 +13,8 @@ the schema accepts but the runner ignores or stubs.
   `bodyHas`, `bodyIsArray`, `bodyShape`, `headerHas`, `forbidden`.
 - Matchers: literals, `{absent}`, `{oneOf}`, `{matches}`, `{type}`.
 - Resource fields used by setup/runtime: `name`, `kind`, `create`,
-  `capture`, `parents`. `setup[].by` actor binding works.
+  `capture`, `parents`. `setup[].by` works only on entries that also
+  declare `create`; it is not a standalone actor-selection mechanism.
 - Config: `reservedActors`, `clockAdvanceEndpoint`, `fixturesRoot`,
   `cookieJar.allowSecureOnHttp`, `envelope.successWrapper`.
 - Cookie jar (RFC 6265bis) + capture/replay step variants.
@@ -103,10 +104,11 @@ Read/list/get/delete routes are exercised inline via flow `steps`
 }
 ```
 
-Actor binding lives at FLOW level, not resource level:
+Actor binding is explicit and never inferred from a by-only setup entry:
 
 - `setup[].by` — which actor performs the create. Defaults to the
-  flow's first `setAuth.binding` if omitted.
+  flow's first `setAuth.binding` if omitted. It is valid only when the
+  same setup entry also includes `create`.
 - `Step { kind: "setAuth", binding: "<actor>" }` — switches the active
   actor for subsequent steps. Use this to test cross-tenant access:
   `setAuth: tenantA-owner` → create resource → `setAuth: tenantB-member`

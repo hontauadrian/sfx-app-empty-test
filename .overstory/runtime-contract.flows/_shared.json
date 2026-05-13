@@ -7,13 +7,13 @@
   "actors": [
     {
       "name": "anonymous",
-      "auth": {}
+      "auth": { "scheme": "anonymous" }
     }
   ],
   "config": {
     "reservedActors": {
       "anonymous": {
-        "auth": {}
+        "auth": { "scheme": "anonymous" }
       }
     },
     "fixturesRoot": "fixtures"

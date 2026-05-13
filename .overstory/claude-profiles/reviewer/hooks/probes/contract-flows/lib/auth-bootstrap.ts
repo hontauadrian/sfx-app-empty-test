@@ -40,6 +40,7 @@
 
 import { z } from 'zod';
 import * as fs from 'fs';
+import * as path from 'path';
 import type { MergedContract } from '../contract-flows-merger';
 import type {
   TypedError,
@@ -91,23 +92,136 @@ function readJsonPath(body: unknown, path: string): unknown {
   return cur;
 }
 
-async function timed<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+async function timed<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms);
   });
   try {
-    return await Promise.race([p, timeoutPromise]);
+    return await Promise.race([promise, timeoutPromise]);
   } finally {
     if (timer) clearTimeout(timer);
   }
 }
 
 function joinUrl(base: string, path: string): string {
+  path = resolveEnvPlaceholders(path);
   if (/^https?:\/\//i.test(path)) return path;
   if (base.endsWith('/') && path.startsWith('/')) return base + path.slice(1);
   if (!base.endsWith('/') && !path.startsWith('/')) return base + '/' + path;
   return base + path;
+}
+
+function resolveEnvPlaceholders(value: string): string {
+  return value.replace(/\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => {
+    return readRuntimeEnvValue(name) ?? '';
+  });
+}
+
+function readRuntimeEnvValue(key: string): string | undefined {
+  const liveValue = process.env[key];
+  if (liveValue) return liveValue;
+  return readStackRuntimeEnvValue(key);
+}
+
+function readStackRuntimeEnvValue(key: string): string | undefined {
+  const projectRoot = process.cwd();
+  const stackPath = path.join(projectRoot, '.stack.json');
+  if (!fs.existsSync(stackPath)) return undefined;
+  try {
+    const stack = JSON.parse(fs.readFileSync(stackPath, 'utf8')) as {
+      is_worktree?: unknown;
+      keycloak_port?: unknown;
+      proxy_port?: unknown;
+      oauth_issuer_url?: unknown;
+      oauth_jwks_url?: unknown;
+      oauth2_proxy_redirect_url?: unknown;
+    };
+    if (stack.is_worktree !== true) return undefined;
+
+    if (key === 'OAUTH_ISSUER_URL' && typeof stack.oauth_issuer_url === 'string') {
+      return stack.oauth_issuer_url;
+    }
+    if (key === 'OAUTH_JWKS_URL' && typeof stack.oauth_jwks_url === 'string') {
+      return stack.oauth_jwks_url;
+    }
+    if (key === 'OAUTH2_PROXY_REDIRECT_URL' && typeof stack.oauth2_proxy_redirect_url === 'string') {
+      return stack.oauth2_proxy_redirect_url;
+    }
+
+    const realmName = deriveRealmNameFromPackage(projectRoot);
+    if (key === 'OAUTH_ISSUER_URL' && typeof stack.keycloak_port === 'number') {
+      return `http://keycloak.localtest.me:${stack.keycloak_port}/realms/${realmName}`;
+    }
+    if (key === 'OAUTH_JWKS_URL' && typeof stack.keycloak_port === 'number') {
+      return `http://keycloak.localtest.me:${stack.keycloak_port}/realms/${realmName}/protocol/openid-connect/certs`;
+    }
+    if (key === 'OAUTH2_PROXY_REDIRECT_URL' && typeof stack.proxy_port === 'number') {
+      return `http://app.localtest.me:${stack.proxy_port}/oauth2/callback`;
+    }
+    if (key === 'OAUTH2_PROXY_CLIENT_ID') return `${realmName}-dev-proxy`;
+    if (key === 'OAUTH_API_CLIENT_ID' || key === 'OAUTH_AUDIENCE') return `${realmName}-dev-api`;
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function deriveRealmNameFromPackage(projectRoot: string): string {
+  const packagePath = path.join(projectRoot, 'package.json');
+  if (!fs.existsSync(packagePath)) return 'sfx-webapp-boilerplate';
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8')) as { name?: unknown };
+    const rawName = typeof packageJson.name === 'string'
+      ? packageJson.name.split('/').pop() ?? packageJson.name
+      : 'sfx-webapp-boilerplate';
+    const normalizedName = rawName
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return normalizedName || 'sfx-webapp-boilerplate';
+  } catch {
+    return 'sfx-webapp-boilerplate';
+  }
+}
+
+function resolveEnvPlaceholdersInValue(value: unknown): unknown {
+  if (typeof value === 'string') return resolveEnvPlaceholders(value);
+  if (Array.isArray(value)) return value.map((item) => resolveEnvPlaceholdersInValue(item));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nestedValue]) => [
+        key,
+        resolveEnvPlaceholdersInValue(nestedValue),
+      ]),
+    );
+  }
+  return value;
+}
+
+function buildPostBody(
+  body: unknown,
+  contentType: string | undefined,
+): { headers: Record<string, string>; body: string } {
+  const resolvedBody = resolveEnvPlaceholdersInValue(body ?? {});
+  if (contentType === 'application/x-www-form-urlencoded') {
+    const params = new URLSearchParams();
+    if (resolvedBody && typeof resolvedBody === 'object' && !Array.isArray(resolvedBody)) {
+      for (const [key, value] of Object.entries(resolvedBody)) {
+        if (value !== undefined && value !== null) params.set(key, String(value));
+      }
+    }
+    return {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    };
+  }
+
+  return {
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(resolvedBody),
+  };
 }
 
 function failure(actorName: string, scheme: string, reason: string): FlowAuthBootstrapActorFailedError {
@@ -157,8 +271,8 @@ async function bootstrapBearerInBody(
   fetchImpl: typeof globalThis.fetch,
   timeoutMs: number,
 ): Promise<{ credential?: ActorCredential; error?: TypedError }> {
-  const register = auth.register as { path?: string; body?: unknown; key?: string } | undefined;
-  const login = auth.login as { path: string; body: unknown; key?: string } | undefined;
+  const register = auth.register as { path?: string; body?: unknown; key?: string; contentType?: string } | undefined;
+  const login = auth.login as { path: string; body: unknown; key?: string; contentType?: string } | undefined;
   if (!login || !login.path) {
     return { error: failure(actorName, 'bearer-in-body', 'login.path is required') };
   }
@@ -166,11 +280,12 @@ async function bootstrapBearerInBody(
   // Optional register; 4xx (especially 409) is treated as "already exists" → fall through.
   if (register && register.path) {
     try {
+      const registerBody = buildPostBody(register.body, register.contentType);
       await timed(
         fetchImpl(joinUrl(base, register.path), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(register.body ?? {}),
+          headers: registerBody.headers,
+          body: registerBody.body,
         }),
         timeoutMs,
         `register('${actorName}')`,
@@ -185,11 +300,12 @@ async function bootstrapBearerInBody(
 
   let res: Response;
   try {
+    const loginBody = buildPostBody(login.body, login.contentType);
     res = await timed(
       fetchImpl(joinUrl(base, login.path), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(login.body ?? {}),
+        headers: loginBody.headers,
+        body: loginBody.body,
       }),
       timeoutMs,
       `login('${actorName}')`,
@@ -220,17 +336,18 @@ async function bootstrapBearerInHeader(
   fetchImpl: typeof globalThis.fetch,
   timeoutMs: number,
 ): Promise<{ credential?: ActorCredential; error?: TypedError }> {
-  const login = auth.login as { path: string; body: unknown; headerName?: string } | undefined;
+  const login = auth.login as { path: string; body: unknown; headerName?: string; contentType?: string } | undefined;
   if (!login || !login.path) {
     return { error: failure(actorName, 'bearer-in-header', 'login.path is required') };
   }
   let res: Response;
   try {
+    const loginBody = buildPostBody(login.body, login.contentType);
     res = await timed(
       fetchImpl(joinUrl(base, login.path), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(login.body ?? {}),
+        headers: loginBody.headers,
+        body: loginBody.body,
       }),
       timeoutMs,
       `login('${actorName}')`,
@@ -261,18 +378,19 @@ async function bootstrapCookie(
   fetchImpl: typeof globalThis.fetch,
   timeoutMs: number,
 ): Promise<{ credential?: ActorCredential; error?: TypedError }> {
-  const login = auth.login as { path: string; body: unknown } | undefined;
+  const login = auth.login as { path: string; body: unknown; contentType?: string } | undefined;
   if (!login || !login.path) {
     return { error: failure(actorName, 'cookie', 'login.path is required') };
   }
   let res: Response;
   const url = joinUrl(base, login.path);
   try {
+    const loginBody = buildPostBody(login.body, login.contentType);
     res = await timed(
       fetchImpl(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(login.body ?? {}),
+        headers: loginBody.headers,
+        body: loginBody.body,
       }),
       timeoutMs,
       `login('${actorName}')`,
@@ -307,7 +425,7 @@ function bootstrapApiKey(
   auth: ActorAuth,
 ): { credential?: ActorCredential; error?: TypedError } {
   const headerName = auth.headerName as string | undefined;
-  const value = auth.value as string | undefined;
+  const value = typeof auth.value === 'string' ? resolveEnvPlaceholders(auth.value) : undefined;
   if (!headerName || !value) {
     return { error: failure(actorName, 'api-key', 'headerName and value are required') };
   }
@@ -321,11 +439,13 @@ async function bootstrapOauthScoped(
   fetchImpl: typeof globalThis.fetch,
   timeoutMs: number,
 ): Promise<{ credential?: ActorCredential; error?: TypedError }> {
-  const tokenEndpoint = auth.tokenEndpoint as string | undefined;
+  const tokenEndpoint = typeof auth.tokenEndpoint === 'string'
+    ? resolveEnvPlaceholders(auth.tokenEndpoint)
+    : undefined;
   const scopes = auth.scopes as string[] | undefined;
-  const clientId = auth.clientId as string | undefined;
-  const clientSecret = auth.clientSecret as string | undefined;
-  const audience = auth.audience as string | undefined;
+  const clientId = typeof auth.clientId === 'string' ? resolveEnvPlaceholders(auth.clientId) : undefined;
+  const clientSecret = typeof auth.clientSecret === 'string' ? resolveEnvPlaceholders(auth.clientSecret) : undefined;
+  const audience = typeof auth.audience === 'string' ? resolveEnvPlaceholders(auth.audience) : undefined;
   if (!tokenEndpoint || !scopes || scopes.length === 0 || !clientId || !clientSecret) {
     return { error: failure(actorName, 'oauth-scoped', 'tokenEndpoint, scopes, clientId, clientSecret are required') };
   }
@@ -442,7 +562,7 @@ export async function bootstrapActors(
             code: 'FLOW_AUTH_BOOTSTRAP_ACTOR_FAILED',
             actorName: name,
             scheme,
-            reason: `actor schema drift: unknown field(s) ${unknownKeys.join(', ')} for scheme '${scheme}'. Allowed fields are defined in the zod schema for this scheme — verify the actor block (most common typo: 'tokenPath' instead of 'key' on bearer-in-body login).`,
+            reason: `actor schema drift: unknown fields ${unknownKeys.join(', ')} for scheme '${scheme}'. Allowed fields are defined in the zod schema for this scheme — verify the actor block (most common typo: 'tokenPath' instead of 'key' on bearer-in-body login).`,
             sourceFile: attributed.sourceFile || '',
             message: `Auth bootstrap schema drift for actor '${name}' (scheme '${scheme}'): unknown ${unknownKeys.join(', ')} [declared in ${attributed.sourceFile || 'unknown'} — lead-owned]`,
           });
@@ -496,6 +616,7 @@ const RegisterBlock = z.object({
   path: z.string().min(1),
   body: z.unknown().optional(),
   key: z.string().optional(),
+  contentType: z.enum(['application/json', 'application/x-www-form-urlencoded']).optional(),
 });
 
 export const BearerInBodyAuthSchema = z.object({
@@ -505,6 +626,7 @@ export const BearerInBodyAuthSchema = z.object({
     path: z.string().min(1),
     body: z.unknown().optional(),
     key: z.string().optional(),
+    contentType: z.enum(['application/json', 'application/x-www-form-urlencoded']).optional(),
   }),
   token: z.string().optional(),
 });
@@ -515,6 +637,7 @@ export const BearerInHeaderAuthSchema = z.object({
     path: z.string().min(1),
     body: z.unknown().optional(),
     headerName: z.string().optional(),
+    contentType: z.enum(['application/json', 'application/x-www-form-urlencoded']).optional(),
   }),
   token: z.string().optional(),
 });
@@ -524,6 +647,7 @@ export const CookieAuthSchema = z.object({
   login: z.object({
     path: z.string().min(1),
     body: z.unknown().optional(),
+    contentType: z.enum(['application/json', 'application/x-www-form-urlencoded']).optional(),
   }),
 });
 
