@@ -9,7 +9,8 @@
       "clientId": "${repoName}-dev-proxy",
       "redirectUris": ["http://app.localtest.me:${appProxyPort}/oauth2/callback"],
       "webOrigins": ["http://app.localtest.me:${appProxyPort}"],
-      "audienceClientIds": ["${repoName}-dev-api"]
+      "audienceClientIds": ["${repoName}-dev-api"],
+      "directAccessGrantsEnabled": true
     },
     "api": {
       "clientId": "${repoName}-dev-api",

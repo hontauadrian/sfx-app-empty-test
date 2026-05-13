@@ -37,6 +37,7 @@ export function buildKeycloakBootstrapPlan(manifest, devSeed, options = {}) {
         redirectUris: renderedManifest.clients.proxy.redirectUris,
         webOrigins: renderedManifest.clients.proxy.webOrigins,
         audienceClientIds: renderedManifest.clients.proxy.audienceClientIds,
+        directAccessGrantsEnabled: renderedManifest.clients.proxy.directAccessGrantsEnabled === true,
       },
       api: {
         clientId: renderedManifest.clients.api.clientId,

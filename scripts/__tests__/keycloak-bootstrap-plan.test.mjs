@@ -32,6 +32,7 @@ describe("buildKeycloakBootstrapPlan", () => {
 
     assert.equal(plan.realm.name, "customer-portal");
     assert.equal(plan.clients.proxy.clientId, "customer-portal-dev-proxy");
+    assert.equal(plan.clients.proxy.directAccessGrantsEnabled, true);
     assert.equal(plan.clients.api.clientId, "customer-portal-dev-api");
     assert.deepEqual(plan.clients.api.roles, ["viewer", "editor", "admin"]);
     assert.equal(plan.users[0].username, "admin@example.com");

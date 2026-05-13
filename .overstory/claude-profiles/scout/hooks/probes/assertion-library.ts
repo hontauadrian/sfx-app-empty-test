@@ -760,24 +760,8 @@ export async function probeFlowWithBindings(
     apiClient?: HttpClient;
   } = {},
 ): Promise<ProbeFlowResult> {
-  // Seed per-flow unique values. flows-generator emits `${uniqEmail}`,
-  // `${uniqString}`, `${uniqUuid}` into bodies wherever a Prisma-declared
-  // @unique field appears. http-smoke.ts pipes `sharedBindings` across
-  // flows (intentional for accessToken/userId), so stale uniqEmail from
-  // a prior flow would leak and collide. Fresh seed MUST override inherited
-  // shared bindings for the unique keys — hence uniqueSeed spreads LAST.
   const uniqueSeed: Record<string, string> = seedUniqueBindings();
 
-  // Strip cached parameterized `uniq:*` sigils from inherited bindings.
-  // substitutePath caches resolved parameterized sigils into bindings on
-  // first reference (e.g. `uniq:maxLen:50:pattern:<b64>` → some random slug).
-  // Without this strip, sharedBindings carries that resolved value into
-  // every subsequent flow, so all chain copies created via fan-out send
-  // the SAME slug and the second create hits the @unique constraint
-  // (P2002). Per-flow uniqueness requires per-flow re-resolution; clearing
-  // the cache forces substitutePath to call resolveConstrainedSigil again.
-  // Fixed-name sigils (uniqEmail / uniqString / uniqUuid / uniqUuid2) are
-  // already overridden by uniqueSeed below — only parameterized keys leak.
   const inheritedBindings = _options.bindings ?? {};
   const filteredInherited: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(inheritedBindings)) {

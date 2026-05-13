@@ -60,6 +60,11 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 LOG="$PROJECT_DIR/.stack.start.log"
 cd "$PROJECT_DIR"
 
+IS_WORKTREE_STACK=false
+case "$PROJECT_DIR" in
+  */.overstory/worktrees/*) IS_WORKTREE_STACK=true ;;
+esac
+
 # Source compose env (POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB / JWT_SECRET).
 # Without this, every per-worker stack would default to `app/app/app_db`
 # while the primary uses whatever the operator put in `.env` — migrations
@@ -72,9 +77,30 @@ if [ -f "$PROJECT_DIR/.env" ]; then
   set +a
 fi
 
+if [ "$IS_WORKTREE_STACK" = "true" ] && [ "${SFX_STACK_ALLOW_FIXED_PORTS:-0}" != "1" ]; then
+  unset PG_PORT API_PORT NEXT_PORT APP_PROXY_PORT KEYCLOAK_PORT
+  unset OAUTH_ISSUER_URL OAUTH_JWKS_URL OAUTH2_PROXY_REDIRECT_URL
+fi
+
 basename_dir="$(basename "$PROJECT_DIR")"
 hash_value="$(printf '%s' "$basename_dir" | cksum | awk '{print $1}')"
 index=$(( hash_value % 1000 ))
+
+derive_realm_name() {
+  local fallback_name="${1:-sfx-webapp-boilerplate}"
+  if command -v node >/dev/null 2>&1 && [ -f "$PROJECT_DIR/package.json" ]; then
+    node -e "
+      const packageJson = require(process.argv[1]);
+      const raw = String(packageJson.name || process.argv[2] || 'sfx-webapp-boilerplate').split('/').pop();
+      const normalized = raw.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+      console.log(normalized || 'sfx-webapp-boilerplate');
+    " "$PROJECT_DIR/package.json" "$fallback_name"
+    return
+  fi
+  printf '%s\n' "$fallback_name" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+}
 
 # Hash-based port assignment: deterministic per worktree name so the same
 # worker always lands on the same ports across restarts (easier to debug).
@@ -104,9 +130,28 @@ API_PORT="${API_PORT:-$(find_free_port "$(( 16000 + index ))" 16999)}"
 NEXT_PORT="${NEXT_PORT:-$(find_free_port "$(( 26000 + index ))" 26999)}"
 APP_PROXY_PORT="${APP_PROXY_PORT:-$(find_free_port "$(( 36000 + index ))" 36999)}"
 KEYCLOAK_PORT="${KEYCLOAK_PORT:-$(find_free_port "$(( 37000 + index ))" 37999)}"
+if [ "$IS_WORKTREE_STACK" = "true" ] && [ "${SFX_STACK_ALLOW_FIXED_PORTS:-0}" != "1" ]; then
+  REALM_NAME="$(derive_realm_name "sfx-webapp-boilerplate")"
+  OAUTH_ISSUER_URL="http://keycloak.localtest.me:${KEYCLOAK_PORT}/realms/${REALM_NAME}"
+  OAUTH_JWKS_URL="${OAUTH_ISSUER_URL}/protocol/openid-connect/certs"
+  OAUTH2_PROXY_REDIRECT_URL="http://app.localtest.me:${APP_PROXY_PORT}/oauth2/callback"
+fi
 export PG_PORT API_PORT NEXT_PORT APP_PROXY_PORT KEYCLOAK_PORT
+export OAUTH_ISSUER_URL OAUTH_JWKS_URL OAUTH2_PROXY_REDIRECT_URL
 PROJECT_NAME_FROM_ENV="${PROJECT_NAME:-}"
 PROJECT_NAME="${PROJECT_NAME:-app-${basename_dir}}"
+
+if [ "${SFX_STACK_PRINT_PORT_ENV:-0}" = "1" ]; then
+  printf 'PG_PORT=%s\n' "$PG_PORT"
+  printf 'API_PORT=%s\n' "$API_PORT"
+  printf 'NEXT_PORT=%s\n' "$NEXT_PORT"
+  printf 'APP_PROXY_PORT=%s\n' "$APP_PROXY_PORT"
+  printf 'KEYCLOAK_PORT=%s\n' "$KEYCLOAK_PORT"
+  printf 'OAUTH_ISSUER_URL=%s\n' "${OAUTH_ISSUER_URL:-}"
+  printf 'OAUTH_JWKS_URL=%s\n' "${OAUTH_JWKS_URL:-}"
+  printf 'OAUTH2_PROXY_REDIRECT_URL=%s\n' "${OAUTH2_PROXY_REDIRECT_URL:-}"
+  exit 0
+fi
 
 # Guard against worker worktrees hijacking the host-side main-app compose
 # project. The "main" stack runs against the unmerged-from-main shared

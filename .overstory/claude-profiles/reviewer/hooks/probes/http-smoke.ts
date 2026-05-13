@@ -176,7 +176,7 @@ export interface AuthContext {
   bearer: string | null;
   email: string | null;
   password: string | null;
-  source: 'register' | 'login' | 'cookie' | 'skip';
+  source: 'register' | 'login' | 'keycloak' | 'cookie' | 'skip';
   error?: string;
 }
 
@@ -968,8 +968,8 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
   for (const diag of flowsDiagnostics) {
     if (diag.code === 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE') {
       // Parse: "Status 401 declared on POST /api/v1/probe-ref/refresh-token but ..."
-      const m = diag.message.match(/Status (\d+) declared on (\w+) (\S+)/);
-      if (m) ungeneratableStatuses.add(`${m[2]} ${m[3]} ${m[1]}`);
+      const statusMatch = diag.message.match(/Status (\d+) declared on (\w+) (\S+)/);
+      if (statusMatch) ungeneratableStatuses.add(`${statusMatch[2]} ${statusMatch[3]} ${statusMatch[1]}`);
     }
   }
 
@@ -1028,10 +1028,10 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
     // authed flows; everything downstream cascades from these lines.
     for (const diag of curatedReport.bootstrapDiagnostics) {
       if (diag.code === 'FLOW_AUTH_BOOTSTRAP_ACTOR_FAILED') {
-        const d = diag as { actorName: string; scheme: string; reason: string; sourceFile?: string; message: string };
-        const sourcePart = d.sourceFile ? ` source=${JSON.stringify(d.sourceFile)} owner=lead` : '';
+        const bootstrapDiagnostic = diag as { actorName: string; scheme: string; reason: string; sourceFile?: string; message: string };
+        const sourcePart = bootstrapDiagnostic.sourceFile ? ` source=${JSON.stringify(bootstrapDiagnostic.sourceFile)} owner=lead` : '';
         process.stderr.write(
-          `[contract-flows-bootstrap-FAIL] actor=${d.actorName} scheme=${d.scheme}${sourcePart} reason=${JSON.stringify(d.reason)}\n`,
+          `[contract-flows-bootstrap-FAIL] actor=${bootstrapDiagnostic.actorName} scheme=${bootstrapDiagnostic.scheme}${sourcePart} reason=${JSON.stringify(bootstrapDiagnostic.reason)}\n`,
         );
       } else {
         process.stderr.write(`[contract-flows-execute] ${diag.code}: ${diag.message}\n`);
@@ -1175,13 +1175,22 @@ export async function bootstrapAuth(api: HttpClient, matrix: MergedMatrix): Prom
     return { bearer: null, email: null, password: null, source: 'skip' };
   }
 
-  if (!registerSurface && !loginSurface) {
-    return { bearer: null, email: null, password: null, source: 'skip', error: 'AUTH_UNBOOTSTRAPPABLE:no register or login surface in matrix' };
-  }
-
-  const email = process.env.HTTP_SMOKE_SEED_EMAIL ?? `smoke+${Date.now()}@example.com`;
-  const password = 'Smoke!Password1';
+  const seededCredentials = readKeycloakSeedCredentials();
+  const email = process.env.HTTP_SMOKE_SEED_EMAIL ?? seededCredentials?.email ?? `smoke+${Date.now()}@example.com`;
+  const password = process.env.HTTP_SMOKE_SEED_PASSWORD ?? seededCredentials?.password ?? 'Smoke!Password1';
   const body = { email, password, name: 'Smoke User' };
+
+  if (!registerSurface && !loginSurface) {
+    const keycloakContext = await bootstrapKeycloakAuth(email, password);
+    if (keycloakContext.bearer) return keycloakContext;
+    return {
+      bearer: null,
+      email,
+      password,
+      source: 'skip',
+      error: keycloakContext.error ?? 'AUTH_UNBOOTSTRAPPABLE:no register, login, or Keycloak password-grant surface available',
+    };
+  }
 
   if (registerSurface) {
     const response = await api.request(registerSurface, { method: 'POST', body, redirect: 'manual' });
@@ -1200,7 +1209,123 @@ export async function bootstrapAuth(api: HttpClient, matrix: MergedMatrix): Prom
     if (token) return { bearer: token, email, password, source: 'login' };
   }
 
-  return { bearer: null, email, password, source: 'skip', error: 'AUTH_BOOTSTRAP_INCONSISTENT:no token obtained from register/login' };
+  const keycloakContext = await bootstrapKeycloakAuth(email, password);
+  if (keycloakContext.bearer) return keycloakContext;
+
+  const fallbackError = keycloakContext.error?.startsWith('KEYCLOAK_BOOTSTRAP_FAILED:')
+    ? keycloakContext.error
+    : 'AUTH_BOOTSTRAP_INCONSISTENT:no token obtained from register/login';
+  return { bearer: null, email, password, source: 'skip', error: fallbackError };
+}
+
+function readKeycloakSeedCredentials(): { email: string; password: string } | null {
+  const seedPath = join(PROJECT_ROOT, 'infra/keycloak/dev-seed.json');
+  if (!existsSync(seedPath)) return null;
+  try {
+    const seed = JSON.parse(readFileSync(seedPath, 'utf8')) as {
+      users?: Array<{ username?: unknown; email?: unknown; password?: unknown }>;
+    };
+    const user = seed.users?.find((candidate) =>
+      typeof candidate.password === 'string' &&
+      (typeof candidate.email === 'string' || typeof candidate.username === 'string')
+    );
+    if (!user || typeof user.password !== 'string') return null;
+    const email = typeof user.email === 'string'
+      ? user.email
+      : typeof user.username === 'string'
+        ? user.username
+        : null;
+    if (!email) return null;
+    return { email, password: user.password };
+  } catch {
+    return null;
+  }
+}
+
+async function bootstrapKeycloakAuth(email: string, password: string): Promise<AuthContext> {
+  const issuerUrl = readRuntimeEnvValue('OAUTH_ISSUER_URL');
+  if (!issuerUrl) {
+    return { bearer: null, email, password, source: 'skip', error: 'KEYCLOAK_BOOTSTRAP_UNAVAILABLE:OAUTH_ISSUER_URL missing' };
+  }
+  const clientId = readRuntimeEnvValue('OAUTH2_PROXY_CLIENT_ID') ?? readRuntimeEnvValue('OAUTH_API_CLIENT_ID');
+  if (!clientId) {
+    return { bearer: null, email, password, source: 'skip', error: 'KEYCLOAK_BOOTSTRAP_UNAVAILABLE:client id missing' };
+  }
+
+  const body = new URLSearchParams({
+    grant_type: 'password',
+    client_id: clientId,
+    username: email,
+    password,
+    scope: 'openid email profile',
+  });
+  const clientSecret = readRuntimeEnvValue('OAUTH2_PROXY_CLIENT_SECRET') ?? readRuntimeEnvValue('OAUTH_API_CLIENT_SECRET');
+  if (clientSecret) body.set('client_secret', clientSecret);
+
+  try {
+    const response = await fetch(`${issuerUrl.replace(/\/$/, '')}/protocol/openid-connect/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+    const text = await response.text();
+    let json: unknown = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      json = null;
+    }
+    const token = extractToken(json, text);
+    if (response.ok && token) {
+      return { bearer: token, email, password, source: 'keycloak' };
+    }
+    return {
+      bearer: null,
+      email,
+      password,
+      source: 'skip',
+      error: `KEYCLOAK_BOOTSTRAP_FAILED:status=${response.status} body=${text.slice(0, 200)}`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { bearer: null, email, password, source: 'skip', error: `KEYCLOAK_BOOTSTRAP_FAILED:${message}` };
+  }
+}
+
+function readRuntimeEnvValue(key: string): string | undefined {
+  const liveValue = process.env[key];
+  if (liveValue) return liveValue;
+  for (const envPath of [
+    join(PROJECT_ROOT, '.env'),
+    join(PROJECT_ROOT, 'apps/api/.env'),
+    join(PROJECT_ROOT, 'apps/web/.env.local'),
+  ]) {
+    const fileValue = readEnvFileValue(envPath, key);
+    if (fileValue) return fileValue;
+  }
+  return undefined;
+}
+
+function readEnvFileValue(envPath: string, key: string): string | undefined {
+  if (!existsSync(envPath)) return undefined;
+  try {
+    const content = readFileSync(envPath, 'utf8');
+    for (const line of content.split(/\r?\n/)) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine || trimmedLine.startsWith('#')) continue;
+      const equalsIndex = trimmedLine.indexOf('=');
+      if (equalsIndex <= 0) continue;
+      const entryKey = trimmedLine.slice(0, equalsIndex).trim();
+      if (entryKey !== key) continue;
+      return trimmedLine
+        .slice(equalsIndex + 1)
+        .trim()
+        .replace(/^['"]|['"]$/g, '');
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }
 
 function extractToken(json: unknown, _text: string): string | null {

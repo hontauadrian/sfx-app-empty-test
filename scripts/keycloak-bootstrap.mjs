@@ -27,6 +27,7 @@ async function main() {
     webOrigins: plan.clients.proxy.webOrigins,
     secret: process.env.OAUTH2_PROXY_CLIENT_SECRET ?? "dev-generated-app-proxy-secret",
     audienceClientIds: plan.clients.proxy.audienceClientIds,
+    directAccessGrantsEnabled: plan.clients.proxy.directAccessGrantsEnabled,
   });
   const apiClientUuid = await ensureClient(KEYCLOAK_BASE_URL, accessToken, plan.realm.name, {
     clientId: plan.clients.api.clientId,
@@ -132,7 +133,7 @@ async function ensureClient(baseUrl, accessToken, realmName, client) {
     protocol: "openid-connect",
     publicClient: false,
     standardFlowEnabled: true,
-    directAccessGrantsEnabled: false,
+    directAccessGrantsEnabled: client.directAccessGrantsEnabled === true,
     serviceAccountsEnabled: false,
     redirectUris: client.redirectUris,
     webOrigins: client.webOrigins,

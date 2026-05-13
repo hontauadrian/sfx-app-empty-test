@@ -187,6 +187,62 @@ test('bootstrapAuth falls back to login on 409 duplicate', async () => {
   }
 });
 
+test('bootstrapAuth obtains bearer from Keycloak password grant when app auth endpoints are absent', async () => {
+  const server = createServer(async (req, res) => {
+    if (req.url === '/realms/generated/protocol/openid-connect/token' && req.method === 'POST') {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const params = new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
+      assert.equal(params.get('grant_type'), 'password');
+      assert.equal(params.get('client_id'), 'generated-dev-proxy');
+      assert.equal(params.get('client_secret'), 'proxy-secret');
+      assert.equal(params.get('username'), 'viewer@example.com');
+      assert.equal(params.get('password'), 'password');
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ access_token: 'keycloak.access.token' }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  const port = (server.address() as AddressInfo).port;
+  const priorEnv = {
+    HTTP_SMOKE_SEED_EMAIL: process.env.HTTP_SMOKE_SEED_EMAIL,
+    HTTP_SMOKE_SEED_PASSWORD: process.env.HTTP_SMOKE_SEED_PASSWORD,
+    OAUTH_ISSUER_URL: process.env.OAUTH_ISSUER_URL,
+    OAUTH2_PROXY_CLIENT_ID: process.env.OAUTH2_PROXY_CLIENT_ID,
+    OAUTH2_PROXY_CLIENT_SECRET: process.env.OAUTH2_PROXY_CLIENT_SECRET,
+  };
+  try {
+    process.env.HTTP_SMOKE_SEED_EMAIL = 'viewer@example.com';
+    process.env.HTTP_SMOKE_SEED_PASSWORD = 'password';
+    process.env.OAUTH_ISSUER_URL = `http://127.0.0.1:${port}/realms/generated`;
+    process.env.OAUTH2_PROXY_CLIENT_ID = 'generated-dev-proxy';
+    process.env.OAUTH2_PROXY_CLIENT_SECRET = 'proxy-secret';
+
+    const client = new HttpClient('http://127.0.0.1:1');
+    const ctx = await bootstrapAuth(client, {
+      raw: {}, overlay: null, compiled: null,
+      pages: [],
+      endpoints: [{ file: 'auth.ts', path: '/api/v1/auth/me', method: 'GET', guard: 'authenticated' }],
+      forms: [], middleware: [],
+      authDetection: { registerSurface: null, loginSurface: null },
+      bootPlan: { driver: 'worktree-stack' }, scope: 'session', ignoredRoutes: new Set(),
+    });
+
+    assert.equal(ctx.source, 'keycloak');
+    assert.equal(ctx.bearer, 'keycloak.access.token');
+  } finally {
+    for (const [key, value] of Object.entries(priorEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 test('bootstrapAuth returns skip error when no token extractable', async () => {
   const server = createServer((_q, res) => { res.statusCode = 200; res.end(JSON.stringify({ user: { id: '1' } })); });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
