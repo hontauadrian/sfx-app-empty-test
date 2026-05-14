@@ -290,7 +290,7 @@ Skill(skill: "feature-plan", args: "auth chunk")
 Your feature isn't done when unit tests pass and the page renders. It's done when a real user can complete every flow your diff touches. After implementation:
 
 1. Bring the stack up (`pnpm stack:up`)
-2. Invoke `Skill(skill: "qa-test")` and run `/qa-test <web_url> --full`
+2. Invoke `Skill(skill: "qa-test")` and run `/qa-test <app_url> --full`, where `<app_url>` is the oauth2-proxy app URL from `.stack.json` (`oauth2_proxy_redirect_url` origin, or `proxy_port`). Do not use the direct Next.js `web_port` for authenticated or role-based checks.
 3. The skill drives Playwright through every CRUD + auth + permission + visual flow related to your diff. It writes a report at `.claude/hook-reports/qa-test-<task>-<hash>.md`
 4. **READ the report.** For every row with Status FAIL:
    - Identify root cause in your code (component not mounted, button missing, form rejecting valid input, page 500ing, console error, etc.)

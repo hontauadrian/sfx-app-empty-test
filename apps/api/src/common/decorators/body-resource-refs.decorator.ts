@@ -47,7 +47,7 @@ export interface BodyResourceRef {
  *   })
  *   createProject(...) { ... }
  */
-export function BodyResourceRefs(...refs: BodyResourceRef[]) {
+export function BodyResourceRefs(...refs: BodyResourceRef[]): MethodDecorator & ClassDecorator {
   return applyDecorators(
     SetMetadata(BODY_RESOURCE_REFS_KEY, refs),
     ApiExtension('x-probe-resource-ref', refs),

@@ -35,6 +35,27 @@ write_web_env_local() {
   fi
   [ -d "$_project_dir/apps/web" ] || return 0
   mkdir -p "$_project_dir/apps/web"
+  upsert_web_env_var() {
+    local _key="$1"
+    local _value="$2"
+    [ -n "$_value" ] || return 0
+    if [ -f "$_env_file" ] && grep -q "^[[:space:]]*${_key}=" "$_env_file"; then
+      _tmp="$(mktemp "$_env_file.XXXXXX")"
+      if awk -v key="$_key" -v value="$_value" '
+        BEGIN { replaced = 0 }
+        $0 ~ "^[[:space:]]*" key "=" { print key "=" value; replaced = 1; next }
+        { print }
+        END { if (!replaced) print key "=" value }
+      ' "$_env_file" > "$_tmp"; then
+        mv "$_tmp" "$_env_file"
+      else
+        rm -f "$_tmp"
+        return 1
+      fi
+    else
+      printf '%s=%s\n' "$_key" "$_value" >> "$_env_file"
+    fi
+  }
   if [ -f "$_env_file" ] && grep -q '^[[:space:]]*NEXT_PUBLIC_API_URL=' "$_env_file"; then
     # Replace existing line in-place. Use a portable tmp-file rewrite — sed -i
     # syntax differs between BSD (macOS) and GNU.
@@ -54,6 +75,12 @@ write_web_env_local() {
     # Append (creates file if missing) — other lines (if any) untouched.
     printf 'NEXT_PUBLIC_API_URL=%s\n' "$_new_url" >> "$_env_file"
   fi
+  # Worker stacks reuse cached web images, so these browser-facing OAuth
+  # values must be visible to next dev through .env.local at runtime, not only
+  # as Docker build args.
+  upsert_web_env_var "NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI" "${NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI:-}"
+  upsert_web_env_var "NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT" "${NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT:-}"
+  upsert_web_env_var "NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID" "${NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID:-}"
   # Also update apps/api/.env WEB_ORIGIN — the API's CORS allowlist must
   # include the worker's actual web origin, otherwise browser requests from
   # host.docker.internal:WEB_PORT get blocked by CORS (no Access-Control-
@@ -264,6 +291,20 @@ case "$PROJECT_DIR" in
       echo "       That project name is reserved for the host-side main app stack." >&2
       echo "       Worker worktrees must use a unique project (default: app-${basename_dir})." >&2
       echo "       Override PROJECT_NAME or APP_DEV_PROJECT if you intentionally want a different layout." >&2
+      exit 1
+    fi
+    ;;
+  *)
+    # Canonical context (not a worktree). The only legitimate project name
+    # here is the reserved canonical one. The fallback PROJECT_NAME pattern
+    # `app-<basename>` would create a parallel ghost stack (e.g. app-workspace)
+    # that competes with the real canonical (app-dev-host) for the same
+    # source tree but on different ports — silently splits agent traffic and
+    # masks the real app. Refuse it.
+    if [ "$PROJECT_NAME" != "$APP_DEV_PROJECT_RESERVED" ]; then
+      echo "ERROR: refusing to run stack:up from canonical context ($PROJECT_DIR) under PROJECT_NAME=$PROJECT_NAME." >&2
+      echo "       Canonical must use PROJECT_NAME=$APP_DEV_PROJECT_RESERVED (the host-side main app stack)." >&2
+      echo "       Either run from a worker worktree, or set PROJECT_NAME=$APP_DEV_PROJECT_RESERVED explicitly." >&2
       exit 1
     fi
     ;;

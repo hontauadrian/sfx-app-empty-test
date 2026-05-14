@@ -24,6 +24,7 @@ async function main() {
   const proxyClientUuid = await ensureClient(KEYCLOAK_BASE_URL, accessToken, plan.realm.name, {
     clientId: plan.clients.proxy.clientId,
     redirectUris: plan.clients.proxy.redirectUris,
+    postLogoutRedirectUris: plan.clients.proxy.postLogoutRedirectUris,
     webOrigins: plan.clients.proxy.webOrigins,
     secret: process.env.OAUTH2_PROXY_CLIENT_SECRET ?? "dev-generated-app-proxy-secret",
     audienceClientIds: plan.clients.proxy.audienceClientIds,

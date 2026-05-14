@@ -5,7 +5,7 @@ describe('ResourceCaptures decorator', () => {
   it('sets metadata with a single capture', () => {
     class TestController {
       @ResourceCaptures({ fromPath: 'id', resource: 'team', pathParam: 'id' })
-      create() {
+      create(): Record<string, never> {
         return {};
       }
     }
@@ -20,7 +20,7 @@ describe('ResourceCaptures decorator', () => {
         { fromPath: 'id', resource: 'membership', pathParam: 'membershipId' },
         { fromPath: 'userId', resource: 'user', pathParam: 'userId' },
       )
-      addMember() {
+      addMember(): Record<string, never> {
         return {};
       }
     }
@@ -35,7 +35,7 @@ describe('ResourceCaptures decorator', () => {
   it('attaches x-resource-captures OpenAPI extension metadata', () => {
     class TestController {
       @ResourceCaptures({ fromPath: 'slug', resource: 'project', pathParam: 'slug' })
-      create() {
+      create(): Record<string, never> {
         return {};
       }
     }

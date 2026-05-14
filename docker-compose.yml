@@ -95,6 +95,14 @@ services:
         NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI: ${NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI:-}
         NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT: ${NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT:-}
         NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID: ${NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID:-}
+    environment:
+      # Worker stacks reuse cached web images. Keep browser-facing values in
+      # the runtime env too so next dev compiles with the current worktree's
+      # dynamic proxy/Keycloak ports.
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-}
+      - NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI=${NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI:-}
+      - NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT=${NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT:-}
+      - NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID=${NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID:-}
     ports:
       - "${NEXT_PORT:-3000}:3000"
     volumes:

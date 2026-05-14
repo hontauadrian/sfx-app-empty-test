@@ -28,7 +28,7 @@ export interface ResourceCapture {
  *   )
  *   addMember(...) { ... }
  */
-export function ResourceCaptures(...captures: ResourceCapture[]) {
+export function ResourceCaptures(...captures: ResourceCapture[]): MethodDecorator & ClassDecorator {
   return applyDecorators(
     SetMetadata(RESOURCE_CAPTURES_KEY, captures),
     ApiExtension('x-resource-captures', captures),

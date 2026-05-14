@@ -29,6 +29,14 @@ describe("stack-up-docker worktree ports", () => {
     assert.match(script, /\bnode --eval\b/);
   });
 
+  it("writes browser-facing OAuth values to web .env.local for cached worker images", () => {
+    const script = readFileSync(join(REPO_ROOT, "scripts", "stack-up-docker.sh"), "utf8");
+
+    assert.match(script, /upsert_web_env_var "NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI"/);
+    assert.match(script, /upsert_web_env_var "NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT"/);
+    assert.match(script, /upsert_web_env_var "NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID"/);
+  });
+
   it("rewrites OAuth URLs for canonical stacks with dynamic proxy and Keycloak ports", () => {
     const tempRoot = join(tmpdir(), `stack-up-docker-canonical-${Date.now()}`);
     const scriptsDir = join(tempRoot, "scripts");

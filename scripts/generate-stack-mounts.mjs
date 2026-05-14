@@ -170,7 +170,8 @@ for (const dir of packageDirs) {
 // so a host operator running `pnpm stack:up` directly still gets the
 // correct mounts via cwd resolution.
 const hostWorkspace = env.SFX_HOST_WORKSPACE_PATH;
-const isPanelContainer = existsSync('/.dockerenv') && hostWorkspace;
+const isPanelContainer =
+  (existsSync('/.dockerenv') || env.SFX_STACK_FORCE_PANEL_CONTAINER === '1') && hostWorkspace;
 let hostBase;
 if (isPanelContainer) {
   // Mirror the path computation that scripts/stack-up-docker.sh uses
@@ -221,7 +222,7 @@ lines.push('');
 if (listMode) {
   // <pkg-name>:<dist-relpath> per line, machine-consumed.
   for (const m of mounts) {
-    process.stdout.write(`${m.name}:${m.host.replace(/^\.\//, '')}\n`);
+    process.stdout.write(`${m.name}:${m.rel.replace(/^\.\//, '')}\n`);
   }
 } else {
   writeFileSync(outputFile, lines.join('\n'));

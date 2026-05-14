@@ -34,6 +34,26 @@ genuinely no tasks in the database when testing "edit task"). It is NOT reserved
 for "test environment had a CORS misconfiguration" or "the route 404s and I
 guessed it was intentional" — those are FAIL.
 
+**Every observation is PASS or FAIL. No third category.** The following
+labels and section headings are FORBIDDEN in the qa-test report:
+
+- Recommendations
+- Suggestions
+- Out of scope
+- Nice to have
+- Future work
+- Consider adding...
+- Could be improved...
+- Not blocking but...
+- Minor
+- Cosmetic
+- Known limitation
+
+If you observe a defect, fix it in source code OR mail parent
+`--type error` describing the blocker and STOP. Closing worker_done with
+a known unfixed defect under any label is a CONDUCT FAILURE in the same
+severity class as gate-gaming.
+
 **FIX MEANS APPLICATION SOURCE CODE — NEVER TEST HARNESS WORKAROUNDS.**
 If a bug shows up while running Playwright, the fix is in `apps/web/src/`,
 `apps/api/src/`, `packages/*/src/`, or `scripts/` — wherever the broken

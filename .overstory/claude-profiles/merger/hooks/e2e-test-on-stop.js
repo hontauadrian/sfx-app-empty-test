@@ -664,16 +664,45 @@ function loadStackInfo() {
     // have to derive this — it's declarative in .stack.json.
     const host = typeof raw.host === 'string' && raw.host ? raw.host : 'localhost';
     const webPort = typeof raw.web_port === 'number' ? raw.web_port : null;
+    const proxyPort = typeof raw.proxy_port === 'number' ? raw.proxy_port : null;
     const apiPort = typeof raw.api_port === 'number' ? raw.api_port : null;
+    const oauth2ProxyRedirectUrl =
+      typeof raw.oauth2_proxy_redirect_url === 'string' ? raw.oauth2_proxy_redirect_url : null;
+    const directWebBaseUrl = webPort ? `http://${host}:${webPort}` : null;
+    let proxyBaseUrl = null;
+    if (oauth2ProxyRedirectUrl) {
+      try {
+        proxyBaseUrl = new URL(oauth2ProxyRedirectUrl).origin;
+      } catch {
+        proxyBaseUrl = null;
+      }
+    }
+    if (!proxyBaseUrl && proxyPort) {
+      proxyBaseUrl = `http://${host}:${proxyPort}`;
+    }
     return {
       host,
       apiPort,
       webPort,
-      webBaseUrl: webPort ? `http://${host}:${webPort}` : null,
+      proxyPort,
+      // Authenticated and role-based QA must enter through oauth2-proxy so it
+      // matches the real app surface. Keep directWebBaseUrl for diagnostics.
+      webBaseUrl: proxyBaseUrl || directWebBaseUrl,
+      directWebBaseUrl,
+      proxyBaseUrl,
       apiBaseUrl: apiPort ? `http://${host}:${apiPort}` : null,
     };
   } catch {
-    return { host: 'localhost', apiPort: null, webPort: null, webBaseUrl: null, apiBaseUrl: null };
+    return {
+      host: 'localhost',
+      apiPort: null,
+      webPort: null,
+      proxyPort: null,
+      webBaseUrl: null,
+      directWebBaseUrl: null,
+      proxyBaseUrl: null,
+      apiBaseUrl: null,
+    };
   }
 }
 

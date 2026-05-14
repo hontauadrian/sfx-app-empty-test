@@ -32,6 +32,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
+const crypto = require('crypto');
 
 let input;
 try {
@@ -403,26 +404,38 @@ function deriveRoutesFromFile(filePath) {
   return [`/${cleaned}`];
 }
 
-function readEvidenceRecords(sessionId) {
-  if (!sessionId) return [];
-  const logFile = path.join(MCP_EVIDENCE_DIR, `${sessionId}.jsonl`);
-  if (!fs.existsSync(logFile)) return [];
+function readEvidenceRecords() {
+  // Read evidence from ALL session files in the directory, not just the
+  // current Claude Code session. After context compaction a new session id
+  // is assigned; if we only read the current session's jsonl we lose every
+  // Playwright nav recorded before the compaction. Evidence from any session
+  // that visited the live stack is acceptable as long as it covers the
+  // routes the current diff introduces.
+  if (!fs.existsSync(MCP_EVIDENCE_DIR)) return [];
+  let files;
   try {
-    const content = fs.readFileSync(logFile, 'utf8');
-    return content
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => {
-        try {
-          return JSON.parse(line);
-        } catch {
-          return null;
-        }
-      })
-      .filter((record) => record && record.session === sessionId);
+    files = fs.readdirSync(MCP_EVIDENCE_DIR).filter((file) => file.endsWith('.jsonl'));
   } catch {
     return [];
   }
+  const records = [];
+  for (const file of files) {
+    let content;
+    try {
+      content = fs.readFileSync(path.join(MCP_EVIDENCE_DIR, file), 'utf8');
+    } catch {
+      continue;
+    }
+    for (const line of content.split('\n').filter(Boolean)) {
+      try {
+        const record = JSON.parse(line);
+        if (record) records.push(record);
+      } catch {
+        // malformed line — skip
+      }
+    }
+  }
+  return records;
 }
 
 function recordUrlPath(record) {
@@ -549,7 +562,7 @@ function checkE2EVerification() {
   if (routeToFiles.size === 0) return null;
 
   const sessionId = input.session_id;
-  const records = readEvidenceRecords(sessionId);
+  const records = readEvidenceRecords();
 
   const failures = [];
   const passes = [];
@@ -605,6 +618,32 @@ function checkE2EVerification() {
 //
 // Skipped if node_modules isn't installed yet (bootstrap/dry-run repos).
 // ────────────────────────────────────────────────────────────────────
+function computeGateStateHash() {
+  const sh = (cmd) => {
+    try {
+      return execSync(cmd, { cwd: PROJECT_DIR, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024 });
+    } catch { return ''; }
+  };
+  const baseBranch = (sh('git symbolic-ref refs/remotes/origin/HEAD').trim().replace('refs/remotes/origin/', '')) || 'master';
+  const mergeBase = sh(`git merge-base HEAD origin/${baseBranch}`).trim();
+  // Hash the actual diff content, NOT just file names. Pathspec excludes strip
+  // orchestration scaffolding so mulch/seeds/canopy/etc commits don't flip the
+  // hash — but any real source-code change does.
+  const excludes = [
+    "':(exclude,glob).claude/**'",
+    "':(exclude,glob).overstory/**'",
+    "':(exclude,glob).mulch/**'",
+    "':(exclude,glob).seeds/**'",
+    "':(exclude,glob).canopy/**'",
+    "':(exclude,glob).bridge.*'",
+    "':(exclude,glob)._*'",
+    "':(exclude,glob).DS_Store'",
+  ].join(' ');
+  const range = mergeBase ? `${mergeBase} HEAD` : 'HEAD';
+  const diff = sh(`git diff ${range} -- . ${excludes}`);
+  return crypto.createHash('sha1').update(diff).digest('hex').slice(0, 12);
+}
+
 function checkQualityGates() {
   if (!fs.existsSync(path.join(PROJECT_DIR, 'package.json'))) return null;
   if (!fs.existsSync(path.join(PROJECT_DIR, 'node_modules'))) return null;
@@ -615,6 +654,17 @@ function checkQualityGates() {
     { name: 'Tests', command: 'pnpm test', timeoutMs: 600000 },
     { name: 'Integration tests', command: 'pnpm test:integration', timeoutMs: 600000 },
   ];
+
+  // State-hash gate-pass marker: if every gate in this set already passed for
+  // the current source-code state, skip re-running them. Marker only written
+  // after a FULL pass; any single gate failure leaves no marker so the next
+  // attempt re-runs everything.
+  const stateHash = computeGateStateHash();
+  const markerDir = path.join(PROJECT_DIR, '.claude', 'hook-reports');
+  const markerPath = path.join(markerDir, `gate-pass-pre-close-${stateHash}.json`);
+  if (fs.existsSync(markerPath)) {
+    return null;
+  }
 
   for (const gate of gates) {
     try {
@@ -642,6 +692,19 @@ function checkQualityGates() {
         'tests, re-run the command locally until it passes, then retry.',
       ].join('\n');
     }
+  }
+
+  // All gates passed — write marker so subsequent close-intent commands at
+  // the same state hash can short-circuit.
+  try {
+    fs.mkdirSync(markerDir, { recursive: true });
+    fs.writeFileSync(markerPath, JSON.stringify({
+      stateHash,
+      timestamp: new Date().toISOString(),
+      gates: gates.map((g) => g.name),
+    }, null, 2));
+  } catch {
+    // best-effort cache write; never fail the gate because of cache failure
   }
   return null;
 }

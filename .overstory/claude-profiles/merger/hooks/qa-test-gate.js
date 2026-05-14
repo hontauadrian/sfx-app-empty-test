@@ -120,16 +120,34 @@ try {
   stackInfo = {
     host: typeof raw.host === 'string' && raw.host ? raw.host : 'localhost',
     webPort: typeof raw.web_port === 'number' ? raw.web_port : null,
+    proxyPort: typeof raw.proxy_port === 'number' ? raw.proxy_port : null,
     apiPort: typeof raw.api_port === 'number' ? raw.api_port : null,
+    oauth2ProxyRedirectUrl:
+      typeof raw.oauth2_proxy_redirect_url === 'string' ? raw.oauth2_proxy_redirect_url : null,
     composeProject: typeof raw.compose_project === 'string' ? raw.compose_project : null,
   };
 } catch {
   // No stack info — defer to existing e2e gate / let stack-up errors surface elsewhere.
   process.exit(0);
 }
-if (!stackInfo.webPort) process.exit(0);
+if (!stackInfo.webPort && !stackInfo.proxyPort) process.exit(0);
 
-const webBaseUrl = `http://${stackInfo.host}:${stackInfo.webPort}`;
+function getOrigin(url) {
+  if (!url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+const directWebBaseUrl = stackInfo.webPort ? `http://${stackInfo.host}:${stackInfo.webPort}` : null;
+const proxyBaseUrl =
+  getOrigin(stackInfo.oauth2ProxyRedirectUrl) ||
+  (stackInfo.proxyPort ? `http://${stackInfo.host}:${stackInfo.proxyPort}` : null);
+// Authenticated and role-based QA must enter through oauth2-proxy so session
+// cookies, callback redirects, and bearer-token injection match real app usage.
+const qaBaseUrl = proxyBaseUrl || directWebBaseUrl;
 
 // 3. Resolve task-id from the worktree dir or git branch name.
 const branch = sh('git rev-parse --abbrev-ref HEAD').trim();
@@ -163,7 +181,7 @@ if (!fs.existsSync(reportPath)) {
     '',
     'No qa-test report found for the current code state. Run the qa-test skill against the live stack first:',
     '',
-    `  /qa-test ${webBaseUrl} --full`,
+    `  /qa-test ${qaBaseUrl} --full`,
     '',
     'Quinn will derive success criteria from the spec at .overstory/specs/' + taskId + '.md and the diff,',
     'then verify each criterion. Jinx will run adversarial break-it testing in parallel.',
@@ -175,7 +193,8 @@ if (!fs.existsSync(reportPath)) {
     'real code changes.',
     '',
     'Reference URLs (read from .stack.json — Playwright MCP must use these, NOT http://localhost):',
-    `  WEB: ${webBaseUrl}`,
+    proxyBaseUrl ? `  APP (oauth2-proxy; use for authenticated/role checks): ${proxyBaseUrl}` : null,
+    directWebBaseUrl ? `  WEB (direct Next.js; diagnostics only): ${directWebBaseUrl}` : null,
     stackInfo.apiPort ? `  API: http://${stackInfo.host}:${stackInfo.apiPort}` : null,
   ].filter(Boolean).join('\n');
 
@@ -205,7 +224,7 @@ if (criticalCount + highCount + failCount > 0) {
     `Report: ${path.relative(PROJECT_DIR, reportPath)}`,
     '',
     'Fix the issues, commit, then re-run:',
-    `  /qa-test ${webBaseUrl} --full`,
+    `  /qa-test ${qaBaseUrl} --full`,
     '',
     'New code → new state hash → fresh qa-test run required. The cached report',
     `for hash ${stateHash} is the one currently blocking; once code changes, the`,

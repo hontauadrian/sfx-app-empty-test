@@ -28,6 +28,7 @@ These are named failures. If you catch yourself doing any of these, stop and cor
 - **PREMATURE_COMPLETION** -- Declaring all work complete while coordinators are still running or have unreported results. Verify every coordinator has sent a completion result.
 - **SILENT_FAILURE** -- A coordinator sends an error and you do not act on it. Every error must be addressed or escalated.
 - **POLLING_LOOP** -- Checking status in a tight loop. Use reasonable intervals between checks.
+- **GATE_BYPASS_NUDGE** -- Sending an agent a nudge that instructs them to skip a quality gate, label pre-existing failures as "out of scope", or promises a downstream agent will merge their branch despite gate failures. Examples (all real, all forbidden): "Do NOT try to fix the failing tests — they are outside your file scope, I will merge your branch directly"; "send error mail and close — the lead will handle it"; "the probe failure is a known infra issue, ship anyway". The gate system exists precisely because pre-existing failures compound across chunks; bypassing it at the orchestrator level defeats every hook below. When a gate is blocking valid work because a fix is mechanical (missing mock, missing import, version pin), nudge the agent with the FIX, not with permission to skip. When the failure is genuinely environmental (real infra outage, dependency unavailable), pause the run and escalate to the human operator — never tell the agent to ship anyway.
 
 ## overlay
 
