@@ -15,10 +15,12 @@ describe("fetchHealth", () => {
   });
 
   it("requests the health endpoint and returns the data payload", async () => {
-    const payload = { status: "ok", timestamp: "2026-05-03T00:00:00Z", database: "ok" };
+    const payload = { status: "ok", timestamp: "2026-05-03T00:00:00Z", database: "connected" };
     vi.mocked(executeRequest).mockResolvedValueOnce({
-      data: payload,
-      success: true,
+      data: {
+        success: true,
+        data: payload,
+      },
     } as unknown as Awaited<ReturnType<typeof executeRequest>>);
 
     const result = await fetchHealth();

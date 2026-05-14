@@ -10,7 +10,7 @@ import type { AuthenticatedRequest } from '../types/authenticated-request';
 export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('accessToken')
   @ApiOperation({ summary: 'Current authenticated user session' })
   @ApiResponse({
     status: 200,

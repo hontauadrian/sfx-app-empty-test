@@ -203,17 +203,32 @@ fi
 export WEB_ORIGIN
 
 REALM_NAME="$(derive_realm_name "sfx-webapp-boilerplate")"
+SHOULD_REWRITE_OAUTH_URLS=false
 if [ "$IS_WORKTREE_STACK" = "true" ] && [ "${SFX_STACK_ALLOW_FIXED_PORTS:-0}" != "1" ]; then
+  SHOULD_REWRITE_OAUTH_URLS=true
+elif [ "$APP_PROXY_PORT" != "4181" ] || [ "$KEYCLOAK_PORT" != "9080" ]; then
+  SHOULD_REWRITE_OAUTH_URLS=true
+fi
+
+if [ "$SHOULD_REWRITE_OAUTH_URLS" = "true" ]; then
+  # OAuth URLs are browser-facing as well as container-facing. Keep these on
+  # .localtest.me with the dynamic ports so Keycloak discovery and redirects
+  # never leak Docker-only hostnames like host.docker.internal into Chrome.
+  # Containers that need to call Keycloak get keycloak.localtest.me mapped to
+  # the host gateway via docker-compose extra_hosts.
   OAUTH_HOST="keycloak.localtest.me"
-  if [ -f "/.dockerenv" ]; then
-    OAUTH_HOST="host.docker.internal"
-  fi
+  OAUTH_PROXY_HOST="app.localtest.me"
   OAUTH_ISSUER_URL="http://${OAUTH_HOST}:${KEYCLOAK_PORT}/realms/${REALM_NAME}"
   OAUTH_JWKS_URL="${OAUTH_ISSUER_URL}/protocol/openid-connect/certs"
-  OAUTH2_PROXY_REDIRECT_URL="http://app.localtest.me:${APP_PROXY_PORT}/oauth2/callback"
+  OAUTH2_PROXY_REDIRECT_URL="http://${OAUTH_PROXY_HOST}:${APP_PROXY_PORT}/oauth2/callback"
+  NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI="http://${OAUTH_PROXY_HOST}:${APP_PROXY_PORT}/"
+  NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT="${OAUTH_ISSUER_URL}/protocol/openid-connect/logout"
+  NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID="${REALM_NAME}-dev-proxy"
 fi
+OAUTH2_PROXY_WHITELIST_DOMAIN="${OAUTH2_PROXY_WHITELIST_DOMAIN:-keycloak.localtest.me:${KEYCLOAK_PORT}}"
 export PG_PORT API_PORT NEXT_PORT APP_PROXY_PORT KEYCLOAK_PORT
-export OAUTH_ISSUER_URL OAUTH_JWKS_URL OAUTH2_PROXY_REDIRECT_URL
+export OAUTH_ISSUER_URL OAUTH_JWKS_URL OAUTH2_PROXY_REDIRECT_URL OAUTH2_PROXY_WHITELIST_DOMAIN
+export NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID
 PROJECT_NAME_FROM_ENV="${PROJECT_NAME:-}"
 PROJECT_NAME="${PROJECT_NAME:-app-${basename_dir}}"
 
@@ -226,6 +241,10 @@ if [ "${SFX_STACK_PRINT_PORT_ENV:-0}" = "1" ]; then
   printf 'OAUTH_ISSUER_URL=%s\n' "${OAUTH_ISSUER_URL:-}"
   printf 'OAUTH_JWKS_URL=%s\n' "${OAUTH_JWKS_URL:-}"
   printf 'OAUTH2_PROXY_REDIRECT_URL=%s\n' "${OAUTH2_PROXY_REDIRECT_URL:-}"
+  printf 'OAUTH2_PROXY_WHITELIST_DOMAIN=%s\n' "${OAUTH2_PROXY_WHITELIST_DOMAIN:-}"
+  printf 'NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI=%s\n' "${NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI:-}"
+  printf 'NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT=%s\n' "${NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT:-}"
+  printf 'NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID=%s\n' "${NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID:-}"
   exit 0
 fi
 
@@ -357,9 +376,9 @@ if [ -z "$BUILD_FLAG" ] && [ -z "$FORCE_RECREATE_FLAG" ] && [ "${running_count:-
   "proxy_port": ${ACTUAL_PROXY_PORT},
   "keycloak_port": ${ACTUAL_KEYCLOAK_PORT},
   "host": "${STATE_HEALTH_HOST}",
-  "oauth_issuer_url": "http://${STATE_HEALTH_HOST}:${ACTUAL_KEYCLOAK_PORT}/realms/$(derive_realm_name "sfx-webapp-boilerplate")",
-  "oauth_jwks_url": "http://${STATE_HEALTH_HOST}:${ACTUAL_KEYCLOAK_PORT}/realms/$(derive_realm_name "sfx-webapp-boilerplate")/protocol/openid-connect/certs",
-  "oauth2_proxy_redirect_url": "http://app.localtest.me:${ACTUAL_PROXY_PORT}/oauth2/callback",
+  "oauth_issuer_url": "${OAUTH_ISSUER_URL:-http://keycloak.localtest.me:${ACTUAL_KEYCLOAK_PORT}/realms/$(derive_realm_name "sfx-webapp-boilerplate")}",
+  "oauth_jwks_url": "${OAUTH_JWKS_URL:-http://keycloak.localtest.me:${ACTUAL_KEYCLOAK_PORT}/realms/$(derive_realm_name "sfx-webapp-boilerplate")/protocol/openid-connect/certs}",
+  "oauth2_proxy_redirect_url": "${OAUTH2_PROXY_REDIRECT_URL:-http://app.localtest.me:${ACTUAL_PROXY_PORT}/oauth2/callback}",
   "is_worktree": true,
   "compose_project": "${PROJECT_NAME}",
   "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -404,7 +423,7 @@ if [ -f /.dockerenv ]; then
     # `src/`, or anything else. Anonymous volumes, named volumes, and
     # volume-mode entries are passed through untouched.
     docker compose -f "$PROJECT_DIR/docker-compose.yml" config --format json 2>/dev/null \
-      | bun --eval "
+      | node --eval "
         const fs = require('fs');
         const cfg = JSON.parse(fs.readFileSync(0, 'utf8'));
         const panelRoot = process.argv[1];
@@ -733,9 +752,9 @@ for attempt in $(seq 1 60); do
   "proxy_port": ${APP_PROXY_PORT},
   "keycloak_port": ${KEYCLOAK_PORT},
   "host": "${HEALTH_HOST}",
-  "oauth_issuer_url": "http://${HEALTH_HOST}:${KEYCLOAK_PORT}/realms/${REALM_NAME}",
-  "oauth_jwks_url": "http://${HEALTH_HOST}:${KEYCLOAK_PORT}/realms/${REALM_NAME}/protocol/openid-connect/certs",
-  "oauth2_proxy_redirect_url": "http://app.localtest.me:${APP_PROXY_PORT}/oauth2/callback",
+  "oauth_issuer_url": "${OAUTH_ISSUER_URL:-http://keycloak.localtest.me:${KEYCLOAK_PORT}/realms/${REALM_NAME}}",
+  "oauth_jwks_url": "${OAUTH_JWKS_URL:-http://keycloak.localtest.me:${KEYCLOAK_PORT}/realms/${REALM_NAME}/protocol/openid-connect/certs}",
+  "oauth2_proxy_redirect_url": "${OAUTH2_PROXY_REDIRECT_URL:-http://app.localtest.me:${APP_PROXY_PORT}/oauth2/callback}",
   "is_worktree": true,
   "compose_project": "${PROJECT_NAME}",
   "started_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"

@@ -96,6 +96,22 @@ test('bare-post: total flow count', () => {
   assert.strictEqual(result.flows.length, 4);
 });
 
+test('bare-post: does not double-prefix enveloped response paths', () => {
+  const { matrix, logical } = loadFixture('bare-post');
+  matrix.responseEnvelope = { successWrapper: ['data'] };
+  matrix.apiEndpoints[0].responseContract = {
+    status: 201,
+    schemaRef: 'Envelope<ItemDto>',
+    requiredPaths: ['data', 'data.id', 'success'],
+  };
+  const result = generate(matrix, logical, { ignore: [] });
+
+  const happy = findFlow(result.flows, 'items:post:happy');
+  const expectStep = happy.steps.find((step) => step.kind === 'expect');
+
+  assert.deepStrictEqual(expectStep.bodyHas, ['data', 'data.id', 'success']);
+});
+
 // ---------------------------------------------------------------------------
 // Fixture: auth-bootstrap — register + login + /me
 // ---------------------------------------------------------------------------
@@ -265,10 +281,24 @@ test('roles-endpoint: emits standard auth-boundary flows', () => {
   assert.strictEqual(authFlows.length, 4, 'should emit 4 standard auth-boundary flows');
 });
 
-test('roles-endpoint: total flow count (1 happy + 4 auth + 1 role = 6)', () => {
+test('roles-endpoint: total flow count (4 auth + 1 role = 5)', () => {
   const { matrix, logical } = loadFixture('roles-endpoint');
   const result = generate(matrix, logical, { ignore: [] });
-  assert.strictEqual(result.flows.length, 6);
+  assert.strictEqual(result.flows.length, 5);
+});
+
+test('roles-endpoint: skips protected happy path without auth bootstrap', () => {
+  const { matrix, logical } = loadFixture('roles-endpoint');
+  const result = generate(matrix, logical, { ignore: [] });
+
+  assert.strictEqual(findFlow(result.flows, 'admin-dashboard:get:happy'), undefined);
+  const diagnostic = result.diagnostics.find(
+    (item) =>
+      item.code === 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE' &&
+      item.endpoint === 'GET /api/v1/admin/dashboard',
+  );
+  assert.ok(diagnostic, 'protected success status should be marked ungeneratable');
+  assert.match(diagnostic.message, /requires authentication and no auth bootstrap chain/);
 });
 
 // ---------------------------------------------------------------------------

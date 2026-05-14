@@ -25,7 +25,15 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 FROM deps AS development
 COPY . .
 ARG NEXT_PUBLIC_API_URL
-RUN echo "NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL" > /app/apps/web/.env.local
+ARG NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI
+ARG NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT
+ARG NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID
+RUN { \
+    echo "NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL"; \
+    if [ -n "$NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI" ]; then echo "NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI=$NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI"; fi; \
+    if [ -n "$NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT" ]; then echo "NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT=$NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT"; fi; \
+    if [ -n "$NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID" ]; then echo "NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID=$NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID"; fi; \
+  } > /app/apps/web/.env.local
 RUN pnpm --filter @sfx/domain build && \
     pnpm --filter @sfx/shared build && \
     pnpm --filter @sfx/validation build

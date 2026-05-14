@@ -32,6 +32,18 @@ describe("buildKeycloakBootstrapPlan", () => {
 
     assert.equal(plan.realm.name, "customer-portal");
     assert.equal(plan.clients.proxy.clientId, "customer-portal-dev-proxy");
+    assert.deepEqual(plan.clients.proxy.redirectUris, [
+      "http://app.localtest.me:4181/oauth2/callback",
+      "http://host.docker.internal:4181/oauth2/callback",
+    ]);
+    assert.deepEqual(plan.clients.proxy.postLogoutRedirectUris, [
+      "http://app.localtest.me:4181/",
+      "http://host.docker.internal:4181/",
+    ]);
+    assert.deepEqual(plan.clients.proxy.webOrigins, [
+      "http://app.localtest.me:4181",
+      "http://host.docker.internal:4181",
+    ]);
     assert.equal(plan.clients.proxy.directAccessGrantsEnabled, true);
     assert.equal(plan.clients.api.clientId, "customer-portal-dev-api");
     assert.deepEqual(plan.clients.api.roles, ["viewer", "editor", "admin"]);

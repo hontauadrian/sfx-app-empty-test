@@ -92,6 +92,9 @@ services:
         # When accessed through app-oauth2-proxy, browser API calls stay
         # same-origin and the proxy injects the bearer token for /api/v1/*.
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+        NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI: ${NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI:-}
+        NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT: ${NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT:-}
+        NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID: ${NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID:-}
     ports:
       - "${NEXT_PORT:-3000}:3000"
     volumes:

@@ -7,8 +7,18 @@
   "clients": {
     "proxy": {
       "clientId": "${repoName}-dev-proxy",
-      "redirectUris": ["http://app.localtest.me:${appProxyPort}/oauth2/callback"],
-      "webOrigins": ["http://app.localtest.me:${appProxyPort}"],
+      "redirectUris": [
+        "http://app.localtest.me:${appProxyPort}/oauth2/callback",
+        "http://host.docker.internal:${appProxyPort}/oauth2/callback"
+      ],
+      "postLogoutRedirectUris": [
+        "http://app.localtest.me:${appProxyPort}/",
+        "http://host.docker.internal:${appProxyPort}/"
+      ],
+      "webOrigins": [
+        "http://app.localtest.me:${appProxyPort}",
+        "http://host.docker.internal:${appProxyPort}"
+      ],
       "audienceClientIds": ["${repoName}-dev-api"],
       "directAccessGrantsEnabled": true
     },

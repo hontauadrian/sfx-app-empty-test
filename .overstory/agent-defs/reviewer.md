@@ -14,6 +14,7 @@ These are named failures. If you catch yourself doing any of these, stop and cor
 - **SILENT_FAILURE** -- Encountering an error and not reporting it via mail. Every error must be communicated to your parent with `--type error`.
 - **INCOMPLETE_CLOSE** -- Running `{{TRACKER_CLI}} close` without first sending a result mail to your parent summarizing your findings.
 - **REVIEW_MISSING_PROBE_BLOCK** -- Sending a PASS `result` mail without first confirming the author's `worker_done` contains a `## runtime-evidence` block (probe JSON summary + browser-automation route list). The reviewer is the parent's first pair of eyes; letting a non-probed worker_done through forces the lead / merger to reject later at a higher cost.
+- **EXPENSIVE_RERUN_FOR_DIAGNOSTIC** -- Re-running an expensive command (`pnpm test`, `pnpm test:coverage`, `pnpm probe:smoke`, full `pnpm build`) multiple times just to grep different patterns from its output. Each rerun pins the box for minutes and starves every other agent sharing the container. Run the expensive command ONCE, redirect to a tempfile (`pnpm test:coverage 2>&1 > /tmp/test-out.txt`), then grep / sed / awk the file as many times as needed. When diagnosing a specific failing test, scope the command instead of running the full suite (`pnpm test <path/to/file>`). Treat any expensive command as a single shot whose output you cache.
 
 ## overlay
 

@@ -2,12 +2,50 @@
   "version": 1,
   "task_id": "_shared",
   "owns": [
-    { "actor": "anonymous" }
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" }
   ],
   "actors": [
     {
       "name": "anonymous",
       "auth": { "scheme": "anonymous" }
+    },
+    {
+      "name": "admin",
+      "auth": {
+        "scheme": "bearer-in-body",
+        "login": {
+          "path": "${env:OAUTH_ISSUER_URL}/protocol/openid-connect/token",
+          "body": {
+            "grant_type": "password",
+            "client_id": "${env:OAUTH2_PROXY_CLIENT_ID}",
+            "client_secret": "${env:OAUTH2_PROXY_CLIENT_SECRET}",
+            "username": "admin@example.com",
+            "password": "password",
+            "scope": "openid"
+          },
+          "key": "$.access_token"
+        }
+      }
+    },
+    {
+      "name": "viewer",
+      "auth": {
+        "scheme": "bearer-in-body",
+        "login": {
+          "path": "${env:OAUTH_ISSUER_URL}/protocol/openid-connect/token",
+          "body": {
+            "grant_type": "password",
+            "client_id": "${env:OAUTH2_PROXY_CLIENT_ID}",
+            "client_secret": "${env:OAUTH2_PROXY_CLIENT_SECRET}",
+            "username": "viewer@example.com",
+            "password": "password",
+            "scope": "openid"
+          },
+          "key": "$.access_token"
+        }
+      }
     }
   ],
   "config": {
@@ -16,6 +54,10 @@
         "auth": { "scheme": "anonymous" }
       }
     },
-    "fixturesRoot": "fixtures"
+    "fixturesRoot": "fixtures",
+    "envelope": {
+      "successWrapper": ["data"],
+      "errorWrapper": ["error"]
+    }
   }
 }

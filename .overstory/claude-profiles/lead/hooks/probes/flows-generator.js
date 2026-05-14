@@ -408,8 +408,11 @@ function constructInvalidators(field) {
  * When `options.authBootstrapAvailable` is true AND the endpoint is authed,
  * this flow prepends a setAuth step binding the token captured by the
  * chain:auth-bootstrap flow (so happy probes against `/auth/me` etc. pass
- * instead of 401-ing). Register/login endpoints themselves are NEVER made
- * dependent on the chain — they ARE the chain.
+ * instead of 401-ing). If no bootstrap chain exists, protected success paths
+ * are ungeneratable by the generic endpoint-happy emitter and are skipped with
+ * a diagnostic so contract coverage does not demand an unauthenticated 200.
+ * Register/login endpoints themselves are NEVER made dependent on the chain —
+ * they ARE the chain.
  */
 function emitHappyFlow(ep, options = {}) {
   // Skip endpoints that only accept non-JSON content types (e.g. multipart,
@@ -468,6 +471,16 @@ function emitHappyFlow(ep, options = {}) {
     ep.authDecorators && ep.authDecorators.authRequired
   );
   const useChain = needsAuth && authBootstrapAvailable && !isBootstrapEndpoint;
+
+  if (needsAuth && !authBootstrapAvailable && !isBootstrapEndpoint) {
+    const diagnostics = options.diagnostics || [];
+    diagnostics.push({
+      code: 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE',
+      message: `Status ${expectedStatus} declared on ${ep.method} ${ep.path} but endpoint requires authentication and no auth bootstrap chain is available. Add a declared register/login flow or cover this success path with a curated authenticated flow.`,
+      endpoint: epKey(ep.method, ep.path),
+    });
+    return null;
+  }
 
   // Token-issuer (login) has no standalone happy path — it requires a
   // pre-existing user. When the bootstrap chain exists, chain:auth-bootstrap
@@ -616,9 +629,15 @@ function emitHappyFlow(ep, options = {}) {
     const isBareResponse = isBareArray || Boolean(ep.conditionalProfile);
     const sw = isBareResponse ? null : (options.envelopeWrapper || null);
     const prefix = Array.isArray(sw) && sw.length > 0 ? sw.join('.') : (typeof sw === 'string' ? sw : null);
-    expectStep.bodyHas = ep.responseContract.requiredPaths.map((reqPath) =>
-      prefix ? `${prefix}.${reqPath}` : reqPath
+    const contractAlreadyIncludesEnvelope = Boolean(
+      prefix && ep.responseContract.requiredPaths.some((reqPath) =>
+        reqPath === prefix || reqPath.startsWith(`${prefix}.`)
+      )
     );
+    expectStep.bodyHas = ep.responseContract.requiredPaths.map((reqPath) => {
+      if (!prefix || contractAlreadyIncludesEnvelope) return reqPath;
+      return `${prefix}.${reqPath}`;
+    });
   }
   steps.push(expectStep);
 
@@ -4975,8 +4994,8 @@ function generate(matrix, logical, overlay) {
   diagnostics.push(...authFlowsDiag);
 
   // auth-bootstrap-available ⇒ authed :happy flows can prepend setAuth and
-  // dependsOn the chain. Without register+login we can't produce a token,
-  // so authed happy flows must keep failing 401 — that's a real signal.
+  // dependsOn the chain. Without register+login, generic authed success
+  // flows are skipped as ungeneratable; auth-boundary flows still verify 401.
   const authBootstrapAvailable = Boolean(authFlowsDetected.tokenIssuer && authFlowsDetected.register);
 
   // Success envelope path from matrix.responseEnvelope (statically extracted).

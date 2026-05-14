@@ -35,6 +35,9 @@ describe("docker-compose oauth2-proxy baseline", () => {
     const dockerfile = readFileSync(join(REPO_ROOT, "apps/web/Dockerfile"), "utf8");
 
     assert.match(dockerfile, /echo "NEXT_PUBLIC_API_URL=\$NEXT_PUBLIC_API_URL"/);
+    assert.match(dockerfile, /NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI/);
+    assert.match(dockerfile, /NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT/);
+    assert.match(dockerfile, /NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID/);
     assert.doesNotMatch(dockerfile, /if \[ -n "\$NEXT_PUBLIC_API_URL" \]/);
   });
 });

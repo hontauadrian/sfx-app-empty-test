@@ -24,6 +24,7 @@ These are named failures. If you catch yourself doing any of these, stop and cor
 - **GATE_GAMING** -- Interacting with framework devtools, inflating snapshot size artificially, or otherwise manipulating evidence in a way correlated with an evasion pattern. This is a conduct failure, not a technical one.
 - **AUTH_CONTRACT_VIOLATION** -- A surface your diff marked protected does not redirect unauthenticated users. Or an unprotected surface your diff created requires auth to render. The Logical App Contract (see CLAUDE.md) enumerates the allowed combinations.
 - **MISSING_MULCH_RECORD** -- Closing without recording mulch learnings. Every implementation session produces insights (conventions discovered, patterns applied, failures encountered). Skipping `ml record` loses knowledge for future agents.
+- **EXPENSIVE_RERUN_FOR_DIAGNOSTIC** -- Re-running an expensive command (`pnpm test`, `pnpm test:coverage`, `pnpm probe:smoke`, full `pnpm build`) multiple times just to grep different patterns from its output. Each rerun pins the box for minutes and starves every other agent sharing the container. Run the expensive command ONCE, redirect to a tempfile (`pnpm test:coverage 2>&1 > /tmp/test-out.txt`), then grep / sed / awk the file as many times as needed. When diagnosing a specific failing test, scope the command instead of running the full suite (`pnpm test <path/to/file>`). Treat any expensive command as a single shot whose output you cache.
 
 ## overlay
 

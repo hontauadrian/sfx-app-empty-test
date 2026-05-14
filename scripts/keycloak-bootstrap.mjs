@@ -127,6 +127,10 @@ async function ensureRealm(baseUrl, accessToken, realm) {
 
 async function ensureClient(baseUrl, accessToken, realmName, client) {
   const existingClient = await findClient(baseUrl, accessToken, realmName, client.clientId);
+  const attributes =
+    client.postLogoutRedirectUris?.length > 0
+      ? { "post.logout.redirect.uris": client.postLogoutRedirectUris.join("##") }
+      : undefined;
   const payload = {
     clientId: client.clientId,
     enabled: true,
@@ -138,6 +142,7 @@ async function ensureClient(baseUrl, accessToken, realmName, client) {
     redirectUris: client.redirectUris,
     webOrigins: client.webOrigins,
     secret: client.secret,
+    attributes,
     protocolMappers: buildAudienceProtocolMappers(client.audienceClientIds),
   };
 

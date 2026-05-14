@@ -2,13 +2,14 @@ import { common as enCommon } from '@/features/presentation/localization/languag
 import { mapToAuthGateUIModel } from '../map-to-auth-gate-ui-model';
 
 const EXPECTED_LOGOUT_HREF =
-  '/oauth2/sign_out?rd=http%3A%2F%2Fkeycloak.localtest.me%3A9080%2Frealms%2Fsfx-webapp-boilerplate%2Fprotocol%2Fopenid-connect%2Flogout%3Fclient_id%3Dsfx-webapp-boilerplate-dev-proxy%26post_logout_redirect_uri%3Dhttp%253A%252F%252Fapp.localtest.me%253A4181%252F';
+  'http://app.localtest.me:4181/oauth2/sign_out?rd=http%3A%2F%2Fkeycloak.localtest.me%3A9080%2Frealms%2Fsfx-webapp-boilerplate%2Fprotocol%2Fopenid-connect%2Flogout%3Fclient_id%3Dsfx-webapp-boilerplate-dev-proxy%26post_logout_redirect_uri%3Dhttp%253A%252F%252Fapp.localtest.me%253A4181%252F';
 
 describe('mapToAuthGateUIModel', () => {
   it('renders children when the session has app access', () => {
     const model = mapToAuthGateUIModel({
       translations: enCommon,
       isLoading: false,
+      logoutHref: EXPECTED_LOGOUT_HREF,
       session: {
         isAuthenticated: true,
         subject: 'user-1',
@@ -25,6 +26,7 @@ describe('mapToAuthGateUIModel', () => {
     const model = mapToAuthGateUIModel({
       translations: enCommon,
       isLoading: false,
+      logoutHref: EXPECTED_LOGOUT_HREF,
       session: {
         isAuthenticated: true,
         subject: 'user-1',
