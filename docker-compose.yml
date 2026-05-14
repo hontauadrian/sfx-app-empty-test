@@ -44,7 +44,7 @@
 # =============================================================================
 services:
   keycloak:
-    image: quay.io/keycloak/keycloak:25.0
+    image: quay.io/keycloak/keycloak:26.5
     command:
       - start-dev
       - --http-port=9080
@@ -163,6 +163,7 @@ services:
       - --client-secret=${OAUTH2_PROXY_CLIENT_SECRET:-dev-generated-app-proxy-secret}
       - --cookie-secret=${OAUTH2_PROXY_COOKIE_SECRET:-0123456789abcdef0123456789abcdef}
       - --redirect-url=${OAUTH2_PROXY_REDIRECT_URL:-http://app.localtest.me:4181/oauth2/callback}
+      - --whitelist-domain=${OAUTH2_PROXY_WHITELIST_DOMAIN:-keycloak.localtest.me:9080}
       - --cookie-secure=${OAUTH2_PROXY_COOKIE_SECURE:-false}
       - --set-authorization-header=true
       - --pass-authorization-header=true

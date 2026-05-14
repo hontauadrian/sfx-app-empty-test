@@ -90,8 +90,7 @@ if (matchedIntent === 'ov merge') {
   if (!resolvedPath) process.exit(0);
   PROJECT_DIR = resolvedPath;
 } else {
-  PROJECT_DIR = process.env.HOOK_TEST_PROJECT_ROOT;
-  if (!PROJECT_DIR) process.exit(0);
+  PROJECT_DIR = process.env.HOOK_TEST_PROJECT_ROOT || process.cwd();
 }
 const SESSION_FILE = path.join(
   os.tmpdir(),

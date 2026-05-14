@@ -21,6 +21,7 @@ describe("docker-compose oauth2-proxy baseline", () => {
     assert.match(compose, /--set-authorization-header=true/);
     assert.match(compose, /--pass-authorization-header=true/);
     assert.match(compose, /--pass-access-token=true/);
+    assert.match(compose, /--whitelist-domain=\$\{OAUTH2_PROXY_WHITELIST_DOMAIN:-keycloak\.localtest\.me:9080\}/);
     assert.match(compose, /--cookie-secure=\$\{OAUTH2_PROXY_COOKIE_SECURE:-false\}/);
     assert.doesNotMatch(compose, /--cookie-domain=/);
     assert.match(compose, /keycloak:/);

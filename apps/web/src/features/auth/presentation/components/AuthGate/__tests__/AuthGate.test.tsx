@@ -9,6 +9,9 @@ vi.mock('../use-auth-gate', () => ({
 import { AuthGate } from '../index';
 import { useAuthGate } from '../use-auth-gate';
 
+const EXPECTED_LOGOUT_HREF =
+  '/oauth2/sign_out?rd=http%3A%2F%2Fkeycloak.localtest.me%3A9080%2Frealms%2Fsfx-webapp-boilerplate%2Fprotocol%2Fopenid-connect%2Flogout%3Fclient_id%3Dsfx-webapp-boilerplate-dev-proxy%26post_logout_redirect_uri%3Dhttp%253A%252F%252Fapp.localtest.me%253A4181%252F';
+
 describe('AuthGate', () => {
   beforeEach(() => {
     vi.mocked(useAuthGate).mockReturnValue({
@@ -18,7 +21,7 @@ describe('AuthGate', () => {
         title: 'Access pending',
         message: 'Ask an administrator for access.',
         logoutLabel: 'Logout',
-        logoutHref: '/oauth2/sign_out?rd=/',
+        logoutHref: EXPECTED_LOGOUT_HREF,
       },
     });
   });
@@ -31,7 +34,7 @@ describe('AuthGate', () => {
         title: 'Access pending',
         message: 'Ask an administrator for access.',
         logoutLabel: 'Logout',
-        logoutHref: '/oauth2/sign_out?rd=/',
+        logoutHref: EXPECTED_LOGOUT_HREF,
       },
     });
 
@@ -47,7 +50,7 @@ describe('AuthGate', () => {
     expect(screen.getByText('Ask an administrator for access.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Logout' })).toHaveAttribute(
       'href',
-      '/oauth2/sign_out?rd=/',
+      EXPECTED_LOGOUT_HREF,
     );
   });
 });

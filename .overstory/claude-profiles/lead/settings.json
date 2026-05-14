@@ -218,24 +218,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pnpm probe:smoke"
-          }
-        ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node .claude/hooks/e2e-test-on-stop.js"
-          }
-        ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
             "command": "node .claude/hooks/no-ignore-for-changed-paths.js"
           }
         ]

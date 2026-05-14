@@ -75,8 +75,7 @@ if (intent === 'ov merge') {
   if (!resolvedPath) process.exit(0);
   PROJECT_DIR = resolvedPath;
 } else {
-  PROJECT_DIR = process.env.HOOK_TEST_PROJECT_ROOT;
-  if (!PROJECT_DIR) process.exit(0);
+  PROJECT_DIR = process.env.HOOK_TEST_PROJECT_ROOT || process.cwd();
 }
 const STACK_FILE = path.join(PROJECT_DIR, '.stack.json');
 const HOOK_REPORTS_DIR = path.join(PROJECT_DIR, '.claude', 'hook-reports');
