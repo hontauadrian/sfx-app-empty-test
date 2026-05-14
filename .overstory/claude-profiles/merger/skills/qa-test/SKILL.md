@@ -81,6 +81,38 @@ ANY criterion requires that you also enumerate in the final report exactly why
 the prerequisite is unsatisfiable AND that you mailed the lead `flow_mismatch`
 to acknowledge it — silent skips are a conduct failure.
 
+**Reachability requirement (CRITICAL).** Every feature you touch must be
+end-to-end reachable from the application's primary entry point through real
+user actions only — no test-harness shortcuts, no direct-URL jumps to deep
+routes, no mocked prerequisite state. Start from the entry point a real
+user lands on (typically the login screen or marketing page), perform only
+the actions a user can perform (click visible buttons, follow visible
+links, fill visible forms, submit visible controls), and confirm that the
+touched feature is genuinely accessible at the end of that chain.
+
+If reaching the touched feature requires a prerequisite resource (a parent
+entity, a permission, a configuration, an upstream record) and no UI exists
+to create that prerequisite — the prerequisite UI is also missing and must
+be wired. Code presence is NOT user reachability:
+
+- A modal that exists in source but isn't mounted under any UI trigger →
+  unreachable → FAILED criterion → wire the trigger.
+- A button that exists in source but isn't rendered in any layout/page →
+  unreachable → FAILED → render it where the flow demands.
+- A route that returns 200 but no link/CTA leads to it from the authed
+  shell → unreachable → FAILED → add the link.
+- A form that posts to an endpoint that creates the prerequisite, but no
+  page renders the form → unreachable → FAILED → mount the page.
+
+When you discover a missing prerequisite during a workflow walk, the fix is
+to **wire the prerequisite into the user flow yourself in the same session**
+— do NOT ask the lead, do NOT defer to a follow-up task, do NOT label it
+"out of chunk scope". If the chunk modified a downstream feature, the chunk
+also owns making that feature reachable. The acceptance bar is: a user
+seeded with the project's standard seed data can navigate from the entry
+point to the touched feature, use it, and observe the expected outcome —
+all through UI interactions a non-technical person can perform.
+
 **You MUST exercise the authenticated path of every protected route.**
 Landing on a protected route only to observe the auth guard bounce the
 session to the public entry point is NOT verifying the protected route —

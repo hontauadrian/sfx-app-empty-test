@@ -63,7 +63,33 @@ function loadAllowlist(cwd) {
   return null;
 }
 
+function stripLineContinuations(input) {
+  // Backslash immediately followed by a newline is a shell line-continuation —
+  // the line keeps flowing. Tokenization that splits on whitespace was treating
+  // the stray `\` as a bare command token (e.g. on the second line of an
+  // `ov mail send \` invocation) and rejecting it. Replace `\\n` with a
+  // single space so the command becomes one logical line, then validate.
+  // Quoted bodies (single/double) keep their backslash sequences untouched.
+  let out = '';
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i];
+    const prev = input[i - 1];
+    if (c === "'" && prev !== '\\' && !inDouble) inSingle = !inSingle;
+    else if (c === '"' && prev !== '\\' && !inSingle) inDouble = !inDouble;
+    if (c === '\\' && !inSingle && !inDouble && input[i + 1] === '\n') {
+      out += ' ';
+      i++;
+      continue;
+    }
+    out += c;
+  }
+  return out;
+}
+
 function stripShellComments(input) {
+  input = stripLineContinuations(input);
   let out = '';
   let inSingle = false;
   let inDouble = false;

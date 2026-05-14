@@ -38,12 +38,18 @@ write_web_env_local() {
   if [ -f "$_env_file" ] && grep -q '^[[:space:]]*NEXT_PUBLIC_API_URL=' "$_env_file"; then
     # Replace existing line in-place. Use a portable tmp-file rewrite — sed -i
     # syntax differs between BSD (macOS) and GNU.
-    awk -v url="$_new_url" '
+    _tmp="$(mktemp "$_env_file.XXXXXX")"
+    if awk -v url="$_new_url" '
       BEGIN { replaced = 0 }
       /^[[:space:]]*NEXT_PUBLIC_API_URL=/ { print "NEXT_PUBLIC_API_URL=" url; replaced = 1; next }
       { print }
       END { if (!replaced) print "NEXT_PUBLIC_API_URL=" url }
-    ' "$_env_file" > "$_env_file.tmp" && mv "$_env_file.tmp" "$_env_file"
+    ' "$_env_file" > "$_tmp"; then
+      mv "$_tmp" "$_env_file"
+    else
+      rm -f "$_tmp"
+      return 1
+    fi
   else
     # Append (creates file if missing) — other lines (if any) untouched.
     printf 'NEXT_PUBLIC_API_URL=%s\n' "$_new_url" >> "$_env_file"
@@ -70,12 +76,18 @@ write_web_env_local() {
   if [ -n "$_new_origin" ] && [ -d "$_project_dir/apps/api" ]; then
     mkdir -p "$_project_dir/apps/api"
     if [ -f "$_api_env" ] && grep -q '^[[:space:]]*WEB_ORIGIN=' "$_api_env"; then
-      awk -v origin="$_new_origin" '
+      _tmp="$(mktemp "$_api_env.XXXXXX")"
+      if awk -v origin="$_new_origin" '
         BEGIN { replaced = 0 }
         /^[[:space:]]*WEB_ORIGIN=/ { print "WEB_ORIGIN=" origin; replaced = 1; next }
         { print }
         END { if (!replaced) print "WEB_ORIGIN=" origin }
-      ' "$_api_env" > "$_api_env.tmp" && mv "$_api_env.tmp" "$_api_env"
+      ' "$_api_env" > "$_tmp"; then
+        mv "$_tmp" "$_api_env"
+      else
+        rm -f "$_tmp"
+        return 1
+      fi
     else
       printf 'WEB_ORIGIN=%s\n' "$_new_origin" >> "$_api_env"
     fi

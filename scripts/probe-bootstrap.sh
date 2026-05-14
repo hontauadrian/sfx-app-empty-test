@@ -167,6 +167,10 @@ if has_script db:reset:fast; then
     printf '%s\n' "$reset_output" >&2
     fail "db:reset:fast failed (exit=$reset_exit) — see output above"
   fi
+
+  step "6.5/6 reload api container (invalidate post-seed cache)"
+  pnpm --silent stack:reload-api >/dev/null \
+    || fail "stack:reload-api after seed did not confirm health — check 'pnpm stack:logs api'"
 fi
 
 step "ready — probe can now run"

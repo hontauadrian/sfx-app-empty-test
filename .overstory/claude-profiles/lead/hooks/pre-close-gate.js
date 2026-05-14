@@ -60,7 +60,39 @@ if (!matchedIntent) {
   process.exit(0);
 }
 
-const PROJECT_DIR = process.env.HOOK_TEST_PROJECT_ROOT || process.cwd();
+function resolveTargetWorktreePath(branchName) {
+  try {
+    const out = execSync('git worktree list --porcelain', {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const blocks = out.split('\n\n');
+    for (const block of blocks) {
+      const lines = block.split('\n');
+      const wtLine = lines.find((line) => line.startsWith('worktree '));
+      const branchLine = lines.find((line) => line.startsWith('branch '));
+      if (branchLine === `branch refs/heads/${branchName}` && wtLine) {
+        return wtLine.slice('worktree '.length);
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+let PROJECT_DIR;
+if (matchedIntent === 'ov merge') {
+  const branchMatch = command.match(/--branch[= ]\s*(\S+)/);
+  if (!branchMatch) process.exit(0);
+  const resolvedPath = resolveTargetWorktreePath(branchMatch[1]);
+  if (!resolvedPath) process.exit(0);
+  PROJECT_DIR = resolvedPath;
+} else {
+  PROJECT_DIR = process.env.HOOK_TEST_PROJECT_ROOT;
+  if (!PROJECT_DIR) process.exit(0);
+}
 const SESSION_FILE = path.join(
   os.tmpdir(),
   `claude-session-files-${Buffer.from(PROJECT_DIR).toString('base64url')}.json`

@@ -45,8 +45,39 @@ const intent =
 
 if (!intent) process.exit(0);
 
-const cwd = process.cwd();
-const PROJECT_DIR = cwd;
+function resolveTargetWorktreePath(branchName) {
+  try {
+    const out = execSync('git worktree list --porcelain', {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const blocks = out.split('\n\n');
+    for (const block of blocks) {
+      const lines = block.split('\n');
+      const wtLine = lines.find((line) => line.startsWith('worktree '));
+      const branchLine = lines.find((line) => line.startsWith('branch '));
+      if (branchLine === `branch refs/heads/${branchName}` && wtLine) {
+        return wtLine.slice('worktree '.length);
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+let PROJECT_DIR;
+if (intent === 'ov merge') {
+  const branchMatch = command.match(/--branch[= ]\s*(\S+)/);
+  if (!branchMatch) process.exit(0);
+  const resolvedPath = resolveTargetWorktreePath(branchMatch[1]);
+  if (!resolvedPath) process.exit(0);
+  PROJECT_DIR = resolvedPath;
+} else {
+  PROJECT_DIR = process.env.HOOK_TEST_PROJECT_ROOT;
+  if (!PROJECT_DIR) process.exit(0);
+}
 const STACK_FILE = path.join(PROJECT_DIR, '.stack.json');
 const HOOK_REPORTS_DIR = path.join(PROJECT_DIR, '.claude', 'hook-reports');
 
@@ -63,12 +94,19 @@ function sh(cmd) {
 const baseBranch = (sh('git symbolic-ref refs/remotes/origin/HEAD').trim().replace('refs/remotes/origin/', '')) || 'master';
 const mergeBase = sh(`git merge-base HEAD origin/${baseBranch}`).trim();
 const rawDiff = mergeBase ? sh(`git diff --name-only ${mergeBase} HEAD`) : sh('git diff --name-only HEAD');
-// Exclude the hook-reports dir from the hash input — committing a report
-// would otherwise change the diff, invalidating the report that was just
-// written. Same for qa-reports if it lands at the project root.
+const STATE_PATH_EXCLUSIONS = [
+  /^\.claude\//,
+  /^\.overstory\//,
+  /^\.mulch\//,
+  /^\.seeds\//,
+  /^\.canopy\//,
+  /^\.bridge\./,
+  /^\._/,
+  /^\.DS_Store$/,
+];
 const diff = rawDiff
   .split('\n')
-  .filter((file) => !/^\.claude\/hook-reports\//.test(file) && !/^\.overstory\/qa-reports\//.test(file))
+  .filter((file) => !STATE_PATH_EXCLUSIONS.some((rgx) => rgx.test(file)))
   .join('\n');
 const uiTouched = diff
   .split('\n')

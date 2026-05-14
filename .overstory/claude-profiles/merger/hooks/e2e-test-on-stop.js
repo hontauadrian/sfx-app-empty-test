@@ -760,7 +760,16 @@ try {
   const rawStateDiff = mergeBase ? sh(`git diff --name-only ${mergeBase} HEAD`) : sh('git diff --name-only HEAD');
   const stateDiff = rawStateDiff
     .split('\n')
-    .filter((file) => !/^\.claude\/hook-reports\//.test(file) && !/^\.overstory\/qa-reports\//.test(file))
+    .filter((file) => ![
+      /^\.claude\//,
+      /^\.overstory\//,
+      /^\.mulch\//,
+      /^\.seeds\//,
+      /^\.canopy\//,
+      /^\.bridge\./,
+      /^\._/,
+      /^\.DS_Store$/,
+    ].some((rgx) => rgx.test(file)))
     .join('\n');
   const branch = sh('git rev-parse --abbrev-ref HEAD').trim();
   const taskMatch =

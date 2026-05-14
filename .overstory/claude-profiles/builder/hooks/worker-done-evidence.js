@@ -195,113 +195,93 @@ function runGuard({ stdinRaw, cwd } = {}) {
 
     const projectDir = cwd || process.env.CLAUDE_PROJECT_DIR || process.env.PROJECT_ROOT || process.cwd();
 
-    const mailBody = extractMailBody(command);
-    const evidence = parseRuntimeEvidence(mailBody);
+    // Evidence policy: the on-disk probe artifact (.claude/hooks/.http-smoke.json)
+    // is the SOLE source of truth. Agents are no longer required to paste the
+    // [http-smoke-summary] line into the mail body — the gate reads the
+    // artifact directly. Lead/coord can read the same file to review numbers.
+    // Back-compat: if the body still contains a runtime-evidence block, we
+    // do not reject it, but we do not require it either.
+    // (parseRuntimeEvidence and extractMailBody kept exported for tests/back-compat)
 
-    if (!evidence) {
-      return {
-        allow: false,
-        decision: 'block',
-        reason:
-          'WORKER_DONE_EVIDENCE_MISSING: worker_done mail does not contain a ' +
-          '## runtime-evidence block with probe:smoke stats. Run `pnpm probe:smoke` ' +
-          'and include the results as: probe:smoke: total=<N> passed=<P> failed=<F>. ' +
-          'Prose claims like "exit code 0" are not accepted — paste the actual ' +
-          '[http-smoke-summary] line from the probe stdout.',
-      };
-    }
-
-    // Reject zero-effort claims: total=0 means the probe never ran (or crashed
-    // before any case). A worker_done with no executed cases is not evidence.
-    if (evidence.total === 0) {
-      return {
-        allow: false,
-        decision: 'block',
-        reason:
-          'WORKER_DONE_EVIDENCE_EMPTY: runtime-evidence reports total=0 cases. ' +
-          'A probe run with zero cases is not evidence — either the matrix is ' +
-          'empty or the stack failed to boot. Read the probe stdout for the ' +
-          '[http-smoke-stack-stderr] block, fix the underlying error, and re-run ' +
-          '`pnpm probe:smoke` until total>0.',
-      };
-    }
-
-    // Cross-reference the on-disk artifact written by the probe runner. If
-    // the agent's claim disagrees with what the probe actually wrote, the
-    // claim is fabricated or stale. The artifact is the source of truth.
     const artifact = readSmokeArtifact(projectDir);
-    if (artifact) {
-      const a = artifact.parsed;
-      const claimedMatchesArtifact =
-        typeof a?.summary?.total === 'number' &&
-        typeof a?.summary?.passed === 'number' &&
-        typeof a?.summary?.failed === 'number' &&
-        a.summary.total === evidence.total &&
-        a.summary.passed === evidence.passed &&
-        a.summary.failed === evidence.failed;
-
-      if (!claimedMatchesArtifact) {
-        const got = a?.summary
-          ? `total=${a.summary.total} passed=${a.summary.passed} failed=${a.summary.failed}`
-          : 'no summary';
-        return {
-          allow: false,
-          decision: 'block',
-          reason:
-            `WORKER_DONE_EVIDENCE_FABRICATED: runtime-evidence claims ` +
-            `total=${evidence.total} passed=${evidence.passed} failed=${evidence.failed} ` +
-            `but the on-disk probe artifact at .claude/hooks/.http-smoke.json reports ` +
-            `${got}. Re-run \`pnpm probe:smoke\` and quote the [http-smoke-summary] ` +
-            `line verbatim from stdout — do not paraphrase or invent counts.`,
-        };
-      }
-
-      // Freshness check — artifact must be newer than 30 minutes. Stale
-      // artifacts mean the agent ran probe:smoke earlier in the session and
-      // is now claiming completion based on a snapshot that predates recent
-      // edits. Either passes or fails matter only relative to current code.
-      const ageMs = Date.now() - artifact.mtimeMs;
-      const STALE_MS = 30 * 60 * 1000;
-      if (ageMs > STALE_MS) {
-        const ageMin = Math.floor(ageMs / 60000);
-        return {
-          allow: false,
-          decision: 'block',
-          reason:
-            `WORKER_DONE_EVIDENCE_STALE: probe artifact at ` +
-            `.claude/hooks/.http-smoke.json is ${ageMin} minutes old. Evidence ` +
-            `must reflect the current code state. Re-run \`pnpm probe:smoke\` ` +
-            `before sending worker_done.`,
-        };
-      }
-
-      // Block on artifact failure status — the artifact says probe failed,
-      // but the agent is claiming worker_done anyway. The block reason from
-      // the artifact is authoritative.
-      if (typeof a?.exitCode === 'number' && a.exitCode !== 0 && evidence.failed === 0) {
-        return {
-          allow: false,
-          decision: 'block',
-          reason:
-            `WORKER_DONE_EVIDENCE_HIDES_FAILURE: probe artifact reports ` +
-            `exitCode=${a.exitCode}` +
-            (a.blockReason ? ` blockReason="${a.blockReason}"` : '') +
-            `, but runtime-evidence claims failed=0. The probe failed; ` +
-            `worker_done must surface failed>0 or block-reason in the mail.`,
-        };
-      }
-    }
-
-    const changedWriteEndpoints = countChangedWriteEndpoints(projectDir);
-
-    if (changedWriteEndpoints > 0 && evidence.total < changedWriteEndpoints) {
+    if (!artifact) {
       return {
         allow: false,
         decision: 'block',
         reason:
-          `WORKER_DONE_EVIDENCE_IMPLAUSIBLE: runtime-evidence shows total=${evidence.total} ` +
-          `but diff changed ${changedWriteEndpoints} write endpoints. Either run the probe ` +
-          `again or explain the gap in the mail.`,
+          'WORKER_DONE_NO_PROBE_ARTIFACT: .claude/hooks/.http-smoke.json does ' +
+          'not exist. Run `pnpm probe:smoke` before sending worker_done. ' +
+          'The gate reads evidence from the on-disk artifact — you do not ' +
+          'need to paste anything in the mail body.',
+      };
+    }
+
+    const a = artifact.parsed;
+    const summary = a?.summary;
+    if (!summary || typeof summary.total !== 'number' ||
+        typeof summary.passed !== 'number' ||
+        typeof summary.failed !== 'number') {
+      return {
+        allow: false,
+        decision: 'block',
+        reason:
+          'WORKER_DONE_PROBE_ARTIFACT_MALFORMED: .http-smoke.json has no ' +
+          'usable summary. Re-run `pnpm probe:smoke` and retry.',
+      };
+    }
+
+    if (summary.total === 0) {
+      return {
+        allow: false,
+        decision: 'block',
+        reason:
+          'WORKER_DONE_PROBE_EMPTY: probe artifact reports total=0 cases. ' +
+          'Either the matrix is empty or the stack failed to boot. Read ' +
+          'probe stdout for [http-smoke-stack-stderr], fix the underlying ' +
+          'error, and re-run `pnpm probe:smoke` until total>0.',
+      };
+    }
+
+    // Freshness — artifact must reflect current code state.
+    const ageMs = Date.now() - artifact.mtimeMs;
+    const STALE_MS = 30 * 60 * 1000;
+    if (ageMs > STALE_MS) {
+      const ageMin = Math.floor(ageMs / 60000);
+      return {
+        allow: false,
+        decision: 'block',
+        reason:
+          `WORKER_DONE_PROBE_STALE: probe artifact is ${ageMin} minutes old. ` +
+          `Re-run \`pnpm probe:smoke\` before sending worker_done.`,
+      };
+    }
+
+    // Block on failures recorded in the artifact.
+    if (summary.failed > 0 ||
+        (typeof a.exitCode === 'number' && a.exitCode !== 0)) {
+      return {
+        allow: false,
+        decision: 'block',
+        reason:
+          `WORKER_DONE_PROBE_FAILED: probe artifact reports ` +
+          `total=${summary.total} passed=${summary.passed} failed=${summary.failed}` +
+          (typeof a.exitCode === 'number' ? ` exit=${a.exitCode}` : '') +
+          (a.blockReason ? ` blockReason="${a.blockReason}"` : '') +
+          `. Fix the failures and re-run \`pnpm probe:smoke\` before ` +
+          `worker_done.`,
+      };
+    }
+
+    // Implausibility — diff touches more write endpoints than the probe ran.
+    const changedWriteEndpoints = countChangedWriteEndpoints(projectDir);
+    if (changedWriteEndpoints > 0 && summary.total < changedWriteEndpoints) {
+      return {
+        allow: false,
+        decision: 'block',
+        reason:
+          `WORKER_DONE_PROBE_IMPLAUSIBLE: probe artifact shows ` +
+          `total=${summary.total} but diff changed ${changedWriteEndpoints} ` +
+          `write endpoints. Re-run \`pnpm probe:smoke\` to cover the gap.`,
       };
     }
 
