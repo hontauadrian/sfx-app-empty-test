@@ -29,9 +29,9 @@ write_web_env_local() {
   #     (so panel-container Playwright can reach the worker's isolated API)
   local _new_url
   if [ "${PROJECT_NAME:-}" = "app-dev-host" ] || [ "$_api_port" = "3001" ]; then
-    _new_url="http://api.localhost"
+    _new_url="${NEXT_PUBLIC_API_URL_CANONICAL:-http://api.localhost}"
   else
-    _new_url="http://host.docker.internal:${_api_port}"
+    _new_url="http://${WEB_ORIGIN_WORKER_HOST:-host.docker.internal}:${_api_port}"
   fi
   [ -d "$_project_dir/apps/web" ] || return 0
   mkdir -p "$_project_dir/apps/web"
@@ -55,15 +55,14 @@ write_web_env_local() {
   local _api_env="$_project_dir/apps/api/.env"
   local _new_origin
   if [ "${PROJECT_NAME:-}" = "app-dev-host" ] || [ "$_api_port" = "3001" ]; then
-    _new_origin="http://app.localhost"
+    _new_origin="${WEB_ORIGIN_CANONICAL:-http://app.localhost}"
   else
     # Find this worker's web port from .stack.json (post-up) OR derive from
-    # NEXT_PORT (during fresh boot). Web URL the browser hits matches the
-    # NEXT_PUBLIC_API_URL host but on the WEB port. Worker web is on the
-    # same dynamic-port hash family as api: NEXT_PORT = 26000+index.
+    # NEXT_PORT (during fresh boot). Worker host is overridable via
+    # WEB_ORIGIN_WORKER_HOST for non-local-dev deployments.
     local _web_port="${NEXT_PORT:-${ACTUAL_WEB_PORT:-}}"
     if [ -n "$_web_port" ]; then
-      _new_origin="http://host.docker.internal:${_web_port}"
+      _new_origin="http://${WEB_ORIGIN_WORKER_HOST:-host.docker.internal}:${_web_port}"
     else
       _new_origin=""
     fi
@@ -167,10 +166,27 @@ KEYCLOAK_PORT="${KEYCLOAK_PORT:-$(find_free_port "$(( 37000 + index ))" 37999)}"
 # web origin the browser uses. Canonical (app-dev-host) → app.localhost.
 # Worker stacks → host.docker.internal:<web-port> (where panel-container
 # Playwright + host browser both reach the worker's web container).
+# Derive WEB_ORIGIN from two override knobs that stay distinct per stack
+# tier, so the canonical override can't leak into worker stacks.
+#
+#   WEB_ORIGIN_CANONICAL  — full origin for the canonical (app-dev-host)
+#                            stack. Defaults to http://app.localhost.
+#                            Set this when deploying to a real host:
+#                            `WEB_ORIGIN_CANONICAL=https://app.example.com`.
+#   WEB_ORIGIN_WORKER_HOST — host (without scheme/port) the panel container
+#                            and host browser both use to reach a worker's
+#                            web container. Defaults to host.docker.internal.
+#                            Worker origin is composed as
+#                            `http://<host>:<NEXT_PORT>`.
+#
+# The sourced `WEB_ORIGIN` from the project's .env is discarded — that file
+# carries the canonical value and would otherwise stick through to every
+# per-worker stack, blocking CORS for browser requests from the worker port.
+unset WEB_ORIGIN
 if [ "${PROJECT_NAME:-app-${basename_dir}}" = "app-dev-host" ] || [ "${NEXT_PORT}" = "3000" ]; then
-  WEB_ORIGIN="${WEB_ORIGIN:-http://app.localhost}"
+  WEB_ORIGIN="${WEB_ORIGIN_CANONICAL:-http://app.localhost}"
 else
-  WEB_ORIGIN="${WEB_ORIGIN:-http://host.docker.internal:${NEXT_PORT}}"
+  WEB_ORIGIN="http://${WEB_ORIGIN_WORKER_HOST:-host.docker.internal}:${NEXT_PORT}"
 fi
 export WEB_ORIGIN
 

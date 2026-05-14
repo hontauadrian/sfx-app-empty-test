@@ -23,6 +23,90 @@ allowed-tools:
   - mcp__lighthouse*
 ---
 
+## Strict Execution Rules (READ FIRST — VIOLATION FAILS THE TASK)
+
+**You MAY NOT SKIP any criterion, page, or attack category.** Every flow listed
+in the success criteria, every page in the inventory, every input attack — all
+must be executed and reported PASS or FAIL with concrete evidence (screenshot
+ref + assertion). The "SKIPPED" status is reserved for tests that are physically
+impossible to run because a prerequisite resource doesn't exist (e.g. there are
+genuinely no tasks in the database when testing "edit task"). It is NOT reserved
+for "test environment had a CORS misconfiguration" or "the route 404s and I
+guessed it was intentional" — those are FAIL.
+
+**FIX MEANS APPLICATION SOURCE CODE — NEVER TEST HARNESS WORKAROUNDS.**
+If a bug shows up while running Playwright, the fix is in `apps/web/src/`,
+`apps/api/src/`, `packages/*/src/`, or `scripts/` — wherever the broken
+behaviour lives in production code. You may NOT:
+
+- Patch the page from Playwright via `page.evaluate` shims, `pushState` /
+  `replaceState` injection, or `localStorage` priming.
+- Use `page.route()` to intercept and rewrite network responses so the
+  redirect "looks" fixed.
+- Wrap a known broken flow in a `try`/`catch` in the test code so it
+  appears to pass.
+- Comment out the failing criterion and call the test green.
+
+The test harness is the verifier, not the patcher. If the live app is
+broken, the live app gets edited; then qa-test re-runs the same flow
+unchanged and asserts the now-correct behaviour. A test workaround that
+hides a real bug is equivalent to a SKIP — same conduct failure.
+
+**Time budget for diagnosis: 10 minutes per bug.** If you spend longer
+than that without identifying which application file to edit, mail the
+lead `--type question` with the symptoms + the candidate files you've
+already inspected and ASK FOR THEIR OPINION on root cause. You are
+asking for guidance, not handoff. The lead replies with their read on
+the root cause and which files to touch; you apply the fix yourself in
+the same session, then re-run the same qa-test flow. Do not request a
+specialist builder be spawned, do not stop testing — you remain the
+owner of the fix until the criterion passes.
+
+If a path-boundary hook denies your write because the file lives in a
+sibling worktree, that is a dispatch error — mail the lead immediately
+with `--type question` asking to be re-dispatched onto the
+implementation branch (`ov sling --base-branch <impl-branch>`), then
+continue once your worktree contains the file. Do not work around the
+boundary with playwright shims.
+
+**Fix-and-retest, never skip-and-explain.** When the qa-test loop hits a real
+issue (CORS, 401, missing env, broken auth):
+
+1. Stop, diagnose, write the fix (env edit, code patch, restart command).
+2. Re-run the affected criterion to a clean PASS.
+3. Move on.
+
+The acceptable end-state of a qa-test run is `FAILED=0, SKIPPED=0`. Skipping
+ANY criterion requires that you also enumerate in the final report exactly why
+the prerequisite is unsatisfiable AND that you mailed the lead `flow_mismatch`
+to acknowledge it — silent skips are a conduct failure.
+
+**You MUST exercise the authenticated path of every protected route.**
+Landing on a protected route only to observe the auth guard bounce the
+session to the public entry point is NOT verifying the protected route —
+it's verifying the guard. For every protected route in the inventory:
+
+1. Complete the project's real authentication flow (submit credentials,
+   wait for the post-auth redirect to land on the project's authed home).
+2. Navigate to the protected route via the same method a real user
+   would (sidebar link, direct URL, deep link — match the criterion).
+3. Assert content that ONLY an authenticated session can see (a user's
+   own data, an authed-only action button, a personalized heading,
+   etc.). A bare snapshot of the page is not enough — name the assertion.
+
+If the real authentication path is blocked by a misconfiguration
+(rejected CORS preflight, expired token, missing env var, broken
+session cookie, etc.), the test is FAILED — not SKIPPED. Surface the
+misconfiguration, stop, and either fix it in source code yourself (per
+the fix-in-source rule above) or mail the lead `--type question` for
+guidance. Resume the run only after the underlying configuration is
+correct.
+
+**Screenshots are mandatory at the moment of assertion**, not before the action.
+A screenshot of the form before submit proves nothing about whether submit
+worked. Take it after the assertion check passes.
+
+
 # QA Test Skill
 
 Automated front-end testing agent that tests through the UI like a real user. Supports three modes: standard criteria testing, page discovery/crawling, and adversarial break-it testing.

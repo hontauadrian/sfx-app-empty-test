@@ -13,8 +13,9 @@ describe("docker-compose oauth2-proxy baseline", () => {
     assert.match(compose, /app-oauth2-proxy:/);
     assert.match(compose, /--provider=keycloak-oidc/);
     assert.match(compose, /--upstream=http:\/\/api:3001\/api\/v1\//);
-    assert.match(compose, /--upstream=http:\/\/api:3001\/api\/docs/);
     assert.match(compose, /--upstream=http:\/\/api:3001\/api\/docs-json/);
+    assert.match(compose, /--upstream=http:\/\/api:3001\/api\/docs\//);
+    assert.match(compose, /--upstream=http:\/\/api:3001\/api\/docs/);
     assert.match(compose, /--upstream=http:\/\/web:3000\//);
     assert.match(compose, /--skip-auth-route=GET=\^\/api\/docs/);
     assert.match(compose, /--set-authorization-header=true/);

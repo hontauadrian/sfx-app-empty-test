@@ -32,8 +32,15 @@ For each app's auth module (`apps/api/src/modules/auth*`,
 `apps/api/src/modules/probe-ref/auth-r2*`, etc.):
 - What auth scheme(s) are supported? (bearer, cookie, apiKey, basic,
   OAuth grant types)
+- If this is a generated app, read `infra/keycloak/manifest.json` and
+  `infra/keycloak/dev-seed.json` before declaring role actors. The role
+  must exist in the manifest and a seeded user must receive it before a
+  Keycloak-backed actor can bootstrap.
 - What does the login endpoint return? Where do you read the access
   token from? (`$.accessToken` vs `$.data.accessToken` after wrapper)
+- If there is no app login endpoint because Keycloak owns auth, use the
+  existing Keycloak token endpoint login shape with `${env:...}`
+  interpolation; do not leave bearer actors as scheme-only placeholders.
 - Are sessions cookie-based? If so, what cookie names + attributes?
 - Does the platform use a TransformInterceptor that wraps responses
   (e.g. `{ success: true, data: ... }`)? If yes, every actor's
@@ -89,12 +96,21 @@ Steps 1-6 to decide.
 
 Typical contents:
 - `owns: [{actor: anonymous}, {actor: member-tenantA}, ...]`
-- `actors: [...]` — full credential blocks
-- `config.reservedActors.anonymous: { auth: {} }`
+- `actors: [...]` — full credential blocks for any actor a flow can
+  reference; anonymous uses `{ "scheme": "anonymous" }`
+- `config.reservedActors.anonymous: { auth: { "scheme": "anonymous" } }`
 - `config.clockAdvanceEndpoint: ...`
 - `config.fixturesRoot: 'fixtures'`
 - `config.cookieJar: { allowSecureOnHttp: true }` (test environments)
 - `config.envelope: ...` (response wrapper, if applicable)
+
+Generated-app boilerplate notes:
+- `AuthTokenService` extracts roles from
+  `resource_access[OAUTH_API_CLIENT_ID].roles`.
+- `JwtAuthGuard` accepts either `Authorization: Bearer <token>` or
+  `x-forwarded-access-token`.
+- `GlobalExceptionFilter` defines the error envelope; do not call it
+  TBD without reading the file.
 
 ## Step 8 — Author / extend `_shared.json`
 

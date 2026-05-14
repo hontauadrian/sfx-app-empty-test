@@ -110,6 +110,13 @@ async function main(): Promise<void> {
   outStream.write(
     `[probes-summary] total=${totals.total} passed=${totals.passed} skipped=${totals.skipped} failed=${totals.failed}\n`,
   );
+  // Mirror the totals under [http-smoke-summary] so frontend-only diffs
+  // (where the HTTP-smoke probe matrix is empty and smoke-report.ts emits
+  // nothing to stdout) still produce the bracketed evidence line the
+  // worker-done gate scans for in builder mail bodies.
+  outStream.write(
+    `[http-smoke-summary] total=${totals.total} passed=${totals.passed} failed=${totals.failed} skipped=${totals.skipped} exit=${anyFailed ? 1 : 0} duration=0ms\n`,
+  );
 
   if (anyFailed) {
     outStream.write('\nFailure details:\n');

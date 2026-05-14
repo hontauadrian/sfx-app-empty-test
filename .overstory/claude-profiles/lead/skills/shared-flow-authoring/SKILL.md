@@ -86,11 +86,13 @@ contract-flows folder. Coordinator scope is intentionally narrow:
   are owned by the lead whose chunk *delivers* the surface, because
   that lead has the truth about what the endpoint actually returns at
   the moment the chunk lands.
-- Bootstrap step bodies for any actor — the request payload + the
-  response shape the bootstrap endpoint returns. Declare the actor
-  with `{ auth: { scheme: <scheme-name> } }` and stop. The lead whose
-  chunk delivers that authentication surface fills in the bootstrap
-  flow once the endpoint exists.
+- Future bootstrap step bodies for actors whose auth surface is NOT in
+  the codebase yet. If the app already has a working auth baseline
+  (for example generated apps with local Keycloak + seeded users),
+  `_shared.json` MUST include the concrete actor `auth.login` block
+  needed by the probe runner to mint a token. A bare
+  `{ auth: { scheme: "bearer-in-body" } }` actor is not enough for
+  bearer-backed flows and will cascade into auth bootstrap failures.
 - Any assertion that references a field a chunk has not delivered yet.
   Future-state schemas in `_shared.json` break the chunk that lands
   first because its probes assert fields its response does not yet
@@ -99,7 +101,11 @@ contract-flows folder. Coordinator scope is intentionally narrow:
 
 ### What CAN be in `_shared.json`
 
-- `actors[]` — name + scheme (no bootstrap body).
+- `actors[]` — name + the smallest complete auth declaration the
+  runner can execute. Anonymous actors only need
+  `{ "scheme": "anonymous" }`; bearer/cookie actors need the login or
+  fixture fields required by their scheme unless no current flow can
+  reference them.
 - `resources[]` — entity declarations, optionally with a CRUD-endpoint
   hint, but no flow steps.
 - `fixtures` — fixture roots / file paths.
@@ -107,6 +113,50 @@ contract-flows folder. Coordinator scope is intentionally narrow:
 - `config.cookieJar`, `config.fixturesRoot`, and similar toggles.
 - `test-endpoint` registry entries when the project exposes them
   (e.g. clock-advance, mailbox, webhook log).
+
+### Generated-app Keycloak baseline — do not treat auth as future work
+
+Generated apps in this repository already ship an authentication
+baseline: local Keycloak, `oauth2-proxy`, JWT/JWKS validation in the
+API, `infra/keycloak/manifest.json`, and `infra/keycloak/dev-seed.json`.
+When a plan asks for a new generated-app role, the coordinator MUST:
+
+1. Read `infra/keycloak/manifest.json` and `infra/keycloak/dev-seed.json`
+   before naming actors.
+2. If the role or seeded user is missing, direct the feature work to add
+   both first. Do not declare an actor that Keycloak cannot mint.
+3. Use one canonical actor name everywhere. Prefer the role name
+   (`<role-name>`) over variants such as `<role-name>-actor`.
+4. For bearer actors, include the concrete Keycloak ROPC login block
+   with env interpolation. The auth surface already exists, so this is
+   shared config, not a lead-owned future bootstrap assertion.
+5. Read `GlobalExceptionFilter` and `TransformInterceptor` before
+   writing `config.envelope`; do not mark the envelope as TBD when code
+   already defines it.
+
+For the current boilerplate, a working Keycloak actor looks like:
+
+```json
+{
+  "name": "<role-name>",
+  "auth": {
+    "scheme": "bearer-in-body",
+    "login": {
+      "path": "${env:OAUTH_ISSUER_URL}/protocol/openid-connect/token",
+      "contentType": "application/x-www-form-urlencoded",
+      "body": {
+        "grant_type": "password",
+        "client_id": "${env:OAUTH2_PROXY_CLIENT_ID}",
+        "client_secret": "${env:OAUTH2_PROXY_CLIENT_SECRET}",
+        "username": "${env:TEST_ROLE_USER_EMAIL}",
+        "password": "${env:TEST_ROLE_USER_PASSWORD}",
+        "scope": "openid"
+      },
+      "key": "$.access_token"
+    }
+  }
+}
+```
 
 You and the leads share write access to the folder. Leads append
 bootstrap flows + cross-task flows to `_shared.json` as their chunks
@@ -395,10 +445,10 @@ Each scope produces a separate access token captured into
 ### Anti-pattern: placeholder actors with empty auth
 
 Do NOT declare an actor with `auth: {}` as a "fill in later"
-placeholder. The runtime sees no scheme, treats the actor as failed
-bootstrap, and every flow that references it cascades to 401 (the
-`[contract-flows-bootstrap-FAIL] actor=<name> scheme=unknown` lines you
-see in probe stdout). If you don't yet have credentials wired:
+placeholder. The current schema accepts it for legacy files and the
+runner treats it like anonymous credentials, which is even more
+dangerous: protected flows reference the actor, send no bearer, and
+cascade to 401. If you don't yet have credentials wired:
 
 - **Defer the actor entirely** — don't declare in `actors[]`, don't
   list in `owns[]`. Flows can't reference what doesn't exist; the
@@ -474,16 +524,15 @@ rejected. Use the shapes below. Anything else fails
 ```json
 {
   "name": "<actor-name>",
-  "auth": { "token": "<value-or-binding>" },
+  "auth": { "scheme": "<scheme-name>", "...": "<fields required by that scheme>" },
   "transport": "<optional>"
 }
 ```
 
 NO `role` / `credentials`. The `auth` object is a discriminated union
 on `scheme` — see "Actor types" above for the five canonical shapes
-and the `AUTH_SCHEME_REGISTRY` reference. Bare `auth: {}` is rejected
-at contract-load with `actors.N.auth.scheme · Invalid discriminator
-value` — for an anonymous-equivalent actor declare
-`{ "scheme": "anonymous" }` explicitly.
+and the `AUTH_SCHEME_REGISTRY` reference. Avoid bare `auth: {}` even
+though legacy parsing coerces it to anonymous; for an anonymous-
+equivalent actor declare `{ "scheme": "anonymous" }` explicitly.
 
 For Resource (array entry) and Special-flow schema shapes, **read [runner-and-schema.md](../runner-and-schema.md) before writing them** — it is the canonical schema reference.

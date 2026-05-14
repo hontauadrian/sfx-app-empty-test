@@ -9,6 +9,7 @@ import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { buildSwaggerDocument } from './swagger';
+import { createHelmetOptions } from './config/helmet-options';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -16,7 +17,7 @@ async function bootstrap(): Promise<void> {
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 3001);
 
-  app.use(helmet());
+  app.use(helmet(createHelmetOptions()));
   app.use(cookieParser());
   const webOrigin = process.env.WEB_ORIGIN;
   app.enableCors({

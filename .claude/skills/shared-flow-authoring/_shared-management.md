@@ -8,10 +8,10 @@
 
 | Section | Purpose | Example entries |
 |---|---|---|
-| `actors` | Global actor identities used across multiple features | `<admin-actor>`, `<service-account>`, `anonymous` (implicit) |
+| `actors` | Global actor identities used across multiple features | `anonymous`, `authenticated-user`, `<role-name>` |
 | `resources` | Cross-feature resources (rare — most resources are feature-local) | `<tenant>`, `<organisation>`, `<user>` if every feature touches the user table |
 | `fixtures` | Named fixture references that more than one feature consumes | `expired-token`, `malformed-token`, `revoked-refresh`, `small-png`, `large-pdf` |
-| `error_envelope` | Project-wide error envelope shape (Decision 17 P1-10) — `field_error("<field>")` matcher resolves through this | `{ "fields": ["code", "message", "errors"] }` |
+| `config.envelope` | Project-wide success/error wrapper paths (Decision 17 P1-10) | `{ "successWrapper": ["data"], "errorWrapper": ["error"] }` |
 | `test_endpoints` | Mounted-only-in-test endpoints for clock advance, mailbox inspection, webhook log, downstream log, etc. (Decision 14, 15, 17 P1-9) | `clockAdvance`, `mailbox`, `webhookLog`, `downstreamLog`, `freezeAt` |
 
 ## File metadata
@@ -50,59 +50,52 @@ stay in the feature file.
 
 ```json
 {
-  "actors": {
-    "<admin-actor>": {
-      "role": "admin",
-      "credentials": {
-        "kind": "bearer",
-        "tokenFixture": "admin-token"
+  "owns": [
+    { "actor": "anonymous" },
+    { "actor": "authenticated-user" },
+    { "actor": "<role-name>" }
+  ],
+  "actors": [
+    {
+      "name": "anonymous",
+      "auth": { "scheme": "anonymous" }
+    },
+    {
+      "name": "<role-name>",
+      "auth": {
+        "scheme": "bearer-in-body",
+        "login": {
+          "path": "${env:OAUTH_ISSUER_URL}/protocol/openid-connect/token",
+          "contentType": "application/x-www-form-urlencoded",
+          "body": {
+            "grant_type": "password",
+            "client_id": "${env:OAUTH2_PROXY_CLIENT_ID}",
+            "client_secret": "${env:OAUTH2_PROXY_CLIENT_SECRET}",
+            "username": "${env:TEST_ROLE_USER_EMAIL}",
+            "password": "${env:TEST_ROLE_USER_PASSWORD}",
+            "scope": "openid"
+          },
+          "key": "$.access_token"
+        }
       }
-    },
-    "<service-account>": {
-      "role": "service",
-      "credentials": {
-        "kind": "bearer",
-        "tokenFixture": "service-account-token"
-      },
-      "scopes": ["read:<scope-A>", "write:<scope-B>"]
-    },
-    "<viewer-actor>": {
-      "role": "viewer",
-      "credentials": { "kind": "bearer", "tokenFixture": "viewer-token" }
-    },
-    "<editor-actor>": {
-      "role": "editor",
-      "credentials": { "kind": "bearer", "tokenFixture": "editor-token" }
-    },
-    "<owner-actor>": {
-      "role": "owner",
-      "credentials": { "kind": "bearer", "tokenFixture": "owner-token" }
     }
-  }
+  ]
 }
 ```
 
-Multi-tenant actors that hold credentials per tenant use the
-Decision 17 P1-14 shape:
+Actors are an ARRAY, not an object map. Do not use stale `role` /
+`credentials` keys. The `auth` object is a discriminated union on
+`scheme`; every non-anonymous actor that a flow can reference needs the
+fields required by that scheme.
 
-```json
-{
-  "actors": {
-    "<actor-A>": {
-      "tenants": ["<tenant-A>", "<tenant-B>"],
-      "credentials_per_tenant": {
-        "<tenant-A>": { "kind": "bearer", "tokenFixture": "actor-A-tenant-A-token" },
-        "<tenant-B>": { "kind": "bearer", "tokenFixture": "actor-A-tenant-B-token" }
-      }
-    }
-  }
-}
-```
+Generated-app Keycloak actors require an existing Keycloak role and a
+seeded user. Before declaring a role actor, verify:
 
-`anonymous` is implicit — the runner uses it for unauthenticated
-requests without needing a declaration. Declare it explicitly only if
-your project's `anonymous` actor needs a non-default credential
-(e.g. an API key tied to a public-key role).
+- `infra/keycloak/manifest.json` includes the role under the API client.
+- `infra/keycloak/dev-seed.json` assigns the role to a user.
+- The actor name is stable and matches flow bindings exactly
+  (`<role-name>`, not `<role-name>-actor` in one file and
+  `<role-name>` in another).
 
 ## Section: `resources`
 
@@ -185,46 +178,40 @@ Named fixtures resolve to file paths or token literals. Used by:
 bootstrap reads it from `flows.config.json`). Keep fixture file names
 short and self-describing — they appear in flow ids and probe output.
 
-## Section: `error_envelope`
+## Section: `config.envelope`
 
 Decision 17 P1-10 — when every feature responds with the same error
-shape, declare it once. The `field_error("<field>")` matcher in
-per-feature flows then resolves against this declaration.
+or success wrapper, declare it once. Derive it from the actual
+`GlobalExceptionFilter` and `TransformInterceptor`; do not guess from a
+plan or mark it TBD when those files exist.
 
 ```json
 {
-  "error_envelope": {
-    "fields": ["code", "message", "errors"],
-    "field_error_path": "$.errors[?(@.field=='<field>')]",
-    "code_path": "$.code",
-    "message_path": "$.message"
-  }
-}
-```
-
-When a per-feature flow asserts:
-
-```json
-{
-  "expect": {
-    "status": 422,
-    "jsonpath": {
-      "$": "field_error('<field>')"
+  "config": {
+    "envelope": {
+      "successWrapper": ["data"],
+      "errorWrapper": ["error"]
     }
   }
 }
 ```
 
-…the matcher resolves to:
+In this boilerplate, `TransformInterceptor.ENVELOPE` wraps success
+responses as `{ "success": true, "data": ... }`, and
+`GlobalExceptionFilter` wraps errors as
+`{ "success": false, "error": { "statusCode": <number>, "message": <string> } }`.
 
 ```json
 {
-  "$.errors[?(@.field=='<field>')]": { "exists": true }
+  "expect": {
+    "status": 422,
+    "errorEnvelope": { "messageMatches": "required" }
+  }
 }
 ```
 
 This decouples per-feature flows from the project's chosen envelope.
-Changing the envelope shape later only requires editing this single
+Changing the wrapper paths later only requires editing this single
 declaration.
 
 ## Section: `test_endpoints`

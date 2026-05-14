@@ -55,19 +55,23 @@ invisible without envelope assertion:
 }
 ```
 
-### Pattern 2 — declared error fields via `_shared.error_envelope`
+### Pattern 2 — declared wrappers via `_shared.config.envelope`
 
-If the project declares the error envelope shape once in `_shared.json`:
+If the project declares wrapper paths once in `_shared.json`:
 
 ```json
 {
-  "error_envelope": {
-    "fields": ["code", "message", "details", "traceId"]
+  "config": {
+    "envelope": {
+      "successWrapper": ["data"],
+      "errorWrapper": ["error"]
+    }
   }
 }
 ```
 
-Then per-error flows use the `field_error` matcher:
+Then per-error flows use `errorEnvelope` assertions instead of hardcoding
+the wrapper path:
 
 ```json
 {
@@ -83,9 +87,7 @@ Then per-error flows use the `field_error` matcher:
       },
       "expect": {
         "status": "<expected>",
-        "jsonpath": {
-          "$": { "field_error": "<expected-code>" }
-        }
+        "errorEnvelope": { "messageMatches": "<expected-message-fragment>" }
       }
     }
   ]

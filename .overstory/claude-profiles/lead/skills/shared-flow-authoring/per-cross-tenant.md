@@ -37,25 +37,29 @@ chance to forget the tenant scope.
 
 ## Decision 17 P1-13 / P1-14 — declarative tenancy
 
-Declare tenant scoping on the resource and per-tenant credentials on
-the actor:
+Declare tenant scoping on the resource and use distinct full actor
+declarations for each tenant/role combination. Do not use stale
+`credentials_per_tenant` object-map shapes; actors are arrays and their
+`auth` blocks follow the same scheme union described in `SKILL.md`.
 
 ```json
 {
-  "resources": {
-    "<resource>": {
-      "tenant_scoped_by": "<field>"
+  "resources": [
+    {
+      "name": "<resource>",
+      "tenantScopedBy": "<field>"
     }
-  },
-  "actors": {
-    "<actor>": {
-      "tenants": ["<tenant-A>", "<tenant-B>"],
-      "credentials_per_tenant": {
-        "<tenant-A>": { },
-        "<tenant-B>": { }
-      }
+  ],
+  "actors": [
+    {
+      "name": "<actor-tenant-A>",
+      "auth": { "scheme": "<scheme-name>", "...": "<tenant-A credentials>" }
+    },
+    {
+      "name": "<actor-tenant-B>",
+      "auth": { "scheme": "<scheme-name>", "...": "<tenant-B credentials>" }
     }
-  }
+  ]
 }
 ```
 
