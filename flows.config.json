@@ -11,6 +11,6 @@
   "apiBaseUrl": "http://localhost:3001",
   "flowsDir": ".overstory/runtime-contract.flows",
   "resourceGraph": {
-    "ignoreModels": ["BoilerplatePlaceholder"]
+    "ignoreModels": []
   }
 }
