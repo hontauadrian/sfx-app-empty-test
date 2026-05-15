@@ -126,6 +126,68 @@ write_web_env_local() {
   fi
 }
 
+# Worker stacks allocate dynamic ports per worktree, but the worktree's root
+# .env (copied from the canonical project root by stack-env-hydrate.sh) ships
+# with the boilerplate's static defaults — KEYCLOAK_PORT=9080, APP_PROXY_PORT=
+# 4181, OAUTH_ISSUER_URL pointing at port 9080, etc. Anything that reads
+# process.env via dotenv (pnpm scripts, probe-run-with-ownership-check.sh,
+# the Nest API at integration-test boot) sees the stale defaults and tries
+# to talk to ports that aren't published. Builders historically lost an
+# entire iteration to "auth bootstrap fails — Keycloak unreachable" before
+# discovering the .env was stale.
+#
+# Mirror the values stack-up-docker.sh has already exported into docker
+# compose's environment back into the worker's root .env so dotenv-driven
+# tooling (pnpm probe:smoke, db:migrate:deploy, integration tests) sees the
+# real ports without an extra `pnpm env:hydrate` round-trip. Canonical
+# (app-dev-host) is left alone — humans expect that file to be stable.
+sync_worker_env_dynamic_values() {
+  local _project_dir="${1:-$PROJECT_DIR}"
+  local _env_file="$_project_dir/.env"
+  if [ "$IS_WORKTREE_STACK" != "true" ]; then
+    return 0
+  fi
+  if [ "${PROJECT_NAME:-}" = "app-dev-host" ]; then
+    return 0
+  fi
+  [ -f "$_env_file" ] || return 0
+  local _key
+  local _value
+  upsert_root_env_var() {
+    _key="$1"
+    _value="$2"
+    [ -n "$_value" ] || return 0
+    if grep -q "^[[:space:]]*${_key}=" "$_env_file" 2>/dev/null; then
+      _tmp="$(mktemp "$_env_file.XXXXXX")"
+      if awk -v key="$_key" -v value="$_value" '
+        BEGIN { replaced = 0 }
+        $0 ~ "^[[:space:]]*" key "=" { print key "=" value; replaced = 1; next }
+        { print }
+        END { if (!replaced) print key "=" value }
+      ' "$_env_file" > "$_tmp"; then
+        mv "$_tmp" "$_env_file"
+      else
+        rm -f "$_tmp"
+        return 1
+      fi
+    else
+      printf '%s=%s\n' "$_key" "$_value" >> "$_env_file"
+    fi
+  }
+  upsert_root_env_var "KEYCLOAK_PORT" "${KEYCLOAK_PORT:-}"
+  upsert_root_env_var "APP_PROXY_PORT" "${APP_PROXY_PORT:-}"
+  upsert_root_env_var "PG_PORT" "${PG_PORT:-}"
+  upsert_root_env_var "API_PORT" "${API_PORT:-}"
+  upsert_root_env_var "NEXT_PORT" "${NEXT_PORT:-}"
+  upsert_root_env_var "OAUTH_ISSUER_URL" "${OAUTH_ISSUER_URL:-}"
+  upsert_root_env_var "OAUTH_JWKS_URL" "${OAUTH_JWKS_URL:-}"
+  upsert_root_env_var "OAUTH2_PROXY_REDIRECT_URL" "${OAUTH2_PROXY_REDIRECT_URL:-}"
+  upsert_root_env_var "OAUTH2_PROXY_WHITELIST_DOMAIN" "${OAUTH2_PROXY_WHITELIST_DOMAIN:-}"
+  upsert_root_env_var "NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI" "${NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI:-}"
+  upsert_root_env_var "NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT" "${NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT:-}"
+  upsert_root_env_var "NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID" "${NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID:-}"
+}
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 LOG="$PROJECT_DIR/.stack.start.log"
@@ -238,11 +300,30 @@ elif [ "$APP_PROXY_PORT" != "4181" ] || [ "$KEYCLOAK_PORT" != "9080" ]; then
 fi
 
 if [ "$SHOULD_REWRITE_OAUTH_URLS" = "true" ]; then
-  # OAuth URLs are browser-facing as well as container-facing. Keep these on
-  # .localtest.me with the dynamic ports so Keycloak discovery and redirects
-  # never leak Docker-only hostnames like host.docker.internal into Chrome.
-  # Containers that need to call Keycloak get keycloak.localtest.me mapped to
-  # the host gateway via docker-compose extra_hosts.
+  # Single hostname strategy: both browser users (primary `app-dev-host`
+  # stack) and QA probe agents (worker stacks running inside the SFX panel
+  # container) must reach Keycloak via the SAME hostname, because Keycloak
+  # `start-dev --hostname-strict=false` mints tokens with iss=<request-host>,
+  # and the api validates iss against `OAUTH_ISSUER_URL`. Mismatched
+  # hostnames produce 401 "Invalid token issuer" on every authenticated
+  # request.
+  #
+  # We pick `keycloak.localtest.me` because it is the only hostname that
+  # works from real browsers — `*.localtest.me` is a public wildcard DNS
+  # entry that resolves to 127.0.0.1, so a developer browsing from macOS
+  # / Linux / Windows reaches Keycloak via the host's published port
+  # without needing /etc/hosts edits. Server-side consumers (the api
+  # container, the oauth2-proxy container, the panel container running
+  # probes) declare `keycloak.localtest.me:host-gateway` in `extra_hosts`
+  # so the same hostname resolves to the host gateway from inside Docker.
+  # See:
+  #   * apps/api + app-oauth2-proxy services in this repo's docker-compose.yml
+  #   * panel service in sfx-team-panel/docker-compose.yml
+  #
+  # Browser-facing redirect URIs use `app.localtest.me` for symmetry —
+  # browser users land on http://app.localtest.me:<APP_PROXY_PORT>/ and
+  # oauth2-proxy redirects them to http://keycloak.localtest.me:<port> for
+  # login. Both subdomains are public wildcard DNS entries.
   OAUTH_HOST="keycloak.localtest.me"
   OAUTH_PROXY_HOST="app.localtest.me"
   OAUTH_ISSUER_URL="http://${OAUTH_HOST}:${KEYCLOAK_PORT}/realms/${REALM_NAME}"
@@ -272,6 +353,9 @@ if [ "${SFX_STACK_PRINT_PORT_ENV:-0}" = "1" ]; then
   printf 'NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI=%s\n' "${NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI:-}"
   printf 'NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT=%s\n' "${NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT:-}"
   printf 'NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID=%s\n' "${NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID:-}"
+  if [ "${SFX_STACK_SYNC_WORKER_ENV:-0}" = "1" ]; then
+    sync_worker_env_dynamic_values "$PROJECT_DIR"
+  fi
   exit 0
 fi
 
@@ -409,6 +493,17 @@ if [ -z "$BUILD_FLAG" ] && [ -z "$FORCE_RECREATE_FLAG" ] && [ "${running_count:-
     echo "[stack-up-docker] apps/web/.env.local changed — restarting web container so next dev re-reads NEXT_PUBLIC_API_URL" | tee -a "$LOG"
     docker compose -p "$PROJECT_NAME" restart web 2>&1 | tee -a "$LOG"
   fi
+  # When reusing a green stack, the dynamic OAUTH_* and *_PORT values were
+  # only kept by the first stack:up that booted the containers — we recompute
+  # them from the live compose port mappings above (ACTUAL_*_PORT). Re-export
+  # so sync_worker_env_dynamic_values sees the right values for the worker.
+  PG_PORT="$ACTUAL_PG_PORT"
+  API_PORT="$ACTUAL_API_PORT"
+  NEXT_PORT="$ACTUAL_WEB_PORT"
+  APP_PROXY_PORT="$ACTUAL_PROXY_PORT"
+  KEYCLOAK_PORT="$ACTUAL_KEYCLOAK_PORT"
+  export PG_PORT API_PORT NEXT_PORT APP_PROXY_PORT KEYCLOAK_PORT
+  sync_worker_env_dynamic_values "$PROJECT_DIR"
   cat > "$PROJECT_DIR/.stack.json" <<JSON
 {
   "pg_port": ${ACTUAL_PG_PORT},
@@ -785,6 +880,7 @@ for attempt in $(seq 1 60); do
     echo "    keycloak: http://${HEALTH_HOST}:${KEYCLOAK_PORT}" | tee -a "$LOG"
     echo "    pg:  ${HEALTH_HOST}:${PG_PORT}" | tee -a "$LOG"
     write_web_env_local "${API_PORT}" "$PROJECT_DIR"
+    sync_worker_env_dynamic_values "$PROJECT_DIR"
     cat > "$PROJECT_DIR/.stack.json" <<JSON
 {
   "pg_port": ${PG_PORT},

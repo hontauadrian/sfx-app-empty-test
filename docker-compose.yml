@@ -135,6 +135,10 @@ services:
       # POSTGRES_USER=sfx / POSTGRES_DB=sfx_db / POSTGRES_PASSWORD=sfx.
       - DATABASE_URL=postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@postgres:5432/${POSTGRES_DB:-app_db}
       - JWT_SECRET=${JWT_SECRET:-dev-secret-minimum-16-chars}
+      # Issuer/JWKS use keycloak.localtest.me — single-hostname strategy so
+      # the SAME url works from real browsers (primary stack human users)
+      # AND from server-side consumers (api, oauth2-proxy, panel running
+      # probes). See .env.example for the full rationale.
       - OAUTH_ISSUER_URL=${OAUTH_ISSUER_URL:-http://keycloak.localtest.me:9080/realms/sfx-webapp-boilerplate}
       - OAUTH_JWKS_URL=${OAUTH_JWKS_URL:-http://keycloak.localtest.me:9080/realms/sfx-webapp-boilerplate/protocol/openid-connect/certs}
       - OAUTH_API_CLIENT_ID=${OAUTH_API_CLIENT_ID:-sfx-webapp-boilerplate-dev-api}
@@ -147,7 +151,18 @@ services:
       - PORT=3001
       - NODE_ENV=development
     extra_hosts:
+      # keycloak.localtest.me — single-hostname strategy. The api validates
+      # iss claims against OAUTH_ISSUER_URL, which uses this hostname. The
+      # browser resolves it via public wildcard DNS (127.0.0.1) and reaches
+      # Keycloak through the host's published port; this container reaches
+      # the same hostname via host-gateway. Both paths produce identical
+      # iss claims, so api validation succeeds for browser-issued and
+      # probe-issued tokens.
       - "keycloak.localtest.me:host-gateway"
+      # host.docker.internal — auto-provided on Docker Desktop but NOT on
+      # Linux. Declared so dev tooling that hard-codes this hostname (eg.
+      # database tunnels, port forwarders) keeps working in Linux CI.
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
@@ -183,7 +198,11 @@ services:
     ports:
       - "${APP_PROXY_PORT:-4181}:4180"
     extra_hosts:
+      # Same as the api service above. keycloak.localtest.me is the issuer
+      # hostname; oauth2-proxy fetches the OIDC discovery document from it
+      # at startup, so it MUST resolve from inside this container.
       - "keycloak.localtest.me:host-gateway"
+      - "host.docker.internal:host-gateway"
     depends_on:
       keycloak-bootstrap:
         condition: service_completed_successfully

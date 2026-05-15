@@ -15,9 +15,26 @@ has_script() {
 hydrate_stack_runtime_env() {
   [ -f ".stack.json" ] || return 0
 
-  local runtime_env_file
-  runtime_env_file="$(mktemp)"
-  node > "$runtime_env_file" <<'NODE'
+  # The values must survive across the `&&`-chained `pnpm probe:smoke`
+  # pipeline (probe-bootstrap.sh && pnpm openapi:check &&
+  # probe-run-with-ownership-check.sh). Each segment runs in its own bash
+  # subshell, so plain `export` from this script's process dies at the
+  # first `&&`. We materialise the values two ways:
+  #
+  #   1. .env.runtime — a sourceable file the next pipeline segment can
+  #      `set -a; . .env.runtime; set +a`. Treated as a transient artefact;
+  #      regenerated on every probe-bootstrap invocation.
+  #   2. .env — upserted in place so dotenv-driven readers (pnpm scripts
+  #      via dotenvy/dotenv-flow, the Nest API at integration-test boot)
+  #      see the live values without needing to source anything explicitly.
+  #
+  # In a healthy worker stack, scripts/stack-up-docker.sh has already
+  # written these into .env. This is the safety net for the rare case
+  # where probe:smoke runs without a fresh stack:up (idempotent green
+  # path, manual debugging, etc.).
+  local runtime_env_file=".env.runtime"
+  : > "$runtime_env_file"
+  node >> "$runtime_env_file" <<'NODE'
 const fs = require('node:fs');
 
 function shellQuote(value) {
@@ -41,12 +58,26 @@ const stackHost = typeof stack.host === 'string' && stack.host.length > 0
 const keycloakPort = stack.keycloak_port;
 const proxyPort = stack.proxy_port;
 
+// OAuth issuer/JWKS use keycloak.localtest.me explicitly — NOT stackHost.
+// stackHost is the script-context hostname for api/web health probes
+// (`host.docker.internal` from inside the panel container, `localhost` from
+// the host shell). OAuth URLs are special: they must match the iss claim
+// the api validates against, which the api gets from OAUTH_ISSUER_URL in
+// docker-compose.yml — that defaults to keycloak.localtest.me. If we built
+// the OAuth fallback from stackHost the probe would fetch tokens via
+// host.docker.internal, getting iss=host.docker.internal:<port>, while the
+// api expects iss=keycloak.localtest.me:<port>, causing 401 on every
+// authenticated probe step. See sfx-team-panel/docker-compose.yml for the
+// extra_hosts entry that makes keycloak.localtest.me resolvable from
+// inside the panel container.
+const oauthHost = 'keycloak.localtest.me';
+
 const values = {
   OAUTH_ISSUER_URL: stack.oauth_issuer_url || (keycloakPort
-    ? 'http://' + stackHost + ':' + keycloakPort + '/realms/' + realmName
+    ? 'http://' + oauthHost + ':' + keycloakPort + '/realms/' + realmName
     : undefined),
   OAUTH_JWKS_URL: stack.oauth_jwks_url || (keycloakPort
-    ? 'http://' + stackHost + ':' + keycloakPort + '/realms/' + realmName + '/protocol/openid-connect/certs'
+    ? 'http://' + oauthHost + ':' + keycloakPort + '/realms/' + realmName + '/protocol/openid-connect/certs'
     : undefined),
   OAUTH_API_CLIENT_ID: realmName + '-dev-api',
   OAUTH_AUDIENCE: realmName + '-dev-api',
@@ -55,6 +86,11 @@ const values = {
   OAUTH2_PROXY_REDIRECT_URL: stack.oauth2_proxy_redirect_url || (proxyPort
     ? 'http://app.localtest.me:' + proxyPort + '/oauth2/callback'
     : undefined),
+  KEYCLOAK_PORT: keycloakPort != null ? String(keycloakPort) : undefined,
+  APP_PROXY_PORT: proxyPort != null ? String(proxyPort) : undefined,
+  PG_PORT: stack.pg_port != null ? String(stack.pg_port) : undefined,
+  API_PORT: stack.api_port != null ? String(stack.api_port) : undefined,
+  NEXT_PORT: stack.web_port != null ? String(stack.web_port) : undefined,
 };
 
 for (const [key, value] of Object.entries(values)) {
@@ -63,8 +99,45 @@ for (const [key, value] of Object.entries(values)) {
 NODE
   # shellcheck disable=SC1090
   . "$runtime_env_file"
-  rm -f "$runtime_env_file"
+
+  # Upsert into .env so the next `&&`-chained shell (which loads .env via
+  # pnpm/dotenv) sees these values. Idempotent: replaces the line if the
+  # key exists, appends otherwise.
+  upsert_dotenv_var() {
+    local _key="$1"
+    local _value="$2"
+    [ -n "$_value" ] || return 0
+    [ -f .env ] || return 0
+    if grep -q "^[[:space:]]*${_key}=" .env 2>/dev/null; then
+      _tmp="$(mktemp ".env.XXXXXX")"
+      if awk -v key="$_key" -v value="$_value" '
+        BEGIN { replaced = 0 }
+        $0 ~ "^[[:space:]]*" key "=" { print key "=" value; replaced = 1; next }
+        { print }
+        END { if (!replaced) print key "=" value }
+      ' .env > "$_tmp"; then
+        mv "$_tmp" .env
+      else
+        rm -f "$_tmp"
+      fi
+    else
+      printf '%s=%s\n' "$_key" "$_value" >> .env
+    fi
+  }
+  for _var in OAUTH_ISSUER_URL OAUTH_JWKS_URL OAUTH_API_CLIENT_ID OAUTH_AUDIENCE \
+              OAUTH2_PROXY_CLIENT_ID OAUTH2_PROXY_CLIENT_SECRET OAUTH2_PROXY_REDIRECT_URL \
+              KEYCLOAK_PORT APP_PROXY_PORT PG_PORT API_PORT NEXT_PORT; do
+    upsert_dotenv_var "$_var" "$(eval "printf '%s' \"\${${_var}:-}\"")"
+  done
 }
+
+if [ "${1:-}" = "--hydrate-only" ]; then
+  # Diagnostic / test mode: run only the .stack.json → env hydration step
+  # and exit. Useful for regression tests that exercise the upsert logic
+  # without booting docker compose.
+  hydrate_stack_runtime_env
+  exit 0
+fi
 
 step "1/6 ensure stack is up"
 

@@ -40,4 +40,60 @@ describe("docker-compose oauth2-proxy baseline", () => {
     assert.match(dockerfile, /NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID/);
     assert.doesNotMatch(dockerfile, /if \[ -n "\$NEXT_PUBLIC_API_URL" \]/);
   });
+
+  it("declares keycloak.localtest.me:host-gateway on api and oauth2-proxy", () => {
+    // Single-hostname strategy: OAUTH_ISSUER_URL uses keycloak.localtest.me
+    // so browsers (which resolve the hostname via *.localtest.me public
+    // wildcard DNS) and server-side consumers (which resolve it via this
+    // extra_hosts entry mapped to the host gateway) agree on the iss claim
+    // they observe in tokens. The api service validates iss against
+    // OAUTH_ISSUER_URL — without this mapping, the api can't fetch JWKS
+    // from inside its container.
+    const compose = readFileSync(join(REPO_ROOT, "docker-compose.yml"), "utf8");
+    const apiSection = compose.match(/^\s{2}api:[\s\S]*?(?=^\s{2}\S|\Z)/m)?.[0] ?? "";
+    const proxySection = compose.match(/^\s{2}app-oauth2-proxy:[\s\S]*?(?=^\s{2}\S|\Z)/m)?.[0] ?? "";
+
+    assert.notEqual(apiSection, "", "expected api: service block in docker-compose.yml");
+    assert.notEqual(proxySection, "", "expected app-oauth2-proxy: service block in docker-compose.yml");
+    assert.match(apiSection, /keycloak\.localtest\.me:host-gateway/);
+    assert.match(proxySection, /keycloak\.localtest\.me:host-gateway/);
+  });
+
+  it("declares host.docker.internal:host-gateway on api and oauth2-proxy for Linux portability", () => {
+    // Auto-provided on Docker Desktop, missing on Linux. Declared so dev
+    // tooling that hard-codes this hostname (db tunnels, port forwarders,
+    // etc.) keeps working in Linux CI even though the OAuth flow itself
+    // uses keycloak.localtest.me.
+    const compose = readFileSync(join(REPO_ROOT, "docker-compose.yml"), "utf8");
+    const apiSection = compose.match(/^\s{2}api:[\s\S]*?(?=^\s{2}\S|\Z)/m)?.[0] ?? "";
+    const proxySection = compose.match(/^\s{2}app-oauth2-proxy:[\s\S]*?(?=^\s{2}\S|\Z)/m)?.[0] ?? "";
+
+    assert.notEqual(apiSection, "", "expected api: service block in docker-compose.yml");
+    assert.notEqual(proxySection, "", "expected app-oauth2-proxy: service block in docker-compose.yml");
+    assert.match(apiSection, /host\.docker\.internal:host-gateway/);
+    assert.match(proxySection, /host\.docker\.internal:host-gateway/);
+  });
+
+  it("defaults OAUTH_ISSUER_URL/JWKS_URL to keycloak.localtest.me (single-hostname strategy)", () => {
+    // The same hostname must work from real browsers (primary stack human
+    // users) AND from server-side consumers (api, oauth2-proxy, panel
+    // running probes). keycloak.localtest.me satisfies both: public
+    // wildcard DNS resolves it to 127.0.0.1 in browsers; extra_hosts
+    // mapping resolves it to the host gateway from inside containers.
+    const compose = readFileSync(join(REPO_ROOT, "docker-compose.yml"), "utf8");
+
+    assert.match(
+      compose,
+      /OAUTH_ISSUER_URL=\$\{OAUTH_ISSUER_URL:-http:\/\/keycloak\.localtest\.me:9080\/realms\/sfx-webapp-boilerplate\}/,
+    );
+    assert.match(
+      compose,
+      /OAUTH_JWKS_URL=\$\{OAUTH_JWKS_URL:-http:\/\/keycloak\.localtest\.me:9080\/realms\/sfx-webapp-boilerplate\/protocol\/openid-connect\/certs\}/,
+    );
+    assert.doesNotMatch(
+      compose,
+      /OAUTH_ISSUER_URL=\$\{OAUTH_ISSUER_URL:-http:\/\/host\.docker\.internal/,
+      "default issuer URL must not point at host.docker.internal — real browsers can't resolve Docker-only hostnames, so primary-stack human users would fail at the OIDC redirect",
+    );
+  });
 });

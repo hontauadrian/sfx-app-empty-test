@@ -4,7 +4,7 @@
   "description": "SFX webapp boilerplate HTTP contract",
   "private": true,
   "scripts": {
-    "dev": "nest start -b swc --watch",
+    "dev": "pnpm -r --filter \"@sfx/domain\" --filter \"@sfx/shared\" --filter \"@sfx/validation\" --filter \"@sfx/database\" run build && nest start -b swc --watch",
     "build": "nest build",
     "openapi:dump": "pnpm exec tsx scripts/dump-openapi.ts",
     "start": "node dist/main.js",

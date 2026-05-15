@@ -149,7 +149,135 @@ describe("stack-up-docker worktree ports", () => {
         envOutput.NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT,
         `${envOutput.OAUTH_ISSUER_URL}/protocol/openid-connect/logout`,
       );
+      assert.equal(envOutput.OAUTH2_PROXY_WHITELIST_DOMAIN, `keycloak.localtest.me:${envOutput.KEYCLOAK_PORT}`);
       assert.equal(envOutput.NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID, "generated-app-dev-proxy");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rewrites stale dynamic OAuth/PORT keys in the worker .env on stack:up", () => {
+    const tempRoot = join(tmpdir(), `stack-up-docker-syncenv-${Date.now()}`);
+    const worktreeRoot = join(tempRoot, ".overstory", "worktrees", "probe-worker");
+    const scriptsDir = join(worktreeRoot, "scripts");
+
+    try {
+      mkdirSync(scriptsDir, { recursive: true });
+      copyFileSync(
+        join(REPO_ROOT, "scripts", "stack-up-docker.sh"),
+        join(scriptsDir, "stack-up-docker.sh"),
+      );
+      writeFileSync(
+        join(worktreeRoot, "package.json"),
+        JSON.stringify({ name: "sfx-webapp-boilerplate" }),
+      );
+      const stalePins = [
+        "POSTGRES_USER=app",
+        "POSTGRES_PASSWORD=app",
+        "POSTGRES_DB=app_db",
+        "APP_PROXY_PORT=4181",
+        "KEYCLOAK_PORT=9080",
+        "OAUTH_ISSUER_URL=http://keycloak.localtest.me:9080/realms/sfx-webapp-boilerplate",
+        "OAUTH_JWKS_URL=http://keycloak.localtest.me:9080/realms/sfx-webapp-boilerplate/protocol/openid-connect/certs",
+        "OAUTH2_PROXY_REDIRECT_URL=http://app.localtest.me:4181/oauth2/callback",
+        "NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI=http://app.localtest.me:4181/",
+        "OAUTH2_PROXY_CLIENT_SECRET=keep-me-untouched",
+        "",
+      ].join("\n");
+      writeFileSync(join(worktreeRoot, ".env"), stalePins);
+
+      execFileSync("bash", [join(scriptsDir, "stack-up-docker.sh")], {
+        cwd: worktreeRoot,
+        env: {
+          ...process.env,
+          SFX_STACK_PRINT_PORT_ENV: "1",
+          SFX_STACK_SYNC_WORKER_ENV: "1",
+        },
+        encoding: "utf8",
+      });
+
+      const updatedEnv = readFileSync(join(worktreeRoot, ".env"), "utf8");
+      const envMap = Object.fromEntries(
+        updatedEnv
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .filter((line) => !line.startsWith("#"))
+          .map((line) => {
+            const idx = line.indexOf("=");
+            return [line.slice(0, idx), line.slice(idx + 1)];
+          }),
+      );
+
+      assert.notEqual(envMap.KEYCLOAK_PORT, "9080", "stale boilerplate Keycloak port must be replaced");
+      assert.notEqual(envMap.APP_PROXY_PORT, "4181", "stale boilerplate proxy port must be replaced");
+      assert.match(envMap.KEYCLOAK_PORT, /^37\d{3}$/);
+      assert.match(envMap.APP_PROXY_PORT, /^36\d{3}$/);
+      assert.equal(
+        envMap.OAUTH_ISSUER_URL,
+        `http://keycloak.localtest.me:${envMap.KEYCLOAK_PORT}/realms/sfx-webapp-boilerplate`,
+        "issuer URL must use keycloak.localtest.me — single-hostname strategy. Browsers reach it via *.localtest.me public wildcard DNS; api/oauth2-proxy/panel containers reach it via extra_hosts mapping to host-gateway. Both paths produce identical iss claims, so api validation succeeds for browser-issued and probe-issued tokens.",
+      );
+      assert.equal(
+        envMap.OAUTH_JWKS_URL,
+        `${envMap.OAUTH_ISSUER_URL}/protocol/openid-connect/certs`,
+      );
+      assert.equal(
+        envMap.OAUTH2_PROXY_REDIRECT_URL,
+        `http://app.localtest.me:${envMap.APP_PROXY_PORT}/oauth2/callback`,
+      );
+      assert.equal(
+        envMap.NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI,
+        `http://app.localtest.me:${envMap.APP_PROXY_PORT}/`,
+      );
+      assert.equal(
+        envMap.OAUTH2_PROXY_CLIENT_SECRET,
+        "keep-me-untouched",
+        "non-managed keys in .env must be preserved",
+      );
+      assert.equal(envMap.POSTGRES_DB, "app_db");
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves canonical app-dev-host .env alone (worker-only sync)", () => {
+    const tempRoot = join(tmpdir(), `stack-up-docker-canonical-noenv-${Date.now()}`);
+    const scriptsDir = join(tempRoot, "scripts");
+
+    try {
+      mkdirSync(scriptsDir, { recursive: true });
+      copyFileSync(
+        join(REPO_ROOT, "scripts", "stack-up-docker.sh"),
+        join(scriptsDir, "stack-up-docker.sh"),
+      );
+      writeFileSync(join(tempRoot, "package.json"), JSON.stringify({ name: "sfx-webapp-boilerplate" }));
+      const canonicalEnv = [
+        "POSTGRES_USER=app",
+        "KEYCLOAK_PORT=9080",
+        "OAUTH_ISSUER_URL=http://keycloak.localtest.me:9080/realms/sfx-webapp-boilerplate",
+        "",
+      ].join("\n");
+      writeFileSync(join(tempRoot, ".env"), canonicalEnv);
+
+      execFileSync("bash", [join(scriptsDir, "stack-up-docker.sh")], {
+        cwd: tempRoot,
+        env: {
+          ...process.env,
+          PROJECT_NAME: "app-dev-host",
+          PG_PORT: "5432",
+          API_PORT: "3001",
+          NEXT_PORT: "3000",
+          APP_PROXY_PORT: "4181",
+          KEYCLOAK_PORT: "9080",
+          SFX_STACK_PRINT_PORT_ENV: "1",
+          SFX_STACK_SYNC_WORKER_ENV: "1",
+        },
+        encoding: "utf8",
+      });
+
+      const after = readFileSync(join(tempRoot, ".env"), "utf8");
+      assert.equal(after, canonicalEnv, "canonical .env must not be rewritten by worker-only sync");
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
