@@ -208,6 +208,45 @@ function loadCuratedFlowSteps(projectDir) {
  * side of the prefix the comparison is performed on. Generated flows pass
  * `apiPrefix=null` because their step paths already include the prefix.
  */
+/**
+ * Replace path-parameter segments with a single canonical sentinel so the
+ * comparison between curated coverage and OpenAPI/NestJS diagnostics is
+ * shape-based rather than name-based.
+ *
+ *   `${brandId}` (curated template literal) -> `<P>`
+ *   `:id`       (NestJS / Express route param)  -> `<P>`
+ *
+ * Without this, a curated step path like `/brands/${brandId}` emits a
+ * coverage tuple `GET /api/v1/brands/${brandId}:200`, while the diagnostic
+ * for the same controller endpoint reports `GET /api/v1/brands/:id:200`.
+ * The two strings are literal-unequal, the suppression check misses, and
+ * `CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE` fires for endpoints that
+ * ARE genuinely covered. Reducing both forms to `<P>` makes the lookup
+ * symmetric.
+ *
+ * Real-world incident on 2026-05-15: F1 brand-profile builder hit the
+ * stop-gate with 6 UNGENERATABLE rows on `GET|PUT|DELETE /api/v1/brands/:id`
+ * despite having curated `${brandId}`-bound coverage that exercised every
+ * one of those status codes against a real Keycloak-authenticated stack.
+ *
+ * Path SEGMENTS that look like literal values (UUIDs, sentinels like
+ * `non-existent-id`, slugs) are intentionally NOT canonicalized — they
+ * stay as literal segments so curated 401-style flows (which use
+ * placeholder ids without a captured binding) only suppress the matching
+ * literal endpoint, never a parameterized success path.
+ */
+function canonicalizePathParams(rawPath) {
+  if (typeof rawPath !== 'string' || rawPath.length === 0) return rawPath;
+  return rawPath
+    // ${anyVarName} -> <P>
+    .replace(/\$\{[^}]+\}/g, '<P>')
+    // :paramName segment marker (NestJS / Express style) -> <P>
+    // Only match when preceded by `/` or start, then `:identifier`, ending
+    // at the next `/`, `?`, or end-of-string. Avoids munging colons inside
+    // query strings or anchors.
+    .replace(/(^|\/):([A-Za-z_][A-Za-z0-9_]*)(?=\/|$|\?)/g, '$1<P>');
+}
+
 function buildCoverageSet(flows, apiPrefix) {
   const covered = new Set();
   const normalizedPrefix = typeof apiPrefix === 'string' && apiPrefix.length > 0
@@ -238,6 +277,12 @@ function buildCoverageSet(flows, apiPrefix) {
         ) {
           prefixedEpStr = `${lastApiMethod} ${normalizedPrefix}${lastApiPath}`;
         }
+        // Canonical-shape variants: replace `${var}` and `:id`-style param
+        // markers with a single sentinel so coverage matches diagnostics
+        // regardless of naming style. Emitted alongside the literal forms
+        // so existing exact-match cases stay covered.
+        const canonicalEpStr = canonicalizePathParams(epStr);
+        const canonicalPrefixedEpStr = prefixedEpStr ? canonicalizePathParams(prefixedEpStr) : null;
         const statuses = [];
         if (step.status != null) statuses.push(step.status);
         if (Array.isArray(step.statusAnyOf)) {
@@ -246,6 +291,10 @@ function buildCoverageSet(flows, apiPrefix) {
         for (const eachStatus of statuses) {
           covered.add(`${epStr}:${eachStatus}`);
           if (prefixedEpStr) covered.add(`${prefixedEpStr}:${eachStatus}`);
+          if (canonicalEpStr !== epStr) covered.add(`${canonicalEpStr}:${eachStatus}`);
+          if (canonicalPrefixedEpStr && canonicalPrefixedEpStr !== prefixedEpStr) {
+            covered.add(`${canonicalPrefixedEpStr}:${eachStatus}`);
+          }
         }
       }
     }
@@ -5537,15 +5586,23 @@ function generate(matrix, logical, overlay, curatedFlowSteps) {
     apiPrefix
   );
   const coveredTuples = new Set([...generatedCoverage, ...curatedCoverage]);
-  const filteredDiagnostics = diagnostics.filter((d) => {
-    if (d.code !== 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE') return true;
-    // d.endpoint is "METHOD /path", d.message contains the status number.
+  const filteredDiagnostics = diagnostics.filter((diag) => {
+    if (diag.code !== 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE') return true;
+    // diag.endpoint is "METHOD /path", diag.message contains the status number.
     // Extract the status from the message: "Status NNN declared on ..."
-    const statusMatch = d.message && d.message.match(/^Status (\d+) declared on /);
+    const statusMatch = diag.message && diag.message.match(/^Status (\d+) declared on /);
     if (!statusMatch) return true;
     const status = parseInt(statusMatch[1], 10);
-    const key = `${d.endpoint}:${status}`;
-    return !coveredTuples.has(key);
+    const literalKey = `${diag.endpoint}:${status}`;
+    // Diagnostic endpoints from the OpenAPI/NestJS surface use `:id`-style
+    // param markers ("GET /api/v1/brands/:id"). Curated flows often use
+    // template-literal markers ("/brands/${brandId}") because that is what
+    // the runtime contract-flow runner needs for binding substitution.
+    // canonicalizePathParams reduces both shapes to `<P>` so a curated
+    // entry covers the diagnostic regardless of naming style. See the
+    // canonicalizePathParams JSDoc for the 2026-05-15 incident this fixes.
+    const canonicalKey = `${canonicalizePathParams(diag.endpoint)}:${status}`;
+    return !coveredTuples.has(literalKey) && !coveredTuples.has(canonicalKey);
   });
 
   // Sort by id for determinism.
@@ -5858,6 +5915,7 @@ module.exports = {
   generate,
   loadCuratedFlowSteps,
   deriveApiPrefixFromEndpoints,
+  canonicalizePathParams,
   fanOutMutableChains,
   sortKeys,
   matchesIgnore,
