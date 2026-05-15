@@ -1,0 +1,431 @@
+{
+  "version": 1,
+  "task_id": "sfx-webapp-boilerplate-b859",
+  "owns": [
+    { "resource": "brand-profile" }
+  ],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" }
+  ],
+  "resources": [
+    {
+      "name": "brand-profile",
+      "create": {
+        "method": "POST",
+        "path": "/brands",
+        "body": {
+          "name": "Acme Brand",
+          "description": "Seed brand for flow assertions"
+        }
+      },
+      "capture": {
+        "bindings": { "id": "$.data.id" }
+      }
+    }
+  ],
+  "special_flows": [
+    {
+      "id": "sfx-webapp-boilerplate-b859:anon-list-blocked",
+      "description": "GET /api/v1/brands without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §3 guard contract",
+        "endpoint": "GET /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:anon-create-blocked",
+      "description": "POST /api/v1/brands without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §3 guard contract",
+        "endpoint": "POST /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Anonymous Brand" }
+        },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:anon-get-by-id-blocked",
+      "description": "GET /api/v1/brands/:id without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §3 guard contract",
+        "endpoint": "GET /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/non-existent-id" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:anon-update-blocked",
+      "description": "PUT /api/v1/brands/:id without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §3 guard contract",
+        "endpoint": "PUT /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/non-existent-id",
+          "body": { "name": "Anonymous Rename" }
+        },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:anon-delete-blocked",
+      "description": "DELETE /api/v1/brands/:id without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §3 guard contract",
+        "endpoint": "DELETE /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "DELETE", "path": "/brands/non-existent-id" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:admin-list-happy",
+      "description": "GET /api/v1/brands with admin bearer returns 200 + envelope with data array",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §2 List brands",
+        "endpoint": "GET /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data": { "type": "array" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:admin-create-happy",
+      "description": "POST /api/v1/brands with admin bearer + valid body returns 201 + brand-profile envelope",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §2 Create brand",
+        "endpoint": "POST /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": {
+            "name": "Happy Path Brand",
+            "description": "Created in the admin happy-path flow"
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 201,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.id": { "type": "string" },
+            "$.data.name": "Happy Path Brand",
+            "$.data.description": "Created in the admin happy-path flow",
+            "$.data.ownerSubject": { "type": "string" },
+            "$.data.createdAt": { "type": "string" },
+            "$.data.updatedAt": { "type": "string" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:admin-create-empty-name-rejected",
+      "description": "POST /api/v1/brands with empty/whitespace name is rejected 400 by Zod pipe",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §2 Validation",
+        "endpoint": "POST /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "   " }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:admin-create-name-too-long-rejected",
+      "description": "POST /api/v1/brands with name > 120 chars is rejected 400 by Zod pipe",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §2 Validation",
+        "endpoint": "POST /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": {
+            "name": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:admin-create-then-get-by-id",
+      "description": "Create a brand as admin, then read it back via GET /:id with the captured id",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §2 chain-CRUD",
+        "endpoint": "GET /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Chain Roundtrip Seed", "description": "Used to capture id" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.id": "${brandId}",
+            "$.data.ownerSubject": { "type": "string" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:admin-update-roundtrip",
+      "description": "Create a brand as admin, PUT a new name, GET reflects the rename",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §2 Rename",
+        "endpoint": "PUT /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Original Name" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}",
+          "body": { "name": "Renamed Brand" }
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.id": "${brandId}",
+            "$.data.name": "Renamed Brand"
+          }
+        },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": { "$.data.name": "Renamed Brand" }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:admin-delete-then-get-404",
+      "description": "Create + delete as admin, subsequent GET returns 404",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §2 Delete + state transition",
+        "endpoint": "DELETE /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Doomed Brand" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "DELETE", "path": "/brands/${brandId}" },
+        { "kind": "expect", "status": 200 },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:cross-tenant-get-by-id-404",
+      "description": "Brand owned by admin is invisible to viewer — GET /:id returns 404 (existence not leaked)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §3 cross-tenant",
+        "endpoint": "GET /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Admin-Owned Brand for Cross-Tenant Read Test" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:cross-tenant-update-404",
+      "description": "Brand owned by admin cannot be renamed by viewer — PUT returns 404 (not 403)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §3 cross-tenant",
+        "endpoint": "PUT /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Admin-Owned Brand for Cross-Tenant Update Test" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "viewer" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}",
+          "body": { "name": "Viewer Hijack Attempt" }
+        },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:cross-tenant-delete-404",
+      "description": "Brand owned by admin cannot be deleted by viewer — DELETE returns 404 (not 403)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §3 cross-tenant",
+        "endpoint": "DELETE /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Admin-Owned Brand for Cross-Tenant Delete Test" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "DELETE", "path": "/brands/${brandId}" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-b859:cross-tenant-list-isolation",
+      "description": "Admin's brand is excluded from viewer's GET /api/v1/brands list (ownership-scoped)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-b859 §3 cross-tenant",
+        "endpoint": "GET /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Admin-Owned Brand for List Isolation Test" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data": { "type": "array" }
+          }
+        }
+      ]
+    }
+  ]
+}
