@@ -2,6 +2,7 @@ version: '1'
 domains:
   architecture: {}
   brand-profile: {}
+  dev-stack: {}
 governance:
   max_entries: 100
   warn_entries: 150
