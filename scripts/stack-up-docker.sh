@@ -652,8 +652,24 @@ if [ "$NEEDS_INSTALL" = "1" ]; then
   # this flag pnpm hangs forever on stdin in non-interactive contexts
   # (panel UI Save → restart, CI, anywhere stdin is closed) and the
   # whole stack:up appears to silently fail.
-  if ! (cd "$PROJECT_DIR" && NODE_ENV=development pnpm install --frozen-lockfile --prefer-offline --config.confirm-modules-purge=false 2>&1) | tee -a "$LOG"; then
-    echo "ERROR: pnpm install failed in $PROJECT_DIR" | tee -a "$LOG"
+  #
+  # `timeout` cap: pnpm install --prefer-offline against a warm pnpm-store
+  # completes in 15-45s; against a cold store with all deps cached locally
+  # it's 60-180s. A 5-minute cap means a network/registry hang surfaces
+  # fast (and triggers the explicit error below) instead of holding a
+  # builder Stop hook chain hostage for tens of minutes. Real incident on
+  # 2026-05-15: a closeout-gate-driven re-run hit a 7+ minute install hang
+  # with no progress and stalled the worker until manual SIGTERM cleanup.
+  # If you see the timeout fire, run `pnpm install` manually to investigate
+  # — the cap is on the watchdog, not on a legitimate cold install.
+  STACK_INSTALL_TIMEOUT="${STACK_INSTALL_TIMEOUT:-300}"
+  if ! (cd "$PROJECT_DIR" && timeout "${STACK_INSTALL_TIMEOUT}" sh -c 'NODE_ENV=development pnpm install --frozen-lockfile --prefer-offline --config.confirm-modules-purge=false' 2>&1) | tee -a "$LOG"; then
+    install_exit=${PIPESTATUS[0]}
+    if [ "$install_exit" = "124" ]; then
+      echo "ERROR: pnpm install timed out after ${STACK_INSTALL_TIMEOUT}s in $PROJECT_DIR — investigate registry / lockfile / pnpm-store before re-trying." | tee -a "$LOG"
+    else
+      echo "ERROR: pnpm install failed (exit ${install_exit}) in $PROJECT_DIR" | tee -a "$LOG"
+    fi
     exit 1
   fi
 fi

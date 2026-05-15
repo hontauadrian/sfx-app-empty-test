@@ -344,4 +344,34 @@ describe("stack-up-docker worktree ports", () => {
       rmSync(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it("caps `pnpm install --frozen-lockfile` with a timeout watchdog so a registry hang surfaces fast", () => {
+    // 2026-05-15 incident: a closeout-gate-driven re-run of probe:smoke
+    // entered the install branch (NEEDS_INSTALL=1) and `pnpm install
+    // --frozen-lockfile` then hung for 7+ minutes with no progress,
+    // stalling the version-builder Stop hook chain. Manual SIGTERM cleanup
+    // was the only way out. The probe-bootstrap fast-path prevents this
+    // chain from being re-entered in the hot probe scenario, but the
+    // timeout watchdog below makes any future regression surface within
+    // STACK_INSTALL_TIMEOUT seconds (default 300) instead of holding the
+    // builder hostage. Pin the wiring here so a future refactor can't
+    // drop it silently.
+    const script = readFileSync(join(REPO_ROOT, "scripts", "stack-up-docker.sh"), "utf8");
+
+    assert.match(
+      script,
+      /STACK_INSTALL_TIMEOUT="\$\{STACK_INSTALL_TIMEOUT:-300\}"/,
+      "stack-up-docker.sh must expose a STACK_INSTALL_TIMEOUT env override (default 300s)",
+    );
+    assert.match(
+      script,
+      /timeout\s+"\$\{STACK_INSTALL_TIMEOUT\}"\s+sh\s+-c\s+'NODE_ENV=development pnpm install --frozen-lockfile/,
+      "pnpm install --frozen-lockfile must be wrapped in `timeout ${STACK_INSTALL_TIMEOUT}` to bound a registry/store hang",
+    );
+    assert.match(
+      script,
+      /install_exit=\$\{PIPESTATUS\[0\]\}[\s\S]*if\s+\[\s*"\$install_exit"\s*=\s*"124"\s*\];\s*then[\s\S]*timed out/,
+      "the failure branch must distinguish the timeout exit code (124) from a generic install failure",
+    );
+  });
 });

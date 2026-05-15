@@ -190,8 +190,49 @@ if [ "$needs_build" -eq 1 ]; then
   fi
 fi
 
+# Fast-path: skip `pnpm stack:up` when the stack is already healthy.
+#
+# `pnpm probe:smoke` can be invoked in two contexts:
+#   (a) cold — the stack is not running yet, we genuinely need to boot it.
+#   (b) hot — the stack is up and we're just re-running the probe to verify
+#       a fix or satisfy a closeout gate (e.g. the builder's Stop hook
+#       re-running probe:smoke after worker_done).
+#
+# In context (b), invoking `pnpm stack:up` is wasteful at best (a green
+# stack-up exits in <1s) and catastrophic at worst — observed real
+# incident on 2026-05-15 where a closeout-gate re-run caused
+# `stack-up-docker.sh` to reach the install step (NEEDS_INSTALL=1 because
+# `node_modules/.bin/tsc` was not yet linked despite a healthy api
+# container) and `pnpm install --frozen-lockfile` then hung for 7+
+# minutes with no progress, holding up the entire builder Stop hook
+# chain. The fast-path below probes the API health endpoint directly:
+# if the worker stack's `/api/v1/health` returns 2xx/4xx (any concrete
+# HTTP status from the API container), the stack is up — skip stack:up.
+# A non-response (curl exit ≠ 0 OR empty status) means the stack is not
+# bound, fall through to the regular boot path.
+#
+# The check only runs when .stack.json exists and is well-formed. Cold
+# probes have no .stack.json, so the fast-path is naturally inert there.
+should_skip_stack_up() {
+  [ -f ".stack.json" ] || return 1
+  local api_port stack_host
+  api_port="$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('.stack.json','utf8')).api_port||'')}catch{}" 2>/dev/null)"
+  stack_host="$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('.stack.json','utf8')).host||'host.docker.internal')}catch{console.log('host.docker.internal')}" 2>/dev/null)"
+  [ -n "$api_port" ] || return 1
+  local code
+  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "http://${stack_host}:${api_port}/api/v1/health" 2>/dev/null || echo 000)"
+  case "$code" in
+    2*|4*) return 0 ;;
+    *)     return 1 ;;
+  esac
+}
+
 if has_script stack:up; then
-  pnpm --silent stack:up >/dev/null || fail "stack:up failed — run 'pnpm stack:up' directly to see error"
+  if should_skip_stack_up; then
+    step "1/6 stack already healthy per .stack.json — skipping stack:up"
+  else
+    pnpm --silent stack:up >/dev/null || fail "stack:up failed — run 'pnpm stack:up' directly to see error"
+  fi
 fi
 
 hydrate_stack_runtime_env

@@ -174,4 +174,36 @@ describe("probe-bootstrap hydrate persistence", () => {
       rmSync(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it("declares a fast-path that skips stack:up when .stack.json + health probe show a healthy stack", () => {
+    // Closeout-gate re-runs of `pnpm probe:smoke` were observed (2026-05-15)
+    // to invoke `stack-up-docker.sh`'s install path against an already-up
+    // stack and hang for 7+ minutes inside `pnpm install --frozen-lockfile`,
+    // stalling the worker's Stop hook chain. The fast-path below short-
+    // circuits stack:up when the api health endpoint is reachable, so this
+    // class of stall cannot recur. Pin the wiring here so a future refactor
+    // doesn't quietly drop the fast-path.
+    const script = readFileSync(join(REPO_ROOT, "scripts", "probe-bootstrap.sh"), "utf8");
+
+    assert.match(
+      script,
+      /should_skip_stack_up\s*\(\)\s*\{/,
+      "probe-bootstrap.sh must define should_skip_stack_up()",
+    );
+    assert.match(
+      script,
+      /\.stack\.json/,
+      "fast-path must consult .stack.json (it is the only signal that we have a healthy stack)",
+    );
+    assert.match(
+      script,
+      /\/api\/v1\/health/,
+      "fast-path must probe the api health endpoint to confirm the stack is bound, not just declared",
+    );
+    assert.match(
+      script,
+      /if\s+should_skip_stack_up;\s+then[\s\S]*step[^\n]*skipping stack:up[\s\S]*else[\s\S]*pnpm[\s\S]*stack:up/,
+      "stack:up call must be guarded by should_skip_stack_up with a step log on the skip branch",
+    );
+  });
 });

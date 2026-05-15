@@ -9,7 +9,7 @@ const assert = require('node:assert');
 const path = require('path');
 const fs = require('fs');
 
-const { generate, sortKeys, buildCoverageSet, loadCuratedFlowSteps } = require(path.resolve(
+const { generate, sortKeys, buildCoverageSet, loadCuratedFlowSteps, deriveApiPrefixFromEndpoints } = require(path.resolve(
   __dirname, '..', '..', 'probes', 'flows-generator.js'
 ));
 const { mkdtempSync, mkdirSync, writeFileSync } = require('fs');
@@ -837,13 +837,34 @@ test('apiPrefix-aware curated coverage: unprefixed curated path suppresses UNGEN
   );
 });
 
-test('apiPrefix-aware curated coverage: missing apiPrefix means curated coverage uses literal step.path only', () => {
-  // When the matrix omits apiPrefix, the legacy behavior must still apply:
-  // curated coverage is recorded against the literal step.path. A prefixed
-  // diagnostic string should NOT be magically matched against an unprefixed
-  // curated entry — the project owner has to either set apiPrefix in the
-  // matrix or use prefixed paths in the curated flow.
+test('apiPrefix-aware curated coverage: missing authDetection but consistent endpoint prefix → derivation suppresses', () => {
+  // When the matrix omits authDetection.apiPrefix BUT the apiEndpoints[]
+  // share a consistent leading prefix, the post-generation filter must
+  // derive the prefix from the endpoints and use it to normalize curated
+  // coverage. This is the real-world fresh-seed bug: matrix-loader's
+  // default does not always survive into the persisted .matrix.json, and
+  // the diagnostic was firing despite curated coverage existing.
   const matrix = makeAuthMatrix(undefined);
+  // makeAuthMatrix only puts /api/v1/auth/me into apiEndpoints — too few
+  // for derivation alone, so add one more endpoint to give the heuristic
+  // enough samples.
+  matrix.apiEndpoints.push({
+    file: 'src/health/health.controller.ts',
+    method: 'GET',
+    path: '/api/v1/health',
+    framework: 'nest',
+    guard: 'public',
+    inputSchemaRef: null,
+    sampleValid: null,
+    sampleInvalid: [],
+    successStatus: 200,
+    errorStatuses: [],
+    changed: true,
+    routeParams: [],
+    zodContract: null,
+    authDecorators: { authRequired: false, isPublic: true, guards: [], rolesRequired: [], bearerAuth: false },
+    swaggerDeclared: { tags: ['health'], statuses: [200] },
+  });
   const curatedFlowSteps = [
     {
       id: 'task-auth:happy-admin-can-read-own-session',
@@ -854,13 +875,15 @@ test('apiPrefix-aware curated coverage: missing apiPrefix means curated coverage
     },
   ];
   const result = generate(matrix, EMPTY_LOGICAL, { ignore: [] }, curatedFlowSteps);
-  const unmatched = result.diagnostics.filter(
+  const surviving = result.diagnostics.filter(
     (diag) => diag.code === 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE' &&
-              diag.endpoint === 'GET /api/v1/auth/me'
+              diag.endpoint === 'GET /api/v1/auth/me' &&
+              /Status 200/.test(diag.message)
   );
-  assert.ok(
-    unmatched.length >= 1,
-    'without apiPrefix, the unprefixed curated path must NOT be silently treated as covering the prefixed OpenAPI endpoint',
+  assert.strictEqual(
+    surviving.length,
+    0,
+    'derivation from apiEndpoints[] MUST find /api/v1 and suppress the diagnostic when curated flow uses unprefixed path /auth/me',
   );
 });
 
@@ -953,5 +976,159 @@ test('CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE message: leads with curated-flow
     diag.message,
     /^Status \d+ declared on [^.]+\.\s*Add a declared register\/login flow/,
     'old leading text "Add a declared register/login flow" must be gone — it pushed agents toward inventing local-auth scaffolds on Keycloak-backed projects',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// deriveApiPrefixFromEndpoints — fallback when matrix.authDetection.apiPrefix
+// is missing (real-world bug observed on fresh seeds where .matrix.json was
+// written without going through matrix-loader.ts's defaulting pass).
+// ---------------------------------------------------------------------------
+
+test('deriveApiPrefixFromEndpoints: returns null for empty/missing input', () => {
+  assert.strictEqual(deriveApiPrefixFromEndpoints(undefined), null);
+  assert.strictEqual(deriveApiPrefixFromEndpoints(null), null);
+  assert.strictEqual(deriveApiPrefixFromEndpoints([]), null);
+  assert.strictEqual(deriveApiPrefixFromEndpoints([{}, {}]), null);
+});
+
+test('deriveApiPrefixFromEndpoints: detects /api/v1 from boilerplate-style endpoints', () => {
+  const endpoints = [
+    { method: 'GET', path: '/api/v1/health' },
+    { method: 'GET', path: '/api/v1/auth/me' },
+    { method: 'GET', path: '/api/v1/version' },
+    { method: 'POST', path: '/api/v1/teams' },
+  ];
+  assert.strictEqual(deriveApiPrefixFromEndpoints(endpoints), 'api/v1');
+});
+
+test('deriveApiPrefixFromEndpoints: tolerates outliers below 20% (e.g. /health outside prefix)', () => {
+  const endpoints = [
+    { method: 'GET', path: '/api/v1/auth/me' },
+    { method: 'GET', path: '/api/v1/version' },
+    { method: 'POST', path: '/api/v1/teams' },
+    { method: 'GET', path: '/api/v1/users' },
+    { method: 'GET', path: '/health' },
+  ];
+  assert.strictEqual(deriveApiPrefixFromEndpoints(endpoints), 'api/v1');
+});
+
+test('deriveApiPrefixFromEndpoints: returns null when no clear majority', () => {
+  const endpoints = [
+    { method: 'GET', path: '/api/v1/foo' },
+    { method: 'GET', path: '/v2/bar' },
+    { method: 'GET', path: '/internal/baz' },
+  ];
+  assert.strictEqual(deriveApiPrefixFromEndpoints(endpoints), null);
+});
+
+test('deriveApiPrefixFromEndpoints: prefers longer prefix when both depths qualify', () => {
+  const endpoints = [
+    { method: 'GET', path: '/api/v1/foo' },
+    { method: 'GET', path: '/api/v1/bar' },
+  ];
+  assert.strictEqual(deriveApiPrefixFromEndpoints(endpoints), 'api/v1');
+});
+
+test('deriveApiPrefixFromEndpoints: falls back to single segment when depth-2 is too varied', () => {
+  const endpoints = [
+    { method: 'GET', path: '/api/v1/foo' },
+    { method: 'GET', path: '/api/v2/bar' },
+    { method: 'GET', path: '/api/v3/baz' },
+  ];
+  // depth-2 splits: api/v1, api/v2, api/v3 — none reaches threshold.
+  // depth-1: 'api' across all 3 → 100% → 'api'.
+  assert.strictEqual(deriveApiPrefixFromEndpoints(endpoints), 'api');
+});
+
+test('deriveApiPrefixFromEndpoints: ignores entries with no path', () => {
+  const endpoints = [
+    { method: 'GET', path: '/api/v1/foo' },
+    { method: 'GET' },
+    { path: 12345 },
+    { method: 'GET', path: '/api/v1/bar' },
+  ];
+  assert.strictEqual(deriveApiPrefixFromEndpoints(endpoints), 'api/v1');
+});
+
+test('apiPrefix-aware curated coverage: works when matrix omits authDetection (fallback to derivation)', () => {
+  // Real-world bug: fresh-seed .matrix.json written without authDetection.
+  // The post-generation filter must still suppress UNGENERATABLE for the
+  // curated /auth/me coverage, by deriving apiPrefix from the apiEndpoints.
+  const matrix = {
+    version: '1',
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    projectDir: '/test',
+    scope: 'full',
+    detectedFrameworks: { web: [], api: ['nest'], monorepo: 'none', auth: [], appRouter: false },
+    bootPlan: {
+      driver: 'framework-defaults', driverPath: null,
+      startCmd: 'npx nest start', stopCmd: null, portsCmd: null,
+      alreadyRunning: false, envFiles: [], ports: { api: 3000 }
+    },
+    pages: [],
+    apiEndpoints: [
+      {
+        file: 'src/health/health.controller.ts',
+        method: 'GET',
+        path: '/api/v1/health',
+        framework: 'nest',
+        guard: 'public',
+        inputSchemaRef: null,
+        sampleValid: null,
+        sampleInvalid: [],
+        successStatus: 200,
+        errorStatuses: [],
+        changed: true,
+        routeParams: [],
+        zodContract: null,
+        authDecorators: { authRequired: false, isPublic: true, guards: [], rolesRequired: [], bearerAuth: false },
+        swaggerDeclared: { tags: ['health'], statuses: [200] },
+      },
+      {
+        file: 'src/auth/auth.controller.ts',
+        method: 'GET',
+        path: '/api/v1/auth/me',
+        framework: 'nest',
+        guard: 'authenticated',
+        inputSchemaRef: null,
+        sampleValid: null,
+        sampleInvalid: [],
+        successStatus: 200,
+        errorStatuses: [401],
+        changed: true,
+        routeParams: [],
+        zodContract: null,
+        authDecorators: { authRequired: true, isPublic: false, guards: ['JwtAuthGuard'], rolesRequired: [], bearerAuth: true },
+        swaggerDeclared: { tags: ['auth'], statuses: [200, 401] },
+      },
+    ],
+    forms: [],
+    middleware: [],
+    // authDetection: deliberately omitted to simulate the fresh-seed bug.
+    diagnostics: { missingGuardHeaders: [], pagesProtectedByConvention: [], unreachablePages: [], orphanEndpoints: [], unknownFrameworks: [], detectorErrors: [], orphanOverlayRoutes: [] },
+    flows: [],
+    manifest: { compiledPresent: false, overlayPresent: false, overlayCoverage: null },
+  };
+  const curatedFlowSteps = [
+    {
+      id: 'task-auth:happy',
+      steps: [
+        { kind: 'setAuth', binding: 'admin' },
+        { kind: 'api', method: 'GET', path: '/auth/me' },
+        { kind: 'expect', status: 200 },
+      ],
+    },
+  ];
+  const result = generate(matrix, { rows: [] }, { ignore: [] }, curatedFlowSteps);
+  const surviving = result.diagnostics.filter(
+    (diag) => diag.code === 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE' &&
+              diag.endpoint === 'GET /api/v1/auth/me' &&
+              /Status 200/.test(diag.message)
+  );
+  assert.strictEqual(
+    surviving.length,
+    0,
+    'curated coverage MUST suppress UNGENERATABLE even when matrix omits authDetection — the prefix is derived from apiEndpoints[]',
   );
 });

@@ -630,6 +630,16 @@ function computeGateStateHash() {
   // orchestration scaffolding so mulch/seeds/canopy/etc commits don't flip the
   // hash — but any real source-code change does.
   const excludes = [
+    "':(exclude,glob)**/*.tsbuildinfo'",
+    "':(exclude,glob)*.tsbuildinfo'",
+    "':(exclude,glob)**/*.png'",
+    "':(exclude,glob)*.png'",
+    "':(exclude,glob)**/*.jpg'",
+    "':(exclude,glob)*.jpg'",
+    "':(exclude,glob)**/*.jpeg'",
+    "':(exclude,glob)*.jpeg'",
+    "':(exclude,glob)**/*.webp'",
+    "':(exclude,glob)*.webp'",
     "':(exclude,glob).claude/**'",
     "':(exclude,glob).overstory/**'",
     "':(exclude,glob).mulch/**'",

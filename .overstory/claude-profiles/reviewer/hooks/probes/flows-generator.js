@@ -72,6 +72,59 @@ function epKey(method, epath) {
   return `${method} ${epath}`;
 }
 
+/**
+ * Derive an API global prefix from the consensus leading path segment(s)
+ * of matrix.apiEndpoints[].path. Used as a fallback when
+ * matrix.authDetection.apiPrefix is missing (older matrices, or matrices
+ * written by a detector that did not run matrix-loader's defaulting pass).
+ *
+ * Heuristic:
+ *   - Take all endpoint paths.
+ *   - Split each on '/' (drop the leading empty token from the leading slash).
+ *   - For each leading segment depth (1, 2), check whether ≥80% of endpoints
+ *     share the same value at that depth. The two-segment case captures the
+ *     '/api/v1/...' convention used by the boilerplate; the single-segment
+ *     case captures '/api/...' or '/v1/...' style.
+ *   - Return the longest qualifying prefix (without leading slash, e.g.
+ *     'api/v1') so it slots into normalizedPrefix in buildCoverageSet.
+ *   - Return null when there is no clear consensus — never invent a prefix.
+ *
+ * 80% threshold (not 100%) because health/metrics endpoints often live
+ * outside the prefix (`/health`, `/metrics`) — those should not block prefix
+ * detection for the rest of the surface.
+ */
+function deriveApiPrefixFromEndpoints(apiEndpoints) {
+  if (!Array.isArray(apiEndpoints) || apiEndpoints.length === 0) return null;
+  const paths = apiEndpoints
+    .map((endpoint) => endpoint && typeof endpoint.path === 'string' ? endpoint.path : null)
+    .filter((value) => typeof value === 'string' && value.startsWith('/'));
+  if (paths.length === 0) return null;
+  const splitPaths = paths.map((value) => value.split('/').filter(Boolean));
+  const threshold = Math.max(1, Math.ceil(paths.length * 0.8));
+  let best = null;
+  for (const depth of [2, 1]) {
+    const counts = new Map();
+    for (const segments of splitPaths) {
+      if (segments.length < depth) continue;
+      const candidate = segments.slice(0, depth).join('/');
+      counts.set(candidate, (counts.get(candidate) || 0) + 1);
+    }
+    let topCandidate = null;
+    let topCount = 0;
+    for (const [candidate, count] of counts.entries()) {
+      if (count > topCount) {
+        topCount = count;
+        topCandidate = candidate;
+      }
+    }
+    if (topCandidate && topCount >= threshold) {
+      best = topCandidate;
+      break;
+    }
+  }
+  return best;
+}
+
 /** Normalize endpoint path to a flow-id-safe string. */
 function pathToId(epath) {
   return epath.replace(/^\/api\/v1\//, '').replace(/\//g, '-').replace(/:/g, '');
@@ -5460,7 +5513,24 @@ function generate(matrix, logical, overlay, curatedFlowSteps) {
   // the OpenAPI prefix). Without this, CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE
   // for an endpoint covered ONLY by a curated flow silently survives the
   // post-generation filter.
-  const apiPrefix = matrix && matrix.authDetection && matrix.authDetection.apiPrefix;
+  // Resolve the API global prefix used to normalize curated-flow coverage.
+  // Preference order:
+  //   1. matrix.authDetection.apiPrefix — explicit, set by matrix-loader's
+  //      default ('api/v1') or by the auth-detector when it can prove one
+  //      from `setGlobalPrefix(...)` calls in apps/api/src/main.ts.
+  //   2. Derive from the common leading path segment of matrix.apiEndpoints —
+  //      every NestJS app with @Controller routes ends up with a uniform
+  //      prefix on apiEndpoints[].path. This is the safety net for matrices
+  //      written before matrix-loader.ts's apiPrefix default was
+  //      consistently applied (real-world bug observed on fresh seeds where
+  //      .matrix.json omits the authDetection block entirely).
+  //   3. null — no normalization (curated coverage falls back to literal
+  //      step.path tuples).
+  const apiPrefix = (
+    (matrix && matrix.authDetection && matrix.authDetection.apiPrefix)
+    || deriveApiPrefixFromEndpoints(matrix && matrix.apiEndpoints)
+    || null
+  );
   const generatedCoverage = buildCoverageSet(fanned);
   const curatedCoverage = buildCoverageSet(
     Array.isArray(curatedFlowSteps) ? curatedFlowSteps : [],
@@ -5787,6 +5857,7 @@ function main() {
 module.exports = {
   generate,
   loadCuratedFlowSteps,
+  deriveApiPrefixFromEndpoints,
   fanOutMutableChains,
   sortKeys,
   matchesIgnore,

@@ -94,6 +94,8 @@ const baseBranch = (sh('git symbolic-ref refs/remotes/origin/HEAD').trim().repla
 const mergeBase = sh(`git merge-base HEAD origin/${baseBranch}`).trim();
 const rawDiff = mergeBase ? sh(`git diff --name-only ${mergeBase} HEAD`) : sh('git diff --name-only HEAD');
 const STATE_PATH_EXCLUSIONS = [
+  /\.tsbuildinfo$/,
+  /\.(png|jpg|jpeg|webp)$/i,
   /^\.claude\//,
   /^\.overstory\//,
   /^\.mulch\//,
