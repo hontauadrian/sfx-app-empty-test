@@ -11,7 +11,7 @@ export function useDeleteBrandMutation(): UseMutationResult<void, Error, string>
   return useMutation({
     mutationFn: (id: string): Promise<void> => deleteBrand(id),
     onSettled: (): void => {
-      void queryClient.invalidateQueries({ queryKey: BRANDS_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: BRANDS_QUERY_KEY, exact: true });
     },
   });
 }

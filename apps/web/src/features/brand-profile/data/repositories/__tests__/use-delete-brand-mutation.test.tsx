@@ -26,7 +26,7 @@ describe('useDeleteBrandMutation', () => {
     (deleteBrand as unknown as Mock).mockReset();
   });
 
-  it('invokes the delete remote and invalidates the brands list query on settle', async () => {
+  it('invokes the delete remote and invalidates only the brands list query on settle', async () => {
     (deleteBrand as unknown as Mock).mockResolvedValueOnce(undefined);
 
     const { client, wrapper } = createHarness();
@@ -39,6 +39,6 @@ describe('useDeleteBrandMutation', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(deleteBrand).toHaveBeenCalledWith('brand-1');
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: BRANDS_QUERY_KEY });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: BRANDS_QUERY_KEY, exact: true });
   });
 });
