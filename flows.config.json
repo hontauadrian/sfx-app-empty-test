@@ -9,5 +9,8 @@
     "path": "packages/database/prisma/schema.prisma"
   },
   "apiBaseUrl": "http://localhost:3001",
-  "flowsDir": ".overstory/runtime-contract.flows"
+  "flowsDir": ".overstory/runtime-contract.flows",
+  "resourceGraph": {
+    "ignoreModels": ["BoilerplatePlaceholder"]
+  }
 }

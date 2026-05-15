@@ -1,19 +1,20 @@
 // Boilerplate Prisma schema.
 //
-// Prisma requires at least one model for `prisma generate` to succeed, so a
-// minimal `BoilerplatePlaceholder` model lives here purely to keep the
-// client generator happy. The baseline API does not query it, no migration
-// is committed, and no table exists in the database.
+// Prisma requires at least one non-ignored model for `prisma generate` to
+// succeed, so a minimal `BoilerplatePlaceholder` model lives here purely
+// to keep the client generator happy. The baseline API does not query it,
+// no migration is committed, and no table exists in the database.
 //
-// `@@ignore` excludes the model from the generated Prisma Client AND from
-// the runtime-verification probe (resource-graph + flows-generator skip
-// `@@ignore`-marked models, suppressing the otherwise-spurious
-// `RESOURCE_GRAPH_NO_CREATE_ENDPOINT` diagnostic that would fire because
-// no controller targets this scaffold model).
+// The runtime-verification probe (resource-graph) would otherwise emit a
+// spurious `RESOURCE_GRAPH_NO_CREATE_ENDPOINT` for this scaffold model.
+// That diagnostic is suppressed by `flows.config.json` →
+// `resourceGraph.ignoreModels`, NOT by `@@ignore`: marking the only model
+// `@@ignore` would empty the generated client and break `prisma generate`.
 //
 // When you add your first real feature, delete this placeholder, declare
-// your model (without `@@ignore`), and run `pnpm db:migrate --name <feature>`
-// to generate the first migration.
+// your model, and run `pnpm db:migrate --name <feature>` to generate the
+// first migration. Once a real model exists, you can also remove the
+// `BoilerplatePlaceholder` entry from `flows.config.json`.
 
 generator client {
   provider = "prisma-client-js"
@@ -28,5 +29,4 @@ model BoilerplatePlaceholder {
   id String @id @default(cuid())
 
   @@map("boilerplate_placeholder")
-  @@ignore
 }

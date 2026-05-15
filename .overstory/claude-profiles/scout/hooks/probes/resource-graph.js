@@ -1,8 +1,50 @@
 'use strict';
 
+const fs = require('node:fs');
+const path = require('node:path');
+
+/**
+ * Read `flows.config.json` from the project root and return the configured
+ * resource-graph ignore list. Used to suppress
+ * `RESOURCE_GRAPH_NO_CREATE_ENDPOINT` diagnostics for Prisma models that
+ * intentionally have no controller — the canonical use case is the
+ * boilerplate's `BoilerplatePlaceholder` (Prisma requires at least one
+ * non-ignored model for `prisma generate` to succeed, and that model has
+ * no business endpoints).
+ *
+ * Schema:
+ *   {
+ *     "resourceGraph": {
+ *       "ignoreModels": ["ModelA", "ModelB"]
+ *     }
+ *   }
+ *
+ * Returns an empty array when:
+ *   - `flows.config.json` is missing
+ *   - the file is unreadable / malformed
+ *   - `resourceGraph.ignoreModels` is missing or not an array
+ *
+ * Lookups are case-sensitive and exact (no globs, no patterns) — keeping
+ * the contract declarative and grep-able.
+ */
+function loadIgnoredModels(projectDir) {
+  const configFile = path.join(projectDir || process.cwd(), 'flows.config.json');
+  if (!fs.existsSync(configFile)) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+  } catch {
+    return [];
+  }
+  const list = parsed && parsed.resourceGraph && parsed.resourceGraph.ignoreModels;
+  return Array.isArray(list) ? list.filter((modelName) => typeof modelName === 'string') : [];
+}
+
 function buildResourceGraph(matrix, diagnostics) {
   const prismaModels = (matrix && matrix.prismaModels && matrix.prismaModels.models) || {};
   const endpoints = matrix.apiEndpoints || [];
+  const projectDir = (matrix && matrix.projectDir) || process.cwd();
+  const ignoredModels = new Set(loadIgnoredModels(projectDir));
 
   const labelToCreateEndpoint = new Map();
   for (const endpoint of endpoints) {
@@ -55,6 +97,7 @@ function buildResourceGraph(matrix, diagnostics) {
 
   for (const [modelName, model] of Object.entries(prismaModels)) {
     if (!model || typeof model !== 'object') continue;
+    if (ignoredModels.has(modelName)) continue;
     const lookup = findCreateEndpoint(modelName);
     const createEndpoint = lookup ? lookup.endpoint : null;
     const idField = model.idField;
@@ -171,4 +214,4 @@ function buildResourceGraph(matrix, diagnostics) {
   };
 }
 
-module.exports = { buildResourceGraph };
+module.exports = { buildResourceGraph, loadIgnoredModels };
