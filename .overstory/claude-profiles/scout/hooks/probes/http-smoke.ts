@@ -961,6 +961,37 @@ export async function runHttpSmokeMain(options: HttpSmokeOptions): Promise<HttpS
     }
   }
 
+  // Pre-populate observedTuples with curated contract-flow tuples. Curated
+  // flows declare ground-truth coverage and execute AFTER this gate (see
+  // section 6b below); without this look-ahead, endpoints whose only success
+  // coverage lives in a curated flow (e.g. GET /api/v1/auth/me:200,
+  // GET /api/v1/brands:200) trip CONTRACT_STATUS_UNREACHABLE here even
+  // though the flow passes at runtime. The generator's filteredDiagnostics
+  // (flows-generator.js) already correctly excludes curated-covered tuples
+  // from UNGENERATABLE, so without this block both signals miss and the
+  // gate emits a false positive. See mulch dev-stack:mx-cd88c5.
+  if (curatedSummary.contract && curatedSummary.contract.specialFlows.length > 0) {
+    for (const attributedFlow of curatedSummary.contract.specialFlows) {
+      const flowSteps = attributedFlow.flow.steps;
+      let lastApi: { method: string; path: string } | null = null;
+      for (const step of flowSteps) {
+        if (step.kind === 'api') {
+          const cleanPath = step.path.split('?')[0];
+          lastApi = { method: step.method.toUpperCase(), path: cleanPath };
+        } else if (step.kind === 'expect' && lastApi) {
+          if (typeof step.status === 'number') {
+            observedTuples.add(`${lastApi.method} ${lastApi.path} ${step.status}`);
+          }
+          if (Array.isArray(step.statusAnyOf)) {
+            for (const anyStatus of step.statusAnyOf) {
+              observedTuples.add(`${lastApi.method} ${lastApi.path} ${anyStatus}`);
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Build set of "METHOD PATH STATUS" keys from flows-generator UNGENERATABLE
   // diagnostics. These statuses are genuinely unreachable by the probe (e.g.
   // success paths requiring real auth, security-covered endpoints).
@@ -1323,6 +1354,7 @@ function readStackRuntimeEnvValue(key: string): string | undefined {
       oauth_issuer_url?: unknown;
       oauth_jwks_url?: unknown;
       oauth2_proxy_redirect_url?: unknown;
+      host?: unknown;
     };
     if (stack.is_worktree !== true) return undefined;
 
@@ -1337,11 +1369,14 @@ function readStackRuntimeEnvValue(key: string): string | undefined {
     }
 
     const realmName = deriveRealmNameFromPackage();
+    const stackHost = typeof stack.host === 'string' && stack.host.length > 0
+      ? stack.host
+      : 'keycloak.localtest.me';
     if (key === 'OAUTH_ISSUER_URL' && typeof stack.keycloak_port === 'number') {
-      return `http://keycloak.localtest.me:${stack.keycloak_port}/realms/${realmName}`;
+      return `http://${stackHost}:${stack.keycloak_port}/realms/${realmName}`;
     }
     if (key === 'OAUTH_JWKS_URL' && typeof stack.keycloak_port === 'number') {
-      return `http://keycloak.localtest.me:${stack.keycloak_port}/realms/${realmName}/protocol/openid-connect/certs`;
+      return `http://${stackHost}:${stack.keycloak_port}/realms/${realmName}/protocol/openid-connect/certs`;
     }
     if (key === 'OAUTH2_PROXY_REDIRECT_URL' && typeof stack.proxy_port === 'number') {
       return `http://app.localtest.me:${stack.proxy_port}/oauth2/callback`;

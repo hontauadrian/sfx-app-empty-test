@@ -9,7 +9,7 @@ const assert = require('node:assert');
 const path = require('path');
 const fs = require('fs');
 
-const { generate, sortKeys, buildCoverageSet, loadCuratedFlowSteps, deriveApiPrefixFromEndpoints } = require(path.resolve(
+const { generate, sortKeys, buildCoverageSet, loadCuratedFlowSteps, deriveApiPrefixFromEndpoints, canonicalizePathParams } = require(path.resolve(
   __dirname, '..', '..', 'probes', 'flows-generator.js'
 ));
 const { mkdtempSync, mkdirSync, writeFileSync } = require('fs');
@@ -1130,5 +1130,146 @@ test('apiPrefix-aware curated coverage: works when matrix omits authDetection (f
     surviving.length,
     0,
     'curated coverage MUST suppress UNGENERATABLE even when matrix omits authDetection — the prefix is derived from apiEndpoints[]',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// canonicalizePathParams: shape-based path normalization
+// 2026-05-15: F1 brand-profile builder hit 6 UNGENERATABLE rows on
+// `GET|PUT|DELETE /api/v1/brands/:id` despite curated coverage exercising
+// every status against a real Keycloak-authed stack. The diagnostics use
+// `:id` (NestJS route-param style); the curated steps use `${brandId}`
+// (template-literal style). Both must reduce to the same canonical form
+// for the suppression filter to match.
+// ---------------------------------------------------------------------------
+
+test('canonicalizePathParams reduces ${var} segments to <P>', () => {
+  assert.strictEqual(canonicalizePathParams('/brands/${brandId}'), '/brands/<P>');
+  assert.strictEqual(
+    canonicalizePathParams('/teams/${teamId}/members/${memberId}'),
+    '/teams/<P>/members/<P>',
+  );
+});
+
+test('canonicalizePathParams reduces :param segments to <P>', () => {
+  assert.strictEqual(canonicalizePathParams('/brands/:id'), '/brands/<P>');
+  assert.strictEqual(canonicalizePathParams('/api/v1/teams/:teamId/members/:memberId'), '/api/v1/teams/<P>/members/<P>');
+});
+
+test('canonicalizePathParams keeps literal segments untouched (UUIDs, slugs, sentinels like non-existent-id)', () => {
+  assert.strictEqual(
+    canonicalizePathParams('/brands/non-existent-id'),
+    '/brands/non-existent-id',
+    'literal sentinel segments must not match the param regex',
+  );
+  assert.strictEqual(
+    canonicalizePathParams('/brands/4f3a92e1-aeae-4d5f-9e7d-65b2c1a1c0a9'),
+    '/brands/4f3a92e1-aeae-4d5f-9e7d-65b2c1a1c0a9',
+    'UUID literals must not match the param regex',
+  );
+  assert.strictEqual(
+    canonicalizePathParams('/brands/active-only'),
+    '/brands/active-only',
+    'kebab-case slug literals must not match the param regex',
+  );
+});
+
+test('canonicalizePathParams handles full method+path tuples', () => {
+  assert.strictEqual(
+    canonicalizePathParams('GET /api/v1/brands/${brandId}'),
+    'GET /api/v1/brands/<P>',
+  );
+  assert.strictEqual(
+    canonicalizePathParams('DELETE /api/v1/brands/:id'),
+    'DELETE /api/v1/brands/<P>',
+  );
+});
+
+test('canonicalizePathParams is idempotent', () => {
+  const onceCanonical = canonicalizePathParams('/brands/${brandId}/items/:itemId');
+  assert.strictEqual(canonicalizePathParams(onceCanonical), onceCanonical);
+});
+
+test('canonicalizePathParams handles non-string and empty inputs gracefully', () => {
+  assert.strictEqual(canonicalizePathParams(''), '');
+  assert.strictEqual(canonicalizePathParams(null), null);
+  assert.strictEqual(canonicalizePathParams(undefined), undefined);
+});
+
+test('buildCoverageSet emits canonical-shape variants alongside literal forms for ${var} paths', () => {
+  const flows = [
+    {
+      id: 'admin-get-by-id',
+      steps: [
+        { kind: 'setAuth', binding: 'admin' },
+        { kind: 'api', method: 'GET', path: '/brands/${brandId}' },
+        { kind: 'expect', status: 200 },
+      ],
+    },
+  ];
+  const cov = buildCoverageSet(flows, 'api/v1');
+  // Literal forms still emitted (backward compat with name-based matching).
+  assert.ok(cov.has('GET /brands/${brandId}:200'), 'literal unprefixed tuple must be emitted');
+  assert.ok(cov.has('GET /api/v1/brands/${brandId}:200'), 'literal prefixed tuple must be emitted');
+  // Canonical-shape forms must also be emitted so :id-style diagnostics match.
+  assert.ok(cov.has('GET /brands/<P>:200'), 'canonical unprefixed tuple must be emitted');
+  assert.ok(cov.has('GET /api/v1/brands/<P>:200'), 'canonical prefixed tuple must be emitted');
+});
+
+test('canonicalization suppresses CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE for parameterized routes', () => {
+  // Reproduces the 2026-05-15 brand-profile incident: the controller declares
+  // `@Get(':id')` so the diagnostic emits `GET /api/v1/brands/:id`, but the
+  // curated flow uses `path: "/brands/${brandId}"`. Without canonicalization
+  // the suppression check misses and 6 UNGENERATABLE rows survive.
+  const matrix = {
+    apiEndpoints: [
+      {
+        method: 'GET',
+        path: '/api/v1/brands/:id',
+        framework: 'nest',
+        guard: 'authenticated',
+        responseContract: { status: 200, schemaRef: 'Envelope<BrandProfileDto>' },
+        securityRequirement: [{ accessToken: [] }],
+      },
+      {
+        method: 'PUT',
+        path: '/api/v1/brands/:id',
+        framework: 'nest',
+        guard: 'authenticated',
+        responseContract: { status: 200, schemaRef: 'Envelope<BrandProfileDto>' },
+        securityRequirement: [{ accessToken: [] }],
+      },
+    ],
+    authDetection: { sessionMechanism: 'unknown', tokenStorage: 'unknown' },
+  };
+  const logical = { actors: ['admin'], surfaces: [] };
+  const curatedSteps = [
+    {
+      id: 'admin-get-by-id',
+      steps: [
+        { kind: 'setAuth', binding: 'admin' },
+        { kind: 'api', method: 'GET', path: '/brands/${brandId}' },
+        { kind: 'expect', status: 200 },
+      ],
+    },
+    {
+      id: 'admin-rename',
+      steps: [
+        { kind: 'setAuth', binding: 'admin' },
+        { kind: 'api', method: 'PUT', path: '/brands/${brandId}' },
+        { kind: 'expect', status: 200 },
+      ],
+    },
+  ];
+  const result = generate(matrix, logical, { ignore: [], curatedFlowSteps: curatedSteps });
+  const surviving = (result.diagnostics || []).filter(
+    (diag) => diag.code === 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE'
+      && /\/api\/v1\/brands\/:id/.test(diag.endpoint || '')
+      && /Status 200/.test(diag.message || ''),
+  );
+  assert.strictEqual(
+    surviving.length,
+    0,
+    `Canonical-shape coverage MUST suppress UNGENERATABLE for :id-style diagnostics covered by \${var}-style curated flows. Surviving: ${JSON.stringify(surviving)}`,
   );
 });
