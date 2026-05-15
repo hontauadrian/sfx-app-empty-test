@@ -12,5 +12,18 @@
 		"status": "active",
 		"createdAt": "2026-04-22T16:36:39.164Z",
 		"completedAt": null
+	},
+	{
+		"id": "group-2e1cc791",
+		"name": "brand-guidelines-p1",
+		"memberIssueIds": [
+			"sfx-webapp-boilerplate-2cb0",
+			"sfx-webapp-boilerplate-b859",
+			"sfx-webapp-boilerplate-6fba",
+			"sfx-webapp-boilerplate-cfeb"
+		],
+		"status": "active",
+		"createdAt": "2026-05-15T13:37:36.217Z",
+		"completedAt": null
 	}
 ]
