@@ -25,6 +25,34 @@ allowed-tools:
 
 ## Strict Execution Rules (READ FIRST — VIOLATION FAILS THE TASK)
 
+**Read `.stack.json` BEFORE any `browser_navigate`.** Your worktree has a
+file at `.stack.json` with the exact host + ports your live stack listens on:
+
+```json
+{
+  "host": "host.docker.internal",
+  "web_port": 26557,
+  "api_port": 16557,
+  ...
+}
+```
+
+The only URL Playwright MCP may use is `http://${host}:${web_port}`. Do NOT:
+
+- Use `http://localhost` or `http://127.0.0.1` — they resolve to the panel
+  container itself, not the worktree's stack.
+- Use container bridge IPs (`192.168.x.x`, `172.x.x.x`, `10.x.x.x`) — the
+  page loads but reports its Origin as the bridge IP, and the API's CORS
+  allowlist (set to `http://${host}:${web_port}`) denies every fetch.
+- Use `http://app.localhost` — that is the canonical (host-side) app stack
+  routed through nginx; it is NOT your worker worktree's stack.
+- Guess any other URL from log output or container inspection.
+
+If `.stack.json` does not exist, the stack is not up — run `pnpm stack:up`
+first. A 'CORS error' or 'connection refused' on any non-`.stack.json` URL is
+your fault for using the wrong URL, not a bug to document.
+
+
 **You MAY NOT SKIP any criterion, page, or attack category.** Every flow listed
 in the success criteria, every page in the inventory, every input attack — all
 must be executed and reported PASS or FAIL with concrete evidence (screenshot

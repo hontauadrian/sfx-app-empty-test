@@ -29,6 +29,12 @@ After reading the product-plan spec and identifying your grouping, BEFORE `sd cr
 - Writing the feature spec yourself. Scouts own that — you dispatch them.
 - Placeholders in scout prompts: "figure out what's needed", "standard CRUD". Scouts need concrete file targets.
 - Coordinator-only: using Write for anything other than the top-level product-plan spec (which was already done by the `product-plan` skill).
+- Inventing or replacing authentication. If the product plan does not explicitly
+  request auth replacement, all feature specs and scout prompts must preserve the
+  existing scaffold auth provider. In the SFX boilerplate this means Keycloak +
+  oauth2-proxy + RS256/JWKS remain in place; do not ask scouts/builders to add
+  email+password auth, `/login`, `/register`, local HS256 JWT cookies, or remove
+  `OAUTH_*`, Keycloak, or oauth2-proxy.
 
 ## Required output (inline — no file write)
 
@@ -50,8 +56,9 @@ Each feature is a complete vertical slice one builder can integrate end-to-end. 
 - **Guard contract** — for each page / endpoint in this feature: `public`, `protected`,
   or `optional-auth`. If protected, state the expected unauth behavior:
   `redirect:<login-surface-name>`, `401`, or `403`. The surface name is symbolic (e.g.
-  "login surface") — the probe detects the actual route via the existing login-page
-  signature.
+  "existing login surface") — the probe detects the actual route or proxy behavior from
+  the scaffold. Do not specify new login/register routes unless the product plan explicitly
+  requested auth replacement.
 
 Lead: decompose your chunk into features. Coordinator in direct-builder mode: §3 is already flat, but restate each feature with the five fields above.
 
@@ -64,6 +71,9 @@ For each feature, draft the scout prompt that will produce `.overstory/specs/<fe
 - Files / modules the scout should Read first (concrete paths)
 - The spec template the scout must produce (task breakdown grounded in real code, one task per file-group, TDD steps per task)
 - Output path: `.overstory/specs/<feature-id>.md`
+- Auth preservation note: if the feature is protected and the product plan did not
+  explicitly request auth replacement, instruct the scout to keep the existing auth
+  stack untouched and implement the feature behind that authenticated session.
 
 ### 4. Dispatch sequence (respecting MAX AGENTS)
 
@@ -83,6 +93,9 @@ State the mode + math. List the exact dispatch order.
 6. Every new API endpoint declares whether it is behind auth.
 7. Runtime acceptance statements reference only user-visible behavior, never URLs,
    ports, or status codes.
+8. If auth replacement was not explicitly requested by the operator, no scout
+   prompt or feature spec asks for local email/password auth, local JWT cookies,
+   `/login`, `/register`, or removal of the existing auth/proxy services.
 
 Fix inline. Don't re-review.
 

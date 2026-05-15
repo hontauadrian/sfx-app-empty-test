@@ -24,6 +24,13 @@ On a new top-level objective, BEFORE `sd create` for sub-issues, BEFORE `ov slin
 - Leaving "create X" flows unspecified (no entry point named for any primary entity).
 - Writing chunks that cut across layers for the same feature (e.g. chunk "backend" + chunk "frontend"). Every chunk is a vertical grouping.
 - Placeholders: "TBD", "standard CRUD", "similar to previous".
+- Inventing a new authentication model. If the brief does not explicitly request
+  auth replacement, preserve the existing scaffold's auth provider, login
+  surface, session shape, middleware/proxy, and environment model. In the SFX
+  boilerplate this means Keycloak + oauth2-proxy + RS256/JWKS remain the default.
+  Do not add `/login`, `/register`, email+password auth, local HS256 JWT cookies,
+  or remove `OAUTH_*`/Keycloak/oauth2-proxy unless the operator explicitly asks
+  for that replacement.
 
 ## Required sections
 
@@ -40,7 +47,10 @@ Concrete, not abstract:
 - Global nav items (sidebar / top bar), exact labels, exact URLs
 - Empty-state CTA for each landing page (e.g. "Dashboard with 0 teams → button `[+ Create team]` → `/teams/new`")
 - Where every primary "Create <Entity>" affordance lives
-- User menu / profile / logout
+- User menu / profile / logout, using the existing auth provider. If the scaffold
+  already supplies auth (for example Keycloak/oauth2-proxy), treat the user as an
+  already-authenticated actor and do not design a replacement login/register flow
+  unless explicitly requested.
 
 ### 3. Chunk decomposition (the hand-off to leads)
 
@@ -76,16 +86,14 @@ Format: `<actor> <action> <observable outcome>`
 Examples (generic — no project-specific names):
 
 - An unauthenticated visitor hitting a protected page is redirected to the
-  login surface.
-- A newly registered user is placed on the post-login landing surface without
-  a manual navigation step.
+  existing login surface.
 - A logged-in user who refreshes any page remains logged in.
-- Submitting the registration form with valid data returns the user a session
-  token and navigates them into the authenticated app shell.
-- Submitting the registration form with missing required fields shows
-  per-field validation without hitting the network.
 - Every CTA named in §2 (app shell) leads somewhere that renders without a
   runtime error.
+
+Only include registration/password acceptance statements when the operator
+explicitly requested local account management. Otherwise, keep auth acceptance
+provider-neutral and aligned with the existing scaffold.
 
 Each journey must have at least one acceptance statement per boundary crossing
 (client → server, server → database, server → response, response → UI).
@@ -104,6 +112,9 @@ After drafting, check:
 6. Every journey in §1 has ≥1 acceptance statement in §5.
 7. Every page / nav item in §2 has an implied acceptance statement in §5.
 8. Every auth boundary is named in §5 (protected → unauth behavior; public → access).
+9. If the brief did not explicitly request auth replacement, the plan preserves
+   the existing auth provider and contains no invented email/password,
+   `/login`, `/register`, local JWT-cookie, or auth-stack-removal work.
 
 Fix inline. Don't re-review.
 

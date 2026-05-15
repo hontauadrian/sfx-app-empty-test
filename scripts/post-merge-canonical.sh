@@ -55,15 +55,14 @@ pnpm db:seed || echo "[post-merge-canonical] WARN: db:seed exited non-zero"
 echo "[post-merge-canonical] restart api"
 docker compose -p "$PROJECT_NAME" restart api 2>&1 | tail -3 || true
 
-# Smoke-test the canonical api: hit a couple of contract-critical endpoints.
-# Catches drift between schema and prisma client OR between merged code and
-# the volume's actual columns. Failure here surfaces in the bridge mail to
-# coordinator — no silent 500s sitting in production.
+# Smoke-test baseline endpoints that exist in every seeded boilerplate app.
+# Feature-specific routes are covered by probes; hard-coding one here makes
+# clean boilerplate reseeds look like infra failures when that feature is absent.
 echo "[post-merge-canonical] canonical smoke check"
 HOST="${POST_MERGE_HOST:-host.docker.internal}"
 sleep 4
 SMOKE_FAIL=0
-for path in /api/v1/health /api/v1/teams; do
+for path in /api/v1/health /api/docs-json; do
   code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "http://${HOST}:3001${path}" || echo 000)
   echo "[post-merge-canonical]   GET $path -> $code"
   case "$code" in
@@ -72,7 +71,7 @@ for path in /api/v1/health /api/v1/teams; do
   esac
 done
 if [ "$SMOKE_FAIL" = "1" ]; then
-  echo "[post-merge-canonical] FAIL: canonical api returned 5xx — investigate"
+  echo "[post-merge-canonical] FAIL: canonical baseline smoke check failed — investigate"
   docker logs --tail 30 "${PROJECT_NAME}-api-1" 2>&1 || true
   exit 1
 fi
