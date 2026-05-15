@@ -72,7 +72,7 @@ export class BrandProfileController {
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('accessToken')
-  @ResourceCaptures({ fromPath: 'id', resource: 'brand', pathParam: 'id' })
+  @ResourceCaptures({ fromPath: 'id', resource: 'brandProfile', pathParam: 'id' })
   @ApiOperation({ summary: 'Create a brand owned by the authenticated caller' })
   @ApiBody({
     type: BrandProfileWriteDto,
