@@ -4,7 +4,7 @@
 project:
   name: test-223
   root: /Users/mako/Documents/GitHub/sfx-webapp-boilerplate
-  canonicalBranch: main
+  canonicalBranch: master
   qualityGates:
     - name: Tests
       command: pnpm test
