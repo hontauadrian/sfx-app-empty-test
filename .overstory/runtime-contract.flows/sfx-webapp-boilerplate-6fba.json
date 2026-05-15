@@ -1,0 +1,410 @@
+{
+  "version": 1,
+  "task_id": "sfx-webapp-boilerplate-6fba",
+  "owns": [],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" },
+    { "resource": "brandProfile" }
+  ],
+  "special_flows": [
+    {
+      "id": "sfx-webapp-boilerplate-6fba:anon-get-voice-blocked",
+      "description": "GET /api/v1/brands/:id/voice without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-6fba §3 guard contract",
+        "endpoint": "GET /api/v1/brands/:id/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/non-existent-id/voice" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-6fba:anon-upsert-voice-blocked",
+      "description": "PUT /api/v1/brands/:id/voice without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-6fba §3 guard contract",
+        "endpoint": "PUT /api/v1/brands/:id/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/non-existent-id/voice",
+          "body": {}
+        },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-6fba:admin-get-voice-empty",
+      "description": "Admin creates a brand, GETs voice on a brand with no voice row yet — 200 + empty payload (NOT 404)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-6fba §2 GET semantics",
+        "endpoint": "GET /api/v1/brands/:id/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Voice Empty GET Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}/voice" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.brandProfileId": "${brandId}",
+            "$.toneOfVoice": null,
+            "$.preferredVocabulary": { "type": "array" },
+            "$.audienceRules": { "type": "array" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-6fba:admin-upsert-voice-empty",
+      "description": "Admin creates a brand, PUTs voice with empty body — 200 + empty payload (creates row)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-6fba §2 Upsert semantics",
+        "endpoint": "PUT /api/v1/brands/:id/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Voice Empty PUT Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/voice",
+          "body": {}
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.brandProfileId": "${brandId}",
+            "$.toneOfVoice": null,
+            "$.preferredVocabulary": { "type": "array" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-6fba:admin-upsert-voice-populated",
+      "description": "Admin creates a brand, PUTs all 8 voice fields populated — 200 + round-trip",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-6fba §2 Upsert happy path",
+        "endpoint": "PUT /api/v1/brands/:id/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Voice Populated Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/voice",
+          "body": {
+            "toneOfVoice": "Confident and clear, with warmth.",
+            "preferredVocabulary": ["delight", "craft", "thoughtful"],
+            "restrictedVocabulary": ["cheap", "basic"],
+            "messagingPillars": ["trust", "clarity", "expertise"],
+            "writingStyleRules": ["Use active voice.", "Lead with the user benefit."],
+            "audienceRules": [
+              { "audience": "Executives", "rule": "Lead with ROI." },
+              { "audience": "Engineers", "rule": "Be technically precise." }
+            ],
+            "approvedExamplePhrases": ["Built for makers.", "Designed with care."],
+            "rejectedExamplePhrases": ["Synergize the vertical.", "Best in class."]
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.brandProfileId": "${brandId}",
+            "$.toneOfVoice": "Confident and clear, with warmth.",
+            "$.preferredVocabulary": { "type": "array" },
+            "$.audienceRules": { "type": "array" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-6fba:admin-upsert-then-get-roundtrip",
+      "description": "Admin PUTs voice then GETs voice — GET reflects the PUT payload",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-6fba §2 chain-CRUD",
+        "endpoint": "GET /api/v1/brands/:id/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Voice Roundtrip Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/voice",
+          "body": {
+            "toneOfVoice": "Calm and precise.",
+            "preferredVocabulary": ["clarity", "warmth"]
+          }
+        },
+        { "kind": "expect", "status": 200 },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}/voice" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.toneOfVoice": "Calm and precise.",
+            "$.brandProfileId": "${brandId}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-6fba:admin-upsert-validation-duplicate-vocab",
+      "description": "PUT voice with case-insensitive duplicate items in preferredVocabulary — 400 validation",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-6fba §2 Validation table",
+        "endpoint": "PUT /api/v1/brands/:id/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Voice Dup Vocab Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/voice",
+          "body": { "preferredVocabulary": ["foo", "FOO"] }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-6fba:admin-upsert-validation-empty-list-item",
+      "description": "PUT voice with whitespace-only item in preferredVocabulary — 400 validation",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-6fba §2 Validation table",
+        "endpoint": "PUT /api/v1/brands/:id/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Voice Empty Item Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/voice",
+          "body": { "preferredVocabulary": ["   "] }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-6fba:admin-upsert-validation-audience-duplicate",
+      "description": "PUT voice with case-insensitive duplicate audience values in audienceRules — 400 validation",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-6fba §2 Validation table",
+        "endpoint": "PUT /api/v1/brands/:id/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Voice Dup Audience Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/voice",
+          "body": {
+            "audienceRules": [
+              { "audience": "execs", "rule": "Lead with ROI." },
+              { "audience": "EXECS", "rule": "Repeat ROI." }
+            ]
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-6fba:cross-tenant-get-voice-404",
+      "description": "Admin creates a brand, viewer GETs voice — 404 (existence not leaked, not 403)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-6fba §3 cross-tenant",
+        "endpoint": "GET /api/v1/brands/:id/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Cross-Tenant Voice GET Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}/voice" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-6fba:cross-tenant-upsert-voice-404",
+      "description": "Admin creates a brand, viewer PUTs voice — 404 (existence not leaked, not 403)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-6fba §3 cross-tenant",
+        "endpoint": "PUT /api/v1/brands/:id/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Cross-Tenant Voice PUT Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "viewer" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/voice",
+          "body": { "toneOfVoice": "Viewer hijack attempt." }
+        },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-6fba:brand-delete-cascade-voice-404",
+      "description": "Admin PUTs voice, DELETEs brand, subsequent GET voice — 404 (cascade applied)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-6fba §1 brand-deletion cascade",
+        "endpoint": "GET /api/v1/brands/:id/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Voice Cascade Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/voice",
+          "body": { "toneOfVoice": "Soon to be cascaded." }
+        },
+        { "kind": "expect", "status": 200 },
+        { "kind": "api", "transport": "http", "method": "DELETE", "path": "/brands/${brandId}" },
+        { "kind": "expect", "status": 200 },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}/voice" },
+        { "kind": "expect", "status": 404 }
+      ]
+    }
+  ]
+}

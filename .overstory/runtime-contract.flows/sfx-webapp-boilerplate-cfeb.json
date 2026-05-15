@@ -1,0 +1,375 @@
+{
+  "version": 1,
+  "task_id": "sfx-webapp-boilerplate-cfeb",
+  "owns": [],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" },
+    { "resource": "brandProfile" }
+  ],
+  "special_flows": [
+    {
+      "id": "sfx-webapp-boilerplate-cfeb:anon-get-vi-blocked",
+      "description": "GET /api/v1/brands/:id/visual-identity without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-cfeb §3 guard contract",
+        "endpoint": "GET /api/v1/brands/:id/visual-identity"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/non-existent-id/visual-identity" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-cfeb:anon-upsert-vi-blocked",
+      "description": "PUT /api/v1/brands/:id/visual-identity without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-cfeb §3 guard contract",
+        "endpoint": "PUT /api/v1/brands/:id/visual-identity"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/non-existent-id/visual-identity",
+          "body": {}
+        },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-cfeb:admin-get-vi-empty",
+      "description": "Admin creates a brand, GETs visual-identity on a brand with no row yet — 200 + empty payload (NOT 404)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-cfeb §2 GET semantics",
+        "endpoint": "GET /api/v1/brands/:id/visual-identity"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "VI Empty GET Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}/visual-identity" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.brandProfileId": "${brandId}",
+            "$.logoUsageRules": null,
+            "$.coloursPalette": { "type": "array" },
+            "$.typographyRules": { "type": "array" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-cfeb:admin-upsert-vi-empty",
+      "description": "Admin creates a brand, PUTs visual-identity with empty body — 200 + empty payload (creates row)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-cfeb §2 Upsert semantics",
+        "endpoint": "PUT /api/v1/brands/:id/visual-identity"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "VI Empty PUT Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/visual-identity",
+          "body": {}
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.brandProfileId": "${brandId}",
+            "$.coloursPalette": { "type": "array" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-cfeb:admin-upsert-vi-populated",
+      "description": "Admin creates a brand, PUTs all 7 visual-identity fields — 200 + round-trip",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-cfeb §2 Upsert happy path",
+        "endpoint": "PUT /api/v1/brands/:id/visual-identity"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "VI Populated Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/visual-identity",
+          "body": {
+            "logoUsageRules": "Always use the primary logo on light backgrounds.",
+            "coloursPalette": [
+              { "name": "Primary Blue", "hex": "#1F2A44", "usage": "Headlines and primary CTAs" },
+              { "name": "Accent Gold", "hex": "#D4A537" }
+            ],
+            "typographyRules": [
+              { "role": "Heading", "family": "Inter", "weight": "700", "size": "32px" },
+              { "role": "Body", "family": "Inter", "weight": "400", "size": "16px", "notes": "Line height 1.5" }
+            ],
+            "spacingLayout": "8px base unit; 1.5x for cards.",
+            "imageStyle": "Documentary photography, natural light.",
+            "iconography": "Stroke icons, 1.5px weight, rounded joins.",
+            "usageRestrictions": "Do not stretch logo. Do not place on busy photography."
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.brandProfileId": "${brandId}",
+            "$.logoUsageRules": "Always use the primary logo on light backgrounds.",
+            "$.coloursPalette": { "type": "array" },
+            "$.typographyRules": { "type": "array" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-cfeb:admin-upsert-then-get-roundtrip",
+      "description": "Admin PUTs visual-identity then GETs — GET reflects the PUT payload",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-cfeb §2 chain-CRUD",
+        "endpoint": "GET /api/v1/brands/:id/visual-identity"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "VI Roundtrip Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/visual-identity",
+          "body": { "logoUsageRules": "Primary on light." }
+        },
+        { "kind": "expect", "status": 200 },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}/visual-identity" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.logoUsageRules": "Primary on light.",
+            "$.brandProfileId": "${brandId}"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-cfeb:admin-upsert-validation-bad-hex",
+      "description": "PUT visual-identity with malformed hex in coloursPalette — 400 validation",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-cfeb §2 Validation hex regex",
+        "endpoint": "PUT /api/v1/brands/:id/visual-identity"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "VI Bad Hex Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/visual-identity",
+          "body": {
+            "coloursPalette": [
+              { "name": "Bad Colour", "hex": "not-a-hex" }
+            ]
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-cfeb:admin-upsert-validation-empty-colour-name",
+      "description": "PUT visual-identity with empty name in coloursPalette item — 400 validation",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-cfeb §2 Validation",
+        "endpoint": "PUT /api/v1/brands/:id/visual-identity"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "VI Empty Colour Name Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/visual-identity",
+          "body": {
+            "coloursPalette": [
+              { "name": "   ", "hex": "#FFFFFF" }
+            ]
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-cfeb:cross-tenant-get-vi-404",
+      "description": "Admin creates a brand, viewer GETs visual-identity — 404 (existence not leaked)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-cfeb §3 cross-tenant",
+        "endpoint": "GET /api/v1/brands/:id/visual-identity"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Cross-Tenant VI GET Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}/visual-identity" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-cfeb:cross-tenant-upsert-vi-404",
+      "description": "Admin creates a brand, viewer PUTs visual-identity — 404 (existence not leaked, not 403)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-cfeb §3 cross-tenant",
+        "endpoint": "PUT /api/v1/brands/:id/visual-identity"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Cross-Tenant VI PUT Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "viewer" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/visual-identity",
+          "body": { "logoUsageRules": "Viewer hijack attempt." }
+        },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-cfeb:brand-delete-cascade-vi-404",
+      "description": "Admin PUTs visual-identity, DELETEs brand, subsequent GET — 404 (cascade applied)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-cfeb §1 brand-deletion cascade",
+        "endpoint": "GET /api/v1/brands/:id/visual-identity"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "VI Cascade Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/visual-identity",
+          "body": { "logoUsageRules": "Soon to be cascaded." }
+        },
+        { "kind": "expect", "status": 200 },
+        { "kind": "api", "transport": "http", "method": "DELETE", "path": "/brands/${brandId}" },
+        { "kind": "expect", "status": 200 },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}/visual-identity" },
+        { "kind": "expect", "status": 404 }
+      ]
+    }
+  ]
+}
