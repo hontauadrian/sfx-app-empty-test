@@ -184,6 +184,19 @@ services:
       - --upstream=http://api:3001/api/docs
       - --upstream=http://web:3000/
       - --skip-auth-route=GET=^/api/docs.*
+      # API gating: every request matching `^/api/` is treated as a JSON
+      # API call. With `--api-route`, oauth2-proxy returns HTTP 401 for
+      # unauthenticated API requests INSTEAD of 302-redirecting them to
+      # the Keycloak login UI. Browser callers that hit non-API routes
+      # still get the redirect (login flow). Without this flag the
+      # contract probe sees `GET /api/v1/version` as 302 → 404 (after
+      # following the redirect to a non-existent route), failing the
+      # `unauth-anonymous-rejected` flow even though the API itself
+      # correctly returns 401 via `JwtAuthGuard`. Pattern is anchored to
+      # the gateway's mounted prefix; matches `/api/v1/*`, `/api/docs*`,
+      # etc. Documented at
+      # https://oauth2-proxy.github.io/oauth2-proxy/docs/configuration/overview#command-line-options
+      - --api-route=^/api/
       - --oidc-issuer-url=${OAUTH_ISSUER_URL:-http://keycloak.localtest.me:9080/realms/sfx-webapp-boilerplate}
       - --client-id=${OAUTH2_PROXY_CLIENT_ID:-sfx-webapp-boilerplate-dev-proxy}
       - --client-secret=${OAUTH2_PROXY_CLIENT_SECRET:-dev-generated-app-proxy-secret}

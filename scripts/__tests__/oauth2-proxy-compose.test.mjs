@@ -18,6 +18,15 @@ describe("docker-compose oauth2-proxy baseline", () => {
     assert.match(compose, /--upstream=http:\/\/api:3001\/api\/docs/);
     assert.match(compose, /--upstream=http:\/\/web:3000\//);
     assert.match(compose, /--skip-auth-route=GET=\^\/api\/docs/);
+    // `--api-route=^/api/` is the load-bearing flag that turns the
+    // oauth2-proxy from "redirect everything to login" into "401 for
+    // unauth API calls, redirect to login only for browser routes".
+    // Without it, every contract probe step that exercises an unauth
+    // API endpoint sees 302 (oauth2-proxy redirecting to Keycloak)
+    // instead of 401 (the actual `JwtAuthGuard` decision), and
+    // `unauth-anonymous-rejected` flows fail. Pinned here so a
+    // future config refactor does not drop it.
+    assert.match(compose, /--api-route=\^\/api\//);
     assert.match(compose, /--set-authorization-header=true/);
     assert.match(compose, /--pass-authorization-header=true/);
     assert.match(compose, /--pass-access-token=true/);

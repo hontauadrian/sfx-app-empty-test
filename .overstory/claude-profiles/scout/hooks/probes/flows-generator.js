@@ -141,9 +141,25 @@ function loadCuratedFlowSteps(projectDir) {
  * `expect.statusAnyOf`. The preceding `api` step provides the method+path.
  * Used by the post-generation pass to suppress UNGENERATABLE diagnostics for
  * statuses that cross-endpoint emitters already cover.
+ *
+ * `apiPrefix` (optional, e.g. `'api/v1'` from `matrix.authDetection.apiPrefix`)
+ * is used for CURATED flows only: their `step.path` is unprefixed (the
+ * runtime contract-flow runner prepends the API global prefix at execution
+ * time — see executeCuratedFlows in http-smoke.ts). The diagnostics, however,
+ * report `endpoint` strings derived from OpenAPI source, which include the
+ * prefix. Without this normalization, `coveredTuples.has("GET /api/v1/auth/me:200")`
+ * misses against a curated entry of `"GET /auth/me:200"` and the suppression
+ * silently fails, leaving CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE diagnostics
+ * for endpoints that ARE covered. When `apiPrefix` is set we emit BOTH the
+ * unprefixed and the prefixed tuple so suppression works regardless of which
+ * side of the prefix the comparison is performed on. Generated flows pass
+ * `apiPrefix=null` because their step paths already include the prefix.
  */
-function buildCoverageSet(flows) {
+function buildCoverageSet(flows, apiPrefix) {
   const covered = new Set();
+  const normalizedPrefix = typeof apiPrefix === 'string' && apiPrefix.length > 0
+    ? '/' + apiPrefix.replace(/^\/+|\/+$/g, '')
+    : null;
   for (const flow of flows) {
     if (!flow.steps) continue;
     let lastApiMethod = null;
@@ -155,13 +171,28 @@ function buildCoverageSet(flows) {
       }
       if (step.kind === 'expect' && lastApiMethod && lastApiPath) {
         const epStr = `${lastApiMethod} ${lastApiPath}`;
-        if (step.status != null) {
-          covered.add(`${epStr}:${step.status}`);
+        // For curated flows: also emit the prefixed-path variant so the
+        // OpenAPI-style endpoint string used by diagnostics ("GET /api/v1/foo")
+        // matches the unprefixed step.path ("/foo") that the runtime expects.
+        // Skip if the curated path already starts with the prefix (defensive
+        // against mixed-style flow files).
+        let prefixedEpStr = null;
+        if (
+          normalizedPrefix
+          && lastApiPath.startsWith('/')
+          && !lastApiPath.startsWith(normalizedPrefix + '/')
+          && lastApiPath !== normalizedPrefix
+        ) {
+          prefixedEpStr = `${lastApiMethod} ${normalizedPrefix}${lastApiPath}`;
         }
+        const statuses = [];
+        if (step.status != null) statuses.push(step.status);
         if (Array.isArray(step.statusAnyOf)) {
-          for (const s of step.statusAnyOf) {
-            covered.add(`${epStr}:${s}`);
-          }
+          for (const eachStatus of step.statusAnyOf) statuses.push(eachStatus);
+        }
+        for (const eachStatus of statuses) {
+          covered.add(`${epStr}:${eachStatus}`);
+          if (prefixedEpStr) covered.add(`${prefixedEpStr}:${eachStatus}`);
         }
       }
     }
@@ -518,7 +549,7 @@ function emitHappyFlow(ep, options = {}) {
     const diagnostics = options.diagnostics || [];
     diagnostics.push({
       code: 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE',
-      message: `Status ${expectedStatus} declared on ${ep.method} ${ep.path} but endpoint requires authentication and no auth bootstrap chain is available. Add a declared register/login flow or cover this success path with a curated authenticated flow.`,
+      message: `Status ${expectedStatus} declared on ${ep.method} ${ep.path} but endpoint requires authentication and no auth bootstrap chain is available. Cover this success path with a curated authenticated flow in .overstory/runtime-contract.flows/<task-id>.json (recommended for delegated auth like Keycloak/OIDC — declare actor login bindings in _shared.json once, then reference via setAuth steps), OR — only if the API itself owns the credential surface — add a register/login endpoint and declare it via @ApiTags('auth') / @ApiResponse so the auth-bootstrap chain can detect it. Do NOT use @Public() to bypass this diagnostic.`,
       endpoint: epKey(ep.method, ep.path),
     });
     return null;
@@ -5421,8 +5452,20 @@ function generate(matrix, logical, overlay, curatedFlowSteps) {
   // emitted flows and filter out UNGENERATABLE diagnostics whose tuple is
   // already covered. This is purely declarative: only declared flows with
   // declared statusAnyOf / status expectations count as coverage.
+  // Generated flows already use prefixed paths (their step.path comes from
+  // OpenAPI surface). Curated flows use unprefixed paths because the runtime
+  // (executeCuratedFlows in http-smoke.ts) prepends the API global prefix
+  // — pass `matrix.authDetection.apiPrefix` so curated coverage emits BOTH
+  // variants and matches diagnostic endpoint strings (which always include
+  // the OpenAPI prefix). Without this, CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE
+  // for an endpoint covered ONLY by a curated flow silently survives the
+  // post-generation filter.
+  const apiPrefix = matrix && matrix.authDetection && matrix.authDetection.apiPrefix;
   const generatedCoverage = buildCoverageSet(fanned);
-  const curatedCoverage = buildCoverageSet(Array.isArray(curatedFlowSteps) ? curatedFlowSteps : []);
+  const curatedCoverage = buildCoverageSet(
+    Array.isArray(curatedFlowSteps) ? curatedFlowSteps : [],
+    apiPrefix
+  );
   const coveredTuples = new Set([...generatedCoverage, ...curatedCoverage]);
   const filteredDiagnostics = diagnostics.filter((d) => {
     if (d.code !== 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE') return true;

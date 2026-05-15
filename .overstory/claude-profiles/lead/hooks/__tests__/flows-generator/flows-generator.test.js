@@ -730,3 +730,228 @@ test('loadCuratedFlowSteps: tolerates malformed JSON in one file without droppin
   assert.strictEqual(steps.length, 1);
   assert.strictEqual(steps[0].id, 'task-good:happy');
 });
+
+// ---------------------------------------------------------------------------
+// apiPrefix-aware curated coverage — guards against the path-prefix mismatch
+// where curated flows use unprefixed step.path (because executeCuratedFlows
+// in http-smoke.ts prepends the API global prefix at execution time) but
+// diagnostics report endpoint strings that include the prefix from OpenAPI.
+// Without buildCoverageSet honoring `matrix.authDetection.apiPrefix`, curated
+// coverage silently fails to suppress CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE
+// for endpoints whose auth bootstrap is delegated (Keycloak/OIDC) and whose
+// only success-path coverage lives in a curated flow file.
+// ---------------------------------------------------------------------------
+
+function makeAuthMatrix(apiPrefix) {
+  return {
+    version: '1',
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    projectDir: '/test',
+    scope: 'full',
+    detectedFrameworks: { web: [], api: ['nest'], monorepo: 'none', auth: [], appRouter: false },
+    bootPlan: {
+      driver: 'framework-defaults', driverPath: null,
+      startCmd: 'npx nest start', stopCmd: null, portsCmd: null,
+      alreadyRunning: false, envFiles: [], ports: { api: 3000 }
+    },
+    pages: [],
+    apiEndpoints: [
+      {
+        file: 'src/auth/auth.controller.ts',
+        method: 'GET',
+        path: '/api/v1/auth/me',
+        framework: 'nest',
+        guard: 'authenticated',
+        inputSchemaRef: null,
+        sampleValid: null,
+        sampleInvalid: [],
+        successStatus: 200,
+        errorStatuses: [401],
+        changed: true,
+        routeParams: [],
+        zodContract: null,
+        authDecorators: {
+          authRequired: true,
+          isPublic: false,
+          guards: ['JwtAuthGuard'],
+          rolesRequired: [],
+          bearerAuth: true,
+        },
+        swaggerDeclared: { tags: ['auth'], statuses: [200, 401] },
+      },
+    ],
+    forms: [],
+    middleware: [],
+    authDetection: {
+      loginSurface: null,
+      registerSurface: null,
+      logoutSurface: null,
+      sessionMechanism: 'unknown',
+      tokenStorage: 'unknown',
+      persistsAcrossRefresh: false,
+      apiPrefix,
+    },
+    diagnostics: {
+      missingGuardHeaders: [], pagesProtectedByConvention: [],
+      unreachablePages: [], orphanEndpoints: [], unknownFrameworks: [],
+      detectorErrors: [], orphanOverlayRoutes: [],
+    },
+    flows: [],
+    manifest: { compiledPresent: false, overlayPresent: false, overlayCoverage: null },
+  };
+}
+
+const EMPTY_LOGICAL = { rows: [] };
+
+test('apiPrefix-aware curated coverage: unprefixed curated path suppresses UNGENERATABLE for prefixed OpenAPI endpoint', () => {
+  // Repro the exact production scenario that surfaced in run-2026-05-15:
+  // - matrix.authDetection.apiPrefix === 'api/v1'
+  // - endpoint declared at /api/v1/auth/me with authRequired=true (no auth
+  //   bootstrap chain because Keycloak owns the credential surface)
+  // - curated task-auth flow uses step.path '/auth/me' (the runtime prepends
+  //   /api/v1 via executeCuratedFlows)
+  // Without the apiPrefix fix, suppression keys mismatch
+  // ('GET /auth/me:200' vs 'GET /api/v1/auth/me:200') and the diagnostic
+  // survives even though the endpoint IS covered.
+  const matrix = makeAuthMatrix('api/v1');
+  const curatedFlowSteps = [
+    {
+      id: 'task-auth:happy-admin-can-read-own-session',
+      steps: [
+        { kind: 'setAuth', binding: 'admin' },
+        { kind: 'api', method: 'GET', path: '/auth/me' },
+        { kind: 'expect', status: 200 },
+      ],
+    },
+  ];
+  const result = generate(matrix, EMPTY_LOGICAL, { ignore: [] }, curatedFlowSteps);
+  const unmatched = result.diagnostics.filter(
+    (diag) => diag.code === 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE' &&
+              diag.endpoint === 'GET /api/v1/auth/me' &&
+              /Status 200/.test(diag.message)
+  );
+  assert.strictEqual(
+    unmatched.length,
+    0,
+    'curated flow with unprefixed path /auth/me MUST suppress UNGENERATABLE for OpenAPI endpoint GET /api/v1/auth/me when matrix declares apiPrefix="api/v1"',
+  );
+});
+
+test('apiPrefix-aware curated coverage: missing apiPrefix means curated coverage uses literal step.path only', () => {
+  // When the matrix omits apiPrefix, the legacy behavior must still apply:
+  // curated coverage is recorded against the literal step.path. A prefixed
+  // diagnostic string should NOT be magically matched against an unprefixed
+  // curated entry — the project owner has to either set apiPrefix in the
+  // matrix or use prefixed paths in the curated flow.
+  const matrix = makeAuthMatrix(undefined);
+  const curatedFlowSteps = [
+    {
+      id: 'task-auth:happy-admin-can-read-own-session',
+      steps: [
+        { kind: 'api', method: 'GET', path: '/auth/me' },
+        { kind: 'expect', status: 200 },
+      ],
+    },
+  ];
+  const result = generate(matrix, EMPTY_LOGICAL, { ignore: [] }, curatedFlowSteps);
+  const unmatched = result.diagnostics.filter(
+    (diag) => diag.code === 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE' &&
+              diag.endpoint === 'GET /api/v1/auth/me'
+  );
+  assert.ok(
+    unmatched.length >= 1,
+    'without apiPrefix, the unprefixed curated path must NOT be silently treated as covering the prefixed OpenAPI endpoint',
+  );
+});
+
+test('apiPrefix-aware curated coverage: prefixed curated path is NOT double-prefixed', () => {
+  // Defensive: if a curated flow already uses the prefixed path
+  // ('/api/v1/auth/me'), we must NOT add a doubly-prefixed variant
+  // ('/api/v1/api/v1/auth/me'). The exact-match path stays.
+  const matrix = makeAuthMatrix('api/v1');
+  const curatedFlowSteps = [
+    {
+      id: 'task-auth:happy',
+      steps: [
+        { kind: 'api', method: 'GET', path: '/api/v1/auth/me' },
+        { kind: 'expect', status: 200 },
+      ],
+    },
+  ];
+  const covered = buildCoverageSet(curatedFlowSteps, 'api/v1');
+  assert.ok(covered.has('GET /api/v1/auth/me:200'), 'prefixed curated path stays in coverage');
+  assert.ok(!covered.has('GET /api/v1/api/v1/auth/me:200'), 'must not emit doubly-prefixed variant');
+});
+
+test('buildCoverageSet: apiPrefix=null preserves legacy unprefixed behavior', () => {
+  const flows = [{
+    id: 'x',
+    steps: [
+      { kind: 'api', method: 'GET', path: '/auth/me' },
+      { kind: 'expect', status: 200 },
+    ],
+  }];
+  const covered = buildCoverageSet(flows, null);
+  assert.ok(covered.has('GET /auth/me:200'));
+  assert.strictEqual(covered.size, 1, 'no extra variants when apiPrefix is null');
+});
+
+test('buildCoverageSet: apiPrefix without leading slash is normalized', () => {
+  const flows = [{
+    id: 'x',
+    steps: [
+      { kind: 'api', method: 'GET', path: '/auth/me' },
+      { kind: 'expect', status: 200 },
+    ],
+  }];
+  // Both 'api/v1' and '/api/v1' must produce the same prefixed variant.
+  const a = buildCoverageSet(flows, 'api/v1');
+  const b = buildCoverageSet(flows, '/api/v1');
+  assert.deepStrictEqual([...a].sort(), [...b].sort());
+});
+
+// ---------------------------------------------------------------------------
+// Diagnostic message text — guards against agents being pushed back toward
+// inventing local register/login endpoints when delegated auth (Keycloak,
+// oauth2-proxy) is the actual architecture. The previous text led an agent
+// to scaffold a custom email/password module on top of a Keycloak-backed
+// boilerplate; the new text leads with the curated-flow path and qualifies
+// the register/login suggestion as conditional on the API owning credentials.
+// ---------------------------------------------------------------------------
+
+test('CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE message: leads with curated-flow guidance, qualifies register/login', () => {
+  // Auth-required endpoint, no auth bootstrap chain, no curated flow.
+  const matrix = makeAuthMatrix('api/v1');
+  const result = generate(matrix, EMPTY_LOGICAL, { ignore: [] });
+  const diag = result.diagnostics.find(
+    (entry) => entry.code === 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE' &&
+               entry.endpoint === 'GET /api/v1/auth/me' &&
+               /requires authentication and no auth bootstrap chain/.test(entry.message)
+  );
+  assert.ok(diag, 'auth-required endpoint without curated coverage must emit the auth UNGENERATABLE diagnostic');
+  assert.match(
+    diag.message,
+    /Cover this success path with a curated authenticated flow/,
+    'message must lead with the curated-flow guidance',
+  );
+  assert.match(
+    diag.message,
+    /_shared\.json/,
+    'message must mention _shared.json so agents look at the actor login bindings',
+  );
+  assert.match(
+    diag.message,
+    /Do NOT use @Public\(\) to bypass/,
+    'message must explicitly forbid the @Public() escape hatch',
+  );
+  assert.match(
+    diag.message,
+    /only if the API itself owns the credential surface — add a register\/login endpoint/,
+    'register/login suggestion must be qualified — not the primary path for delegated-auth (Keycloak/oauth2-proxy) projects',
+  );
+  assert.doesNotMatch(
+    diag.message,
+    /^Status \d+ declared on [^.]+\.\s*Add a declared register\/login flow/,
+    'old leading text "Add a declared register/login flow" must be gone — it pushed agents toward inventing local-auth scaffolds on Keycloak-backed projects',
+  );
+});

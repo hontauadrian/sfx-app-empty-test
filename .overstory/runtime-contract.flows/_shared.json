@@ -17,6 +17,7 @@
         "scheme": "bearer-in-body",
         "login": {
           "path": "${env:OAUTH_ISSUER_URL}/protocol/openid-connect/token",
+          "contentType": "application/x-www-form-urlencoded",
           "body": {
             "grant_type": "password",
             "client_id": "${env:OAUTH2_PROXY_CLIENT_ID}",
@@ -35,6 +36,7 @@
         "scheme": "bearer-in-body",
         "login": {
           "path": "${env:OAUTH_ISSUER_URL}/protocol/openid-connect/token",
+          "contentType": "application/x-www-form-urlencoded",
           "body": {
             "grant_type": "password",
             "client_id": "${env:OAUTH2_PROXY_CLIENT_ID}",

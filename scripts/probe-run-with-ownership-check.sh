@@ -24,6 +24,26 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$PROJECT_DIR"
 
+# Source `.env.runtime` so dynamic OAuth/port values that
+# `scripts/probe-bootstrap.sh` writes survive into THIS subshell — pnpm
+# chains its scripts through `&&` (probe-bootstrap.sh && pnpm openapi:check
+# && this script), and each segment runs in its own bash process. The
+# bootstrap step's `export`s die at the first `&&`. Without sourcing
+# `.env.runtime` here, `${env:OAUTH_ISSUER_URL}` placeholders in
+# `.overstory/runtime-contract.flows/_shared.json` resolve to empty strings,
+# the bearer-in-body login URL collapses to `/protocol/openid-connect/token`
+# (a relative path), and every authenticated actor fails to bootstrap with
+# `[contract-flows-bootstrap-FAIL] reason='login network error: fetch failed'`.
+# This is the architectural counterpart to `probe-bootstrap.sh`'s own
+# `. "$runtime_env_file"` after the heredoc finishes — but for the next
+# pipeline segment, not the current one.
+if [ -f .env.runtime ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . .env.runtime
+  set +a
+fi
+
 PROFILE="${PROBE_PROFILE:-builder}"
 ENTRY=".overstory/claude-profiles/${PROFILE}/hooks/probes/index.ts"
 MATRIX=".claude/hooks/.matrix.json"

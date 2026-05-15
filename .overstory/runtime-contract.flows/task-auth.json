@@ -2,12 +2,20 @@
   "version": 1,
   "task_id": "task-auth",
   "owns": [
-    { "resource": "auth-session" }
+    {
+      "resource": "auth-session"
+    }
   ],
   "extends": [
-    { "actor": "anonymous" },
-    { "actor": "admin" },
-    { "actor": "viewer" }
+    {
+      "actor": "anonymous"
+    },
+    {
+      "actor": "admin"
+    },
+    {
+      "actor": "viewer"
+    }
   ],
   "resources": [
     {
@@ -33,16 +41,22 @@
           "kind": "api",
           "transport": "http",
           "method": "GET",
-          "path": "/api/v1/auth/me"
+          "path": "/auth/me"
         },
         {
           "kind": "expect",
           "status": 200,
           "bodyHas": {
             "$.data.isAuthenticated": true,
-            "$.data.subject": { "type": "string" },
-            "$.data.email": { "type": "string" },
-            "$.data.roles": { "type": "array" }
+            "$.data.subject": {
+              "type": "string"
+            },
+            "$.data.email": {
+              "type": "string"
+            },
+            "$.data.roles": {
+              "type": "array"
+            }
           }
         }
       ]
@@ -64,14 +78,16 @@
           "kind": "api",
           "transport": "http",
           "method": "GET",
-          "path": "/api/v1/auth/me"
+          "path": "/auth/me"
         },
         {
           "kind": "expect",
           "status": 200,
           "bodyHas": {
             "$.data.isAuthenticated": true,
-            "$.data.subject": { "type": "string" }
+            "$.data.subject": {
+              "type": "string"
+            }
           }
         }
       ]
@@ -93,7 +109,7 @@
           "kind": "api",
           "transport": "http",
           "method": "GET",
-          "path": "/api/v1/auth/me"
+          "path": "/auth/me"
         },
         {
           "kind": "expect",

@@ -680,6 +680,15 @@
 						"command": "node .claude/hooks/no-api-exclude-endpoint.js"
 					}
 				]
+			},
+			{
+				"matcher": "Bash",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/no-orphan-ui-surfaces.js"
+					}
+				]
 			}
 		],
 		"PostToolUse": [
