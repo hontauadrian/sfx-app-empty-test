@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "task_id": "task-auth",
+  "owns": [
+    { "resource": "auth-session" }
+  ],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" }
+  ],
+  "resources": [
+    {
+      "name": "auth-session",
+      "kind": "endpoint"
+    }
+  ],
+  "special_flows": [
+    {
+      "id": "task-auth:happy-admin-can-read-own-session",
+      "description": "GET /api/v1/auth/me with admin bearer returns 200 + envelope { data: { isAuthenticated: true, subject, email, roles } }",
+      "contract": {
+        "kind": "http",
+        "source": "apps/api AuthController.me",
+        "endpoint": "GET /api/v1/auth/me"
+      },
+      "steps": [
+        {
+          "kind": "setAuth",
+          "binding": "admin"
+        },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/api/v1/auth/me"
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.data.isAuthenticated": true,
+            "$.data.subject": { "type": "string" },
+            "$.data.email": { "type": "string" },
+            "$.data.roles": { "type": "array" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "task-auth:happy-viewer-can-read-own-session",
+      "description": "GET /api/v1/auth/me with viewer bearer returns 200 + envelope { data: { isAuthenticated: true } }",
+      "contract": {
+        "kind": "http",
+        "source": "apps/api AuthController.me",
+        "endpoint": "GET /api/v1/auth/me"
+      },
+      "steps": [
+        {
+          "kind": "setAuth",
+          "binding": "viewer"
+        },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/api/v1/auth/me"
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.data.isAuthenticated": true,
+            "$.data.subject": { "type": "string" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "task-auth:unauth-anonymous-rejected",
+      "description": "GET /api/v1/auth/me without a bearer is rejected with 401 by JwtAuthGuard",
+      "contract": {
+        "kind": "http",
+        "source": "apps/api AuthController.me",
+        "endpoint": "GET /api/v1/auth/me"
+      },
+      "steps": [
+        {
+          "kind": "setAuth",
+          "binding": "anonymous"
+        },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/api/v1/auth/me"
+        },
+        {
+          "kind": "expect",
+          "status": 401
+        }
+      ]
+    }
+  ]
+}

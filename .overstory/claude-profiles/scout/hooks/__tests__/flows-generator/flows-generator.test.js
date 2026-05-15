@@ -9,9 +9,11 @@ const assert = require('node:assert');
 const path = require('path');
 const fs = require('fs');
 
-const { generate, sortKeys, buildCoverageSet } = require(path.resolve(
+const { generate, sortKeys, buildCoverageSet, loadCuratedFlowSteps } = require(path.resolve(
   __dirname, '..', '..', 'probes', 'flows-generator.js'
 ));
+const { mkdtempSync, mkdirSync, writeFileSync } = require('fs');
+const { tmpdir } = require('os');
 
 const FIXTURES = path.resolve(__dirname, 'fixtures');
 
@@ -94,6 +96,22 @@ test('bare-post: total flow count', () => {
   const result = generate(matrix, logical, { ignore: [] });
   // 1 happy + 3 invalidators = 4
   assert.strictEqual(result.flows.length, 4);
+});
+
+test('bare-post: does not double-prefix enveloped response paths', () => {
+  const { matrix, logical } = loadFixture('bare-post');
+  matrix.responseEnvelope = { successWrapper: ['data'] };
+  matrix.apiEndpoints[0].responseContract = {
+    status: 201,
+    schemaRef: 'Envelope<ItemDto>',
+    requiredPaths: ['data', 'data.id', 'success'],
+  };
+  const result = generate(matrix, logical, { ignore: [] });
+
+  const happy = findFlow(result.flows, 'items:post:happy');
+  const expectStep = happy.steps.find((step) => step.kind === 'expect');
+
+  assert.deepStrictEqual(expectStep.bodyHas, ['data', 'data.id', 'success']);
 });
 
 // ---------------------------------------------------------------------------
@@ -265,10 +283,24 @@ test('roles-endpoint: emits standard auth-boundary flows', () => {
   assert.strictEqual(authFlows.length, 4, 'should emit 4 standard auth-boundary flows');
 });
 
-test('roles-endpoint: total flow count (1 happy + 4 auth + 1 role = 6)', () => {
+test('roles-endpoint: total flow count (4 auth + 1 role = 5)', () => {
   const { matrix, logical } = loadFixture('roles-endpoint');
   const result = generate(matrix, logical, { ignore: [] });
-  assert.strictEqual(result.flows.length, 6);
+  assert.strictEqual(result.flows.length, 5);
+});
+
+test('roles-endpoint: skips protected happy path without auth bootstrap', () => {
+  const { matrix, logical } = loadFixture('roles-endpoint');
+  const result = generate(matrix, logical, { ignore: [] });
+
+  assert.strictEqual(findFlow(result.flows, 'admin-dashboard:get:happy'), undefined);
+  const diagnostic = result.diagnostics.find(
+    (item) =>
+      item.code === 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE' &&
+      item.endpoint === 'GET /api/v1/admin/dashboard',
+  );
+  assert.ok(diagnostic, 'protected success status should be marked ungeneratable');
+  assert.match(diagnostic.message, /requires authentication and no auth bootstrap chain/);
 });
 
 // ---------------------------------------------------------------------------
@@ -525,4 +557,176 @@ test('coverage-set suppression: cross-endpoint flow suppresses UNGENERATABLE', (
         `UNGENERATABLE for ${d.endpoint} status ${status} should not exist if a flow covers it`);
     }
   }
+});
+
+// ---------------------------------------------------------------------------
+// Curated-flow coverage merging — UNGENERATABLE diagnostics for endpoints
+// covered by curated flows in `runtime-contract.flows/*.json` are suppressed.
+// ---------------------------------------------------------------------------
+
+test('curated flows: passing curatedFlowSteps suppresses UNGENERATABLE for matched (method, path, status)', () => {
+  const { matrix, logical } = loadFixture('unreachable-status');
+
+  const baseline = generate(matrix, logical, { ignore: [] });
+  const baselineUngen = baseline.diagnostics.filter(
+    (diag) => diag.code === 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE' &&
+              diag.endpoint === 'GET /api/v1/items'
+  );
+  assert.ok(
+    baselineUngen.some((diag) => /Status 500/.test(diag.message)),
+    'baseline run should still emit UNGENERATABLE for declared status 500',
+  );
+
+  const curatedFlowSteps = [
+    {
+      id: 'task-items:curated-500',
+      steps: [
+        { kind: 'setAuth', binding: 'anonymous' },
+        { kind: 'api', method: 'GET', path: '/api/v1/items' },
+        { kind: 'expect', status: 500 },
+      ],
+    },
+  ];
+  const withCurated = generate(matrix, logical, { ignore: [] }, curatedFlowSteps);
+  const withCuratedUngen = withCurated.diagnostics.filter(
+    (diag) => diag.code === 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE' &&
+              diag.endpoint === 'GET /api/v1/items' &&
+              /Status 500/.test(diag.message)
+  );
+  assert.strictEqual(
+    withCuratedUngen.length,
+    0,
+    'curated flow covering GET /api/v1/items:500 should suppress the UNGENERATABLE diagnostic',
+  );
+});
+
+test('curated flows: undefined / non-array curatedFlowSteps is a no-op', () => {
+  const { matrix, logical } = loadFixture('unreachable-status');
+  const noFlow = generate(matrix, logical, { ignore: [] });
+  const undefArg = generate(matrix, logical, { ignore: [] }, undefined);
+  const nullArg = generate(matrix, logical, { ignore: [] }, null);
+  const stringArg = generate(matrix, logical, { ignore: [] }, 'not-an-array');
+  // All four should produce the same diagnostic count.
+  const countOf = (result) => result.diagnostics.filter(
+    (diag) => diag.code === 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE'
+  ).length;
+  assert.strictEqual(countOf(noFlow), countOf(undefArg));
+  assert.strictEqual(countOf(noFlow), countOf(nullArg));
+  assert.strictEqual(countOf(noFlow), countOf(stringArg));
+});
+
+test('curated flows: statusAnyOf in expect step covers every listed status', () => {
+  const { matrix, logical } = loadFixture('unreachable-status');
+  const curatedFlowSteps = [
+    {
+      id: 'task-items:curated-multi',
+      steps: [
+        { kind: 'api', method: 'GET', path: '/api/v1/items' },
+        { kind: 'expect', statusAnyOf: [500, 502, 503] },
+      ],
+    },
+  ];
+  const result = generate(matrix, logical, { ignore: [] }, curatedFlowSteps);
+  const ungens = result.diagnostics.filter(
+    (diag) => diag.code === 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE' &&
+              diag.endpoint === 'GET /api/v1/items' &&
+              /Status 500/.test(diag.message)
+  );
+  assert.strictEqual(
+    ungens.length,
+    0,
+    'statusAnyOf entries must each contribute coverage so UNGENERATABLE for 500 is suppressed',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// loadCuratedFlowSteps — reads runtime-contract.flows/*.json from disk
+// ---------------------------------------------------------------------------
+
+function mkTmpProjectWithFlows(files) {
+  const root = mkdtempSync(path.join(tmpdir(), 'flows-curated-'));
+  for (const [rel, content] of Object.entries(files)) {
+    const abs = path.join(root, rel);
+    mkdirSync(path.dirname(abs), { recursive: true });
+    writeFileSync(abs, content);
+  }
+  return root;
+}
+
+test('loadCuratedFlowSteps: returns [] when runtime-contract.flows directory is missing', () => {
+  const root = mkTmpProjectWithFlows({ 'README.md': '# nothing' });
+  const steps = loadCuratedFlowSteps(root);
+  assert.deepStrictEqual(steps, []);
+});
+
+test('loadCuratedFlowSteps: collects special_flows from per-task json files', () => {
+  const root = mkTmpProjectWithFlows({
+    '.overstory/runtime-contract.flows/task-auth.json': JSON.stringify({
+      version: 1,
+      task_id: 'task-auth',
+      owns: [{ resource: 'auth-session' }],
+      special_flows: [
+        {
+          id: 'task-auth:happy',
+          contract: { kind: 'http', source: 'apps/api AuthController.me' },
+          steps: [
+            { kind: 'setAuth', binding: 'admin' },
+            { kind: 'api', method: 'GET', path: '/api/v1/auth/me' },
+            { kind: 'expect', status: 200 },
+          ],
+        },
+      ],
+    }),
+  });
+  const steps = loadCuratedFlowSteps(root);
+  assert.strictEqual(steps.length, 1);
+  assert.strictEqual(steps[0].id, 'task-auth:happy');
+  assert.strictEqual(steps[0].steps.length, 3);
+});
+
+test('loadCuratedFlowSteps: skips _shared.json (actor declarations only)', () => {
+  const root = mkTmpProjectWithFlows({
+    '.overstory/runtime-contract.flows/_shared.json': JSON.stringify({
+      version: 1,
+      task_id: '_shared',
+      owns: [{ actor: 'admin' }],
+      actors: [{ name: 'admin', auth: { scheme: 'anonymous' } }],
+      special_flows: [
+        {
+          id: '_shared:should-not-be-loaded',
+          contract: { kind: 'http', source: 'unused' },
+          steps: [
+            { kind: 'api', method: 'GET', path: '/x' },
+            { kind: 'expect', status: 200 },
+          ],
+        },
+      ],
+    }),
+  });
+  const steps = loadCuratedFlowSteps(root);
+  assert.deepStrictEqual(steps, []);
+});
+
+test('loadCuratedFlowSteps: tolerates malformed JSON in one file without dropping others', () => {
+  const root = mkTmpProjectWithFlows({
+    '.overstory/runtime-contract.flows/task-bad.json': '{not valid json',
+    '.overstory/runtime-contract.flows/task-good.json': JSON.stringify({
+      version: 1,
+      task_id: 'task-good',
+      owns: [],
+      special_flows: [
+        {
+          id: 'task-good:happy',
+          contract: { kind: 'http', source: 'apps/api X.foo' },
+          steps: [
+            { kind: 'api', method: 'GET', path: '/x' },
+            { kind: 'expect', status: 200 },
+          ],
+        },
+      ],
+    }),
+  });
+  const steps = loadCuratedFlowSteps(root);
+  assert.strictEqual(steps.length, 1);
+  assert.strictEqual(steps[0].id, 'task-good:happy');
 });

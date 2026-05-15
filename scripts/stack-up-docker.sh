@@ -119,7 +119,15 @@ write_web_env_local() {
       printf 'WEB_ORIGIN=%s\n' "$_new_origin" >> "$_api_env"
     fi
   fi
-  if ! grep -q '^127\.0\.0\.1[[:space:]]\+host\.docker\.internal' /etc/hosts 2>/dev/null; then
+  # Skip the /etc/hosts check when running inside a container (e.g. the SFX
+  # panel running QA probe agents). Docker resolves `host.docker.internal`
+  # via its built-in DNS / extra_hosts mapping, NOT via `/etc/hosts`, so the
+  # check fires a false positive that just adds noise to every probe:smoke
+  # output. On a real host machine (no `/.dockerenv` marker), the check is
+  # still useful — Docker Desktop adds host.docker.internal to *container*
+  # DNS only, not to the host's `/etc/hosts`, so a host browser hitting
+  # http://host.docker.internal:<port>/ would fail without the manual entry.
+  if [ ! -f /.dockerenv ] && ! grep -q '^127\.0\.0\.1[[:space:]]\+host\.docker\.internal' /etc/hosts 2>/dev/null; then
     echo "[stack-up] WARN: /etc/hosts is missing 'host.docker.internal' entry." >&2
     echo "[stack-up]       Add it once with: echo '127.0.0.1 host.docker.internal' | sudo tee -a /etc/hosts" >&2
     echo "[stack-up]       Without it, your HOST browser cannot reach the API at the configured URL." >&2

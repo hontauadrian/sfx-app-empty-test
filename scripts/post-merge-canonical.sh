@@ -58,9 +58,34 @@ docker compose -p "$PROJECT_NAME" restart api 2>&1 | tail -3 || true
 # Smoke-test baseline endpoints that exist in every seeded boilerplate app.
 # Feature-specific routes are covered by probes; hard-coding one here makes
 # clean boilerplate reseeds look like infra failures when that feature is absent.
+#
+# Readiness poll: `docker compose restart api` returns as soon as the container
+# is up, but NestJS still needs ~3-8s to register routes and bind. The host
+# port mapping is active immediately, so `curl` accepts the TCP connection
+# during the bind window and returns "empty reply" (exit 52) — looks like a
+# real failure. Poll /api/v1/health until it returns 2xx (health is the
+# fastest route to register), then run the smoke battery against the
+# now-bound API. This replaces the hard-coded `sleep 4`.
 echo "[post-merge-canonical] canonical smoke check"
 HOST="${POST_MERGE_HOST:-host.docker.internal}"
-sleep 4
+READY_TIMEOUT="${POST_MERGE_READY_TIMEOUT:-60}"
+READY_DEADLINE=$(( $(date +%s) + READY_TIMEOUT ))
+echo "[post-merge-canonical] waiting up to ${READY_TIMEOUT}s for api to bind..."
+while true; do
+  ready_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 "http://${HOST}:3001/api/v1/health" 2>/dev/null || echo 000)
+  case "$ready_code" in
+    2*|401|403)
+      echo "[post-merge-canonical]   api ready (health -> $ready_code)"
+      break
+      ;;
+  esac
+  if [ "$(date +%s)" -ge "$READY_DEADLINE" ]; then
+    echo "[post-merge-canonical] FAIL: api never bound within ${READY_TIMEOUT}s (last code: $ready_code)"
+    docker logs --tail 50 "${PROJECT_NAME}-api-1" 2>&1 || true
+    exit 1
+  fi
+  sleep 1
+done
 SMOKE_FAIL=0
 for path in /api/v1/health /api/docs-json; do
   code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "http://${HOST}:3001${path}" || echo 000)

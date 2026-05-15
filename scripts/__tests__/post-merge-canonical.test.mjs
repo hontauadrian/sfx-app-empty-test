@@ -14,4 +14,24 @@ describe("post-merge-canonical", () => {
     assert.match(script, /\/api\/docs-json/);
     assert.doesNotMatch(script, /\/api\/v1\/teams/);
   });
+
+  it("polls api readiness instead of relying on a fixed sleep before smoke", () => {
+    const script = readFileSync(join(REPO_ROOT, "scripts", "post-merge-canonical.sh"), "utf8");
+
+    assert.match(
+      script,
+      /POST_MERGE_READY_TIMEOUT/,
+      "script must expose POST_MERGE_READY_TIMEOUT env override for the readiness poll",
+    );
+    assert.match(
+      script,
+      /while true; do[\s\S]*health/,
+      "script must contain a while-loop polling /api/v1/health for readiness",
+    );
+    assert.doesNotMatch(
+      script,
+      /^sleep 4$/m,
+      "script must not rely on the legacy fixed sleep before smoke; use a readiness poll",
+    );
+  });
 });

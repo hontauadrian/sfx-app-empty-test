@@ -184,6 +184,15 @@ function detectPrismaUniques(projectDir, diag) {
   const blocks = extractModelBlocks(clean);
   const models = {};
   for (const [name, body] of Object.entries(blocks)) {
+    // Honor Prisma's `@@ignore` directive — models marked @@ignore are
+    // excluded from the generated client and from probe coverage. Used
+    // by the boilerplate's `BoilerplatePlaceholder` model (which exists
+    // only to satisfy `prisma generate`'s "needs at least one model"
+    // requirement) so the resource-graph probe does not emit a spurious
+    // RESOURCE_GRAPH_NO_CREATE_ENDPOINT for it.
+    if (/^\s*@@ignore\s*(?:$|\/\/)/m.test(body)) {
+      continue;
+    }
     models[name] = parseModelBody(body);
   }
 

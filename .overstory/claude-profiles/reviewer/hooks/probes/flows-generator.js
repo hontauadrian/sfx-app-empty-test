@@ -94,6 +94,48 @@ function toRelativePath(url) {
 }
 
 /**
+ * Load curated `special_flows[]` from `.overstory/runtime-contract.flows/*.json`
+ * (excluding `_shared.json`, which only declares actors/resources, no flows
+ * by convention). Each flow's steps are returned as a flat array of
+ * `{ id, steps }` so `buildCoverageSet` can extract `(method, path, status)`
+ * tuples without further parsing.
+ *
+ * The generator does NOT execute curated flows — it only consults them for
+ * UNGENERATABLE coverage suppression. The runner (`http-smoke.ts`) is what
+ * actually loads + merges + executes curated flows.
+ *
+ * Returns [] when the directory is missing or all files are unreadable.
+ */
+function loadCuratedFlowSteps(projectDir) {
+  const flowsDir = path.join(projectDir, '.overstory', 'runtime-contract.flows');
+  if (!fs.existsSync(flowsDir)) return [];
+  const collected = [];
+  let entries;
+  try {
+    entries = fs.readdirSync(flowsDir);
+  } catch {
+    return [];
+  }
+  for (const name of entries) {
+    if (!name.endsWith('.json')) continue;
+    if (name === '_shared.json') continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(fs.readFileSync(path.join(flowsDir, name), 'utf8'));
+    } catch {
+      continue;
+    }
+    const list = Array.isArray(parsed && parsed.special_flows) ? parsed.special_flows : [];
+    for (const flow of list) {
+      if (flow && Array.isArray(flow.steps)) {
+        collected.push({ id: flow.id, steps: flow.steps });
+      }
+    }
+  }
+  return collected;
+}
+
+/**
  * Build a coverage set of `METHOD /path:STATUS` tuples from all emitted flows.
  * Scans every step in every flow: `expect.status` and each entry in
  * `expect.statusAnyOf`. The preceding `api` step provides the method+path.
@@ -4911,7 +4953,7 @@ function emitResourceSetupChains(endpoints, options) {
   }
 }
 
-function generate(matrix, logical, overlay) {
+function generate(matrix, logical, overlay, curatedFlowSteps) {
   const ignorePatterns = (overlay && overlay.ignore) || [];
   const flows = [];
   const diagnostics = [];
@@ -5379,7 +5421,9 @@ function generate(matrix, logical, overlay) {
   // emitted flows and filter out UNGENERATABLE diagnostics whose tuple is
   // already covered. This is purely declarative: only declared flows with
   // declared statusAnyOf / status expectations count as coverage.
-  const coveredTuples = buildCoverageSet(fanned);
+  const generatedCoverage = buildCoverageSet(fanned);
+  const curatedCoverage = buildCoverageSet(Array.isArray(curatedFlowSteps) ? curatedFlowSteps : []);
+  const coveredTuples = new Set([...generatedCoverage, ...curatedCoverage]);
   const filteredDiagnostics = diagnostics.filter((d) => {
     if (d.code !== 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE') return true;
     // d.endpoint is "METHOD /path", d.message contains the status number.
@@ -5656,7 +5700,8 @@ function main() {
     overlay = JSON.parse(fs.readFileSync(overlayFile, 'utf8'));
   }
 
-  const result = generate(matrix, logical, overlay);
+  const curatedFlowSteps = loadCuratedFlowSteps(dir);
+  const result = generate(matrix, logical, overlay, curatedFlowSteps);
 
   // Use matrix generatedAt for determinism.
   const generatedAt = matrix.generatedAt || 'generated';
@@ -5698,6 +5743,7 @@ function main() {
 // Export for testing.
 module.exports = {
   generate,
+  loadCuratedFlowSteps,
   fanOutMutableChains,
   sortKeys,
   matchesIgnore,

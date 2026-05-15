@@ -283,6 +283,23 @@ describe("stack-up-docker worktree ports", () => {
     }
   });
 
+  it("does not warn about /etc/hosts host.docker.internal when running inside a container", () => {
+    // QA probe agents run `pnpm stack:up` from inside the SFX panel container,
+    // where Docker provides host.docker.internal via its DNS — NOT via /etc/hosts.
+    // The historical /etc/hosts grep always fails inside containers and floods
+    // probe:smoke output with a false-positive WARN. The fix is `[ ! -f /.dockerenv ]`
+    // gating: skip the check when the marker file (created by every Docker
+    // image at build time) is present.
+    const script = readFileSync(join(REPO_ROOT, "scripts", "stack-up-docker.sh"), "utf8");
+
+    assert.ok(
+      script.includes("[ ! -f /.dockerenv ] && ! grep -q") &&
+        script.includes("host\\.docker\\.internal") &&
+        script.includes("/etc/hosts"),
+      "/etc/hosts host.docker.internal warning must be gated on `[ ! -f /.dockerenv ]` so it never fires inside containers",
+    );
+  });
+
   it("allows fixed worktree ports only with explicit debug opt-in", () => {
     const tempRoot = join(tmpdir(), `stack-up-docker-fixed-${Date.now()}`);
     const worktreeRoot = join(tempRoot, ".overstory", "worktrees", "probe-worker");

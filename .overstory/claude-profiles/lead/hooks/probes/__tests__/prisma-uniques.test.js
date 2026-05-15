@@ -171,3 +171,40 @@ test('detectPrismaUniques captures multiple models with mix of uniques', () => {
   assert.deepStrictEqual(result.models.Org.uniqueFields, ['slug']);
   assert.deepStrictEqual(result.models.Membership.compositeUniques, [['userId', 'orgId']]);
 });
+
+test('detectPrismaUniques skips models marked with @@ignore', () => {
+  const root = mkTmpProject({
+    'packages/database/prisma/schema.prisma': `
+      model BoilerplatePlaceholder {
+        id String @id @default(cuid())
+        @@map("boilerplate_placeholder")
+        @@ignore
+      }
+      model RealModel {
+        id    String @id
+        email String @unique
+      }
+    `,
+  });
+  const result = detectPrismaUniques(root, null);
+  // Placeholder is excluded (so resource-graph does not emit
+  // RESOURCE_GRAPH_NO_CREATE_ENDPOINT for boilerplate scaffold models).
+  assert.ok(!('BoilerplatePlaceholder' in result.models));
+  // Real model still parsed normally.
+  assert.deepStrictEqual(result.models.RealModel.uniqueFields, ['email']);
+});
+
+test('detectPrismaUniques does not skip when @@ignore appears commented out', () => {
+  const root = mkTmpProject({
+    'packages/database/prisma/schema.prisma': `
+      model Real {
+        id    String @id
+        email String @unique
+        // @@ignore (commented; should not exclude the model)
+      }
+    `,
+  });
+  const result = detectPrismaUniques(root, null);
+  assert.ok('Real' in result.models);
+  assert.deepStrictEqual(result.models.Real.uniqueFields, ['email']);
+});
