@@ -5,6 +5,7 @@ domains:
   dev-stack: {}
   web: {}
   visual-identity: {}
+  dos-and-donts: {}
 governance:
   max_entries: 100
   warn_entries: 150
