@@ -1,1 +1,0 @@
-{"tool_name":"Bash","tool_input":{"command":"ov mail send --to lead --body \"Blocked by 3 gates: (1) a; (2) b; (3) c\""}}

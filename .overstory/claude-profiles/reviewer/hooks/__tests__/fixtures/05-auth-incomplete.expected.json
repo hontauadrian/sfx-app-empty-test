@@ -1,4 +1,0 @@
-{
-  "decision": "block",
-  "reasonContains": ["AUTH_CONTRACT_INCOMPLETE", "/dashboard"]
-}

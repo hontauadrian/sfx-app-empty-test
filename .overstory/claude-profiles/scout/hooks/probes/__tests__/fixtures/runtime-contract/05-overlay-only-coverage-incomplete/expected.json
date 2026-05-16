@@ -1,5 +1,0 @@
-{
-  "decision": "block",
-  "categoryContains": "RUNTIME_CONTRACT_VIOLATION",
-  "reasonsContain": ["OVERLAY_ONLY_COVERAGE_INCOMPLETE"]
-}

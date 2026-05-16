@@ -127,6 +127,28 @@ const translations = {
   deleteDosAndDontConfirmTitle: '',
   deleteDosAndDontConfirmBody: '',
   dosAndDontNotFound: '',
+  contentCheck: 'Content check',
+  contentCheckPageTitle: '',
+  contentCheckActiveBrandLabel: '',
+  contentCheckPastedTextLabel: '',
+  contentCheckPastedTextPlaceholder: '',
+  contentCheckCategoryLabel: '',
+  contentCheckCategoryAllOption: '',
+  contentCheckSubmitLabel: '',
+  contentCheckReferenceTextLabel: '',
+  contentCheckResultsTitle: '',
+  contentCheckSuggestedCorrectionLabel: '',
+  contentCheckNoActiveBrandTitle: '',
+  contentCheckNoActiveBrandBody: '',
+  contentCheckNoActiveBrandCta: '',
+  contentCheckZeroMatchesTitle: '',
+  contentCheckZeroMatchesBody: '',
+  contentCheckZeroMatchesCta: '',
+  contentCheckBrandNotFoundTitle: '',
+  contentCheckBrandNotFoundBody: '',
+  contentCheckBrandNotFoundCta: '',
+  contentCheckLoadError: '',
+  contentCheckPastedTextTooLongError: '',
 } satisfies CommonTranslations;
 
 const brand = {
@@ -158,7 +180,7 @@ describe('getBrandIdFromPath', () => {
 });
 
 describe('mapToAppShellUIModel', () => {
-  it('includes the left nav items only on brand-scoped routes', () => {
+  it('appends per-brand nav entries after the content-check entry on brand-scoped routes', () => {
     const model = mapToAppShellUIModel({
       translations,
       brands: [brand],
@@ -168,18 +190,18 @@ describe('mapToAppShellUIModel', () => {
       signOutHref: '/oauth2/sign_out',
     });
 
-    expect(model.leftNavItems).not.toBeNull();
-    expect(model.leftNavItems?.map((item) => item.key)).toEqual([
+    expect(model.leftNavItems.map((item) => item.key)).toEqual([
+      'content-check',
       'overview',
       'brand-voice',
       'visual-identity',
     ]);
-    expect(model.leftNavItems?.[0]?.href).toBe('/brands/brand-1');
+    expect(model.leftNavItems[1]?.href).toBe('/brands/brand-1');
     expect(model.currentBrandName).toBe('Acme');
     expect(model.email).toBe('user@example.com');
   });
 
-  it('omits the left nav on the dashboard', () => {
+  it('exposes only the content-check entry on the dashboard', () => {
     const model = mapToAppShellUIModel({
       translations,
       brands: [brand],
@@ -188,8 +210,26 @@ describe('mapToAppShellUIModel', () => {
       email: null,
       signOutHref: '/oauth2/sign_out',
     });
-    expect(model.leftNavItems).toBeNull();
+    expect(model.leftNavItems).toHaveLength(1);
+    expect(model.leftNavItems[0]).toEqual({
+      key: 'content-check',
+      label: 'Content check',
+      href: '/content-check',
+    });
     expect(model.currentBrandName).toBeNull();
+  });
+
+  it('exposes only the content-check entry on the /content-check route', () => {
+    const model = mapToAppShellUIModel({
+      translations,
+      brands: [brand],
+      activeBrandId: 'brand-1',
+      pathname: '/content-check',
+      email: null,
+      signOutHref: '/oauth2/sign_out',
+    });
+    expect(model.leftNavItems).toHaveLength(1);
+    expect(model.leftNavItems[0]?.key).toBe('content-check');
   });
 
   it('handles a stale active brand id by falling back to a null current name', () => {

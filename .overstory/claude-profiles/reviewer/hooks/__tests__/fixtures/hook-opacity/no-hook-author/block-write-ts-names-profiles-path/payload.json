@@ -1,1 +1,0 @@
-{"tool_name":"Write","tool_input":{"file_path":"apps/web/src/util.ts","content":"export const PROFILE_DIR = '.overstory/claude-profiles';\nexport const foo = 1;\n"}}

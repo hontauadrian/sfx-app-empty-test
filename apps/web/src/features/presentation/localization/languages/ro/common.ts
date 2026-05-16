@@ -129,4 +129,30 @@ export const common: CommonTranslations = {
   deleteDosAndDontConfirmBody:
     'Stergerea acestui da/nu il elimina din acest brand. Aceasta actiune nu poate fi anulata.',
   dosAndDontNotFound: 'Inregistrare negasita',
+  contentCheck: 'Verificare continut',
+  contentCheckPageTitle: 'Verificare continut',
+  contentCheckActiveBrandLabel: 'Brand activ',
+  contentCheckPastedTextLabel: 'Lipeste continutul pentru verificare',
+  contentCheckPastedTextPlaceholder:
+    'Lipeste un paragraf, un titlu sau o postare pentru a o verifica fata de acest brand.',
+  contentCheckCategoryLabel: 'Categorie',
+  contentCheckCategoryAllOption: 'Toate categoriile',
+  contentCheckSubmitLabel: 'Verifica continutul',
+  contentCheckReferenceTextLabel: 'Text de referinta',
+  contentCheckResultsTitle: 'Rezultate',
+  contentCheckSuggestedCorrectionLabel: 'Corectie sugerata',
+  contentCheckNoActiveBrandTitle: 'Verificare continut',
+  contentCheckNoActiveBrandBody:
+    'Alege un brand pentru a verifica continutul fata de da-urile si nu-urile lui.',
+  contentCheckNoActiveBrandCta: 'Alege un brand',
+  contentCheckZeroMatchesTitle: 'Nu exista da-uri sau nu-uri',
+  contentCheckZeroMatchesBody:
+    'Niciun da sau nu nu se potriveste in aceasta categorie — mergi la acest brand pentru a adauga.',
+  contentCheckZeroMatchesCta: '+ Adauga da/nu',
+  contentCheckBrandNotFoundTitle: 'Brand indisponibil',
+  contentCheckBrandNotFoundBody: 'Brandul activ nu mai este disponibil.',
+  contentCheckBrandNotFoundCta: 'Alege un brand',
+  contentCheckLoadError: 'Nu am putut incarca da-urile si nu-urile pentru acest brand.',
+  contentCheckPastedTextTooLongError:
+    'Textul lipit este prea lung. Scurteaza-l si incearca din nou.',
 };

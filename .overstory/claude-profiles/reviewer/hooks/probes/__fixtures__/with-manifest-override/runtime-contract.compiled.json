@@ -1,6 +1,0 @@
-{
-  "routes": [
-    { "route": "/dashboard", "guard": "public" }
-  ],
-  "endpoints": []
-}

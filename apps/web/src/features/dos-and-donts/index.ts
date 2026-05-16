@@ -9,3 +9,4 @@ export {
   dosAndDontNewRoute,
   dosAndDontEditRoute,
 } from './constants';
+export { useDosAndDontsRepository } from './data/repositories/use-dos-and-donts-repository';

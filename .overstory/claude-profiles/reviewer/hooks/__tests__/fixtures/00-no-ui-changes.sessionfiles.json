@@ -1,6 +1,0 @@
-{
-  "files": [
-    "packages/domain/src/entities/User.ts",
-    "packages/validation/src/schemas/user.ts"
-  ]
-}

@@ -129,4 +129,30 @@ export const common: CommonTranslations = {
   deleteDosAndDontConfirmBody:
     "Deleting this do/don't removes it from this brand. This action cannot be undone.",
   dosAndDontNotFound: 'Entry not found',
+  contentCheck: 'Content check',
+  contentCheckPageTitle: 'Content check',
+  contentCheckActiveBrandLabel: 'Active brand',
+  contentCheckPastedTextLabel: 'Paste content to check',
+  contentCheckPastedTextPlaceholder:
+    'Paste a paragraph, headline, or social post to check against this brand.',
+  contentCheckCategoryLabel: 'Category',
+  contentCheckCategoryAllOption: 'All categories',
+  contentCheckSubmitLabel: 'Check content',
+  contentCheckReferenceTextLabel: 'Reference text',
+  contentCheckResultsTitle: 'Results',
+  contentCheckSuggestedCorrectionLabel: 'Suggested correction',
+  contentCheckNoActiveBrandTitle: 'Content check',
+  contentCheckNoActiveBrandBody:
+    "Pick a brand to start checking your content against its dos and don'ts.",
+  contentCheckNoActiveBrandCta: 'Pick a brand',
+  contentCheckZeroMatchesTitle: "No dos or don'ts yet",
+  contentCheckZeroMatchesBody:
+    "No dos or don'ts match this category yet — go to this brand to add one.",
+  contentCheckZeroMatchesCta: "+ Add do/don't",
+  contentCheckBrandNotFoundTitle: 'Brand unavailable',
+  contentCheckBrandNotFoundBody: 'Active brand is no longer available.',
+  contentCheckBrandNotFoundCta: 'Pick a brand',
+  contentCheckLoadError: "Could not load dos and don'ts for this brand.",
+  contentCheckPastedTextTooLongError:
+    'Pasted text is too long. Trim it and try again.',
 };

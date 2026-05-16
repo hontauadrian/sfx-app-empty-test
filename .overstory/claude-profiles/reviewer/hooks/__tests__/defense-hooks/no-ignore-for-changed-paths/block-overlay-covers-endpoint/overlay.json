@@ -1,5 +1,0 @@
-{
-  "ignore": [
-    { "path": "/api/v1/auth/**" }
-  ]
-}

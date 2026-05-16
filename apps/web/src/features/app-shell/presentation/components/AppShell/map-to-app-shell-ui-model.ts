@@ -1,6 +1,7 @@
 import type { CommonTranslations } from '@/features/presentation/localization';
 import type { BrandProfile } from '@/features/brand-profile/data/mapper/map-to-brand-profile';
 import { brandRoute, DASHBOARD_ROUTE } from '@/features/brand-profile/constants';
+import { CONTENT_CHECK_ROUTE } from '@/features/content-check';
 import type { AppShellUIModel } from './types';
 import type { LeftNavItem } from '../LeftNav/types';
 
@@ -29,7 +30,12 @@ export function mapToAppShellUIModel(input: MapToAppShellUIModelInput): AppShell
     activeBrandId !== null ? brands.find((entry) => entry.id === activeBrandId) ?? null : null;
 
   const pathBrandId = getBrandIdFromPath(pathname);
-  const leftNavItems: LeftNavItem[] | null =
+  const contentCheckEntry: LeftNavItem = {
+    key: 'content-check',
+    label: translations.contentCheck,
+    href: CONTENT_CHECK_ROUTE,
+  };
+  const perBrandEntries: readonly LeftNavItem[] =
     pathBrandId !== null
       ? [
           {
@@ -48,7 +54,8 @@ export function mapToAppShellUIModel(input: MapToAppShellUIModelInput): AppShell
             href: `${brandRoute(pathBrandId)}#visual-identity`,
           },
         ]
-      : null;
+      : [];
+  const leftNavItems: readonly LeftNavItem[] = [contentCheckEntry, ...perBrandEntries];
 
   return {
     brandMarkLabel: translations.brandGuidelinesAppName,
