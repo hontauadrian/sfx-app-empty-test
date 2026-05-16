@@ -4,6 +4,7 @@ import { AppConfigModule } from './config/config.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BrandProfileModule } from './modules/brand-profile/brand-profile.module';
 import { BrandVoiceModule } from './modules/brand-voice/brand-voice.module';
+import { VisualIdentityModule } from './modules/visual-identity/visual-identity.module';
 import { HealthModule } from './modules/health/health.module';
 
 @Module({
@@ -18,6 +19,7 @@ import { HealthModule } from './modules/health/health.module';
     AuthModule,
     BrandProfileModule,
     BrandVoiceModule,
+    VisualIdentityModule,
     HealthModule,
   ],
 })

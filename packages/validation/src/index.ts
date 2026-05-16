@@ -20,6 +20,21 @@ export type {
 } from './schemas/brand-profile.schema';
 
 export {
+  VISUAL_IDENTITY_LONG_TEXT_MAX_LENGTH,
+  VISUAL_IDENTITY_LIST_ITEM_TEXT_MAX_LENGTH,
+  VISUAL_IDENTITY_LIST_MAX_ITEMS,
+  VISUAL_IDENTITY_HEX_PATTERN,
+  visualIdentityWriteSchema,
+  visualIdentitySchema,
+} from './schemas/visual-identity.schema';
+export type {
+  VisualIdentityWriteInput,
+  VisualIdentityShape,
+  VisualIdentityColourPaletteEntry,
+  VisualIdentityTypographyRule,
+} from './schemas/visual-identity.schema';
+
+export {
   BRAND_VOICE_TONE_MAX_LENGTH,
   BRAND_VOICE_LIST_ITEM_SHORT_MAX_LENGTH,
   BRAND_VOICE_LIST_ITEM_LONG_MAX_LENGTH,

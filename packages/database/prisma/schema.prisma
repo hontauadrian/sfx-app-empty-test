@@ -8,16 +8,35 @@ datasource db {
 }
 
 model BrandProfile {
-  id           String      @id @default(cuid())
-  ownerSubject String      @map("owner_subject")
-  name         String
-  description  String?
-  createdAt    DateTime    @default(now()) @map("created_at")
-  updatedAt    DateTime    @updatedAt @map("updated_at")
-  voice        BrandVoice?
+  id             String          @id @default(cuid())
+  ownerSubject   String          @map("owner_subject")
+  name           String
+  description    String?
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  voice          BrandVoice?
+  visualIdentity VisualIdentity?
 
   @@index([ownerSubject])
   @@map("brand_profile")
+}
+
+model VisualIdentity {
+  id                    String   @id @default(cuid())
+  brandId               String   @unique @map("brand_id")
+  logoUsageRules        String?  @map("logo_usage_rules")
+  colourPalette         Json     @default("[]") @map("colour_palette")
+  typographyRules       Json     @default("[]") @map("typography_rules")
+  spacingLayoutGuidance String?  @map("spacing_layout_guidance")
+  imageStyleGuidance    String?  @map("image_style_guidance")
+  iconographyGuidance   String?  @map("iconography_guidance")
+  usageRestrictions     String?  @map("usage_restrictions")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  brand BrandProfile @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@map("visual_identity")
 }
 
 model BrandVoice {
