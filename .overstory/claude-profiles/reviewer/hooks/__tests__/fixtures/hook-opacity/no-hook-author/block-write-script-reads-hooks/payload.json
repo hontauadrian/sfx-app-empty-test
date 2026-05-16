@@ -1,1 +1,0 @@
-{"tool_name":"Write","tool_input":{"file_path":"scripts/dump.js","content":"const fs=require('fs'); const data=fs.readFileSync('.claude/hooks/x.js');console.log(data.toString());"}}

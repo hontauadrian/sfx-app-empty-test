@@ -1,1 +1,0 @@
-{"tool_name":"Bash","tool_input":{"command":"git commit -m \"fix(web): add LanguageProvider; fix TS null type; remove tests\""}}

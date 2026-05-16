@@ -1,5 +1,0 @@
-{
-  "name": "fixture-stack-driver",
-  "private": true,
-  "dependencies": { "next": "15.0.0" }
-}

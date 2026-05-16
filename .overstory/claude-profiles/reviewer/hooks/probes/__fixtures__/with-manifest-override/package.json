@@ -1,5 +1,0 @@
-{
-  "name": "fixture-manifest-override",
-  "private": true,
-  "dependencies": { "next": "15.0.0" }
-}
