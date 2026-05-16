@@ -13,6 +13,7 @@
   "resources": [
     {
       "name": "dosAndDontEntry",
+      "parents": ["brandProfile"],
       "create": {
         "method": "POST",
         "path": "/brands/${brandId}/dos-and-donts",
