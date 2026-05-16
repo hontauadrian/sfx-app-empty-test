@@ -1389,8 +1389,38 @@ describe('resource-captures: declaration-driven capture via x-resource-captures'
     assert.equal(chain, undefined);
     const diag = diags.find((d) => d.code === 'RESOURCE_CAPTURE_PATHPARAM_UNDECLARED');
     assert.ok(diag);
-    assert.match(diag.message, /pathParam='id'/);
-    assert.match(diag.message, /Got: slug/);
+    assert.match(diag.message, /pathParam=\['slug'\]/);
+    assert.match(diag.message, /uses ':id'/);
+  });
+
+  it('PATHPARAM_UNDECLARED diagnostic is actionable: names parent route, consumer route, fix tuple', () => {
+    // Regression for multi-alias case: parent /api/v1/teams declares only
+    // pathParam='id', but child /api/v1/teams/:teamId/projects uses ':teamId'.
+    // The diagnostic must give the builder a copy-pasteable fix without
+    // requiring them to consult external docs.
+    const endpoints = buildEndpoints(
+      [{ fromPath: 'id', resource: 'team', pathParam: 'id' }],
+      { childPath: '/api/v1/teams/:teamId/projects' },
+    );
+    const diags = [];
+    emitResourceSetupChains(endpoints, { diagnostics: diags, uniqueFieldSet: new Set() });
+    const diag = diags.find((d) => d.code === 'RESOURCE_CAPTURE_PATHPARAM_UNDECLARED');
+    assert.ok(diag, 'expected RESOURCE_CAPTURE_PATHPARAM_UNDECLARED diagnostic');
+    // Parent route is named (so the builder knows which controller to edit).
+    assert.match(diag.message, /Parent POST \/api\/v1\/teams\b/);
+    // Consumer route is named (so the builder knows where the placeholder comes from).
+    assert.match(diag.message, /\/api\/v1\/teams\/:teamId\/projects/);
+    // Missing placeholder is named.
+    assert.match(diag.message, /uses ':teamId'/);
+    // Existing captures are listed.
+    assert.match(diag.message, /pathParam=\['id'\]/);
+    // Diagnostic shows a copy-pasteable additive tuple keeping the same
+    // fromPath and resource — only pathParam differs.
+    assert.match(diag.message, /Example: @ResourceCaptures\(/);
+    assert.match(diag.message, /fromPath: 'id'.+resource: 'team'.+pathParam: 'id'/);
+    assert.match(diag.message, /fromPath: 'id'.+resource: 'team'.+pathParam: 'teamId'/);
+    // Diagnostic states the fix is purely additive (no behavior change).
+    assert.match(diag.message, /[Aa]dditive/);
   });
 
   it('empty captures array same as missing emits DIAG no chain', () => {

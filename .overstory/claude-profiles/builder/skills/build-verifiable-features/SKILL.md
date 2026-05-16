@@ -261,6 +261,32 @@ import { ResourceCaptures } from '@/common/decorators/resource-captures.decorato
 create(@Body() dto: CreateTeamDto) { ... }
 ```
 
+POST whose id is consumed by sibling routes under MULTIPLE different path-param
+names — the parent's `:id` AND nested children's `:teamId` / `:projectId` /
+`:brandId` etc. The chain emitter looks up captures by `pathParam`, so each
+distinct placeholder name a child uses needs its own additive tuple. Same
+`fromPath`, same `resource`, only `pathParam` differs:
+```ts
+// /api/v1/teams/:id (PUT/DELETE/GET)              <- consumes ':id'
+// /api/v1/teams/:teamId/members (POST/GET/...)    <- consumes ':teamId'
+// /api/v1/teams/:teamId/projects (POST/GET/...)   <- consumes ':teamId'
+@Post()
+@ResourceCaptures(
+  { fromPath: 'id', resource: 'team', pathParam: 'id' },     // for sibling routes using :id
+  { fromPath: 'id', resource: 'team', pathParam: 'teamId' }, // for nested children using :teamId
+)
+@ApiResponse({ status: 201, type: TeamResponseDto })
+create(@Body() dto: CreateTeamDto) { ... }
+```
+
+> **When to add a second alias:** if any child route under your parent's path
+> uses a placeholder name other than `:id` (e.g. `:teamId`, `:brandId`,
+> `:projectId`), the runtime probe will surface
+> `RESOURCE_CAPTURE_PATHPARAM_UNDECLARED` naming the missing pathParam. The
+> diagnostic message includes the exact fix line — copy it. Adding the second
+> tuple is purely additive metadata: zero behavior change, same auth, same Zod
+> validation, same status codes.
+
 POST creating multiple chainable resources (e.g. team membership returns
 membership id AND associated user id, both consumed by sibling routes):
 ```ts

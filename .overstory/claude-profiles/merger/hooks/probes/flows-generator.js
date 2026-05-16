@@ -4939,10 +4939,21 @@ function emitResourceSetupChains(endpoints, options) {
     const matching = captures.find((c) => c.pathParam === parentInfo.paramName);
     if (!matching) {
       if (opts.diagnostics) {
+        const declared = captures.map((capture) => `'${capture.pathParam}'`).join(',');
+        const seed = captures[0];
+        const existingTuple = `{ fromPath: '${seed.fromPath}', resource: '${seed.resource}', pathParam: '${seed.pathParam}' }`;
+        const additiveTuple = `{ fromPath: '${seed.fromPath}', resource: '${seed.resource}', pathParam: '${parentInfo.paramName}' }`;
         opts.diagnostics.push({
           code: 'RESOURCE_CAPTURE_PATHPARAM_UNDECLARED',
           endpoint: epKey(parentInfo.parentEp.method, parentInfo.parentEp.path),
-          message: `${parentInfo.parentEp.path}: declared captures don't include pathParam='${parentInfo.paramName}'. Got: ${captures.map((c) => c.pathParam).join(',')}.`,
+          message:
+            `Parent POST ${parentInfo.parentEp.path} declares @ResourceCaptures with pathParam=[${declared}] ` +
+            `but consumer route ${ep.path} uses ':${parentInfo.paramName}'. ` +
+            `FIX: on the parent CREATE handler, ADD a second additive @ResourceCaptures tuple alongside the existing one — ` +
+            `same fromPath ('${seed.fromPath}') and same resource ('${seed.resource}'), only pathParam='${parentInfo.paramName}'. ` +
+            `Example: @ResourceCaptures(${existingTuple}, ${additiveTuple}). ` +
+            `Purely additive metadata — no behavior change, same auth/Zod/status. ` +
+            `The chain emitter looks up captures by pathParam, so each child placeholder needs its own alias.`,
         });
       }
       continue;
