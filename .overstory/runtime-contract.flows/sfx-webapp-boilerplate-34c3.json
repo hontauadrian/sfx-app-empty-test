@@ -1,0 +1,652 @@
+{
+  "version": 1,
+  "task_id": "sfx-webapp-boilerplate-34c3",
+  "owns": [
+    { "resource": "dosAndDontEntry" }
+  ],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" },
+    { "resource": "brandProfile" }
+  ],
+  "resources": [
+    {
+      "name": "dosAndDontEntry",
+      "create": {
+        "method": "POST",
+        "path": "/brands/${brandId}/dos-and-donts",
+        "body": {
+          "type": "do",
+          "category": "tone",
+          "title": "Use active voice",
+          "body": "Prefer 'we ship' over 'products are shipped'."
+        }
+      },
+      "capture": {
+        "bindings": { "id": "$.data.id" }
+      }
+    }
+  ],
+  "special_flows": [
+    {
+      "id": "sfx-webapp-boilerplate-34c3:anon-list-blocked",
+      "description": "GET /api/v1/brands/:brandId/dos-and-donts without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §3 guard contract",
+        "endpoint": "GET /api/v1/brands/:brandId/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/non-existent-id/dos-and-donts" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:anon-create-blocked",
+      "description": "POST /api/v1/brands/:brandId/dos-and-donts without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §3 guard contract",
+        "endpoint": "POST /api/v1/brands/:brandId/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/non-existent-id/dos-and-donts",
+          "body": { "type": "do", "category": "tone", "title": "x", "body": "y" }
+        },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:anon-update-blocked",
+      "description": "PUT /api/v1/brands/:brandId/dos-and-donts/:entryId without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §3 guard contract",
+        "endpoint": "PUT /api/v1/brands/:brandId/dos-and-donts/:entryId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/non-existent-id/dos-and-donts/non-existent-entry",
+          "body": { "type": "do", "category": "tone", "title": "x", "body": "y" }
+        },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:anon-delete-blocked",
+      "description": "DELETE /api/v1/brands/:brandId/dos-and-donts/:entryId without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §3 guard contract",
+        "endpoint": "DELETE /api/v1/brands/:brandId/dos-and-donts/:entryId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "DELETE",
+          "path": "/brands/non-existent-id/dos-and-donts/non-existent-entry"
+        },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:admin-list-empty",
+      "description": "Admin creates a brand, GETs dos-and-donts on a brand with no entries — 200 + data:[] (NEVER 404)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §2 LIST semantics",
+        "endpoint": "GET /api/v1/brands/:brandId/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "DnD Empty LIST Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}/dos-and-donts" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data": { "type": "array" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:admin-create-happy",
+      "description": "Admin creates a brand, POSTs a dos-and-donts entry — 201 + persisted envelope",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §2 CREATE happy",
+        "endpoint": "POST /api/v1/brands/:brandId/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "DnD Create Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${brandId}/dos-and-donts",
+          "body": {
+            "type": "do",
+            "category": "tone",
+            "title": "Use active voice",
+            "body": "Prefer 'we ship' over 'products are shipped'.",
+            "suggestedCorrection": "Rewrite passive verbs as active where the subject is the brand."
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 201,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.brandId": "${brandId}",
+            "$.data.type": "do",
+            "$.data.category": "tone",
+            "$.data.title": "Use active voice"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:admin-create-then-get-one-roundtrip",
+      "description": "Admin creates a brand, POSTs entry, GETs the entry by id — 200 + envelope reflects payload",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §2 chain-CRUD",
+        "endpoint": "GET /api/v1/brands/:brandId/dos-and-donts/:entryId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "DnD Roundtrip Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${brandId}/dos-and-donts",
+          "body": {
+            "type": "dont",
+            "category": "visuals",
+            "title": "No recoloured logos",
+            "body": "Never tint, gradient, or recolour the primary mark."
+          }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "entryId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/brands/${brandId}/dos-and-donts/${entryId}"
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.data.id": "${entryId}",
+            "$.data.brandId": "${brandId}",
+            "$.data.type": "dont",
+            "$.data.category": "visuals",
+            "$.data.title": "No recoloured logos"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:admin-update-happy",
+      "description": "Admin POSTs entry then PUTs full replacement — 200 + envelope reflects update",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §2 UPDATE happy",
+        "endpoint": "PUT /api/v1/brands/:brandId/dos-and-donts/:entryId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "DnD Update Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${brandId}/dos-and-donts",
+          "body": { "type": "do", "category": "tone", "title": "Original title", "body": "Original body" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "entryId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/dos-and-donts/${entryId}",
+          "body": { "type": "dont", "category": "legal", "title": "Updated title", "body": "Updated body" }
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.data.id": "${entryId}",
+            "$.data.type": "dont",
+            "$.data.category": "legal",
+            "$.data.title": "Updated title"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:admin-delete-then-get-404",
+      "description": "Admin POSTs entry, DELETEs entry, subsequent GET-by-id — 404",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §2 DELETE happy",
+        "endpoint": "DELETE /api/v1/brands/:brandId/dos-and-donts/:entryId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "DnD Delete Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${brandId}/dos-and-donts",
+          "body": { "type": "do", "category": "vocabulary", "title": "Delete me", "body": "soon to be cascaded" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "entryId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "DELETE",
+          "path": "/brands/${brandId}/dos-and-donts/${entryId}"
+        },
+        { "kind": "expect", "status": 200 },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/brands/${brandId}/dos-and-donts/${entryId}"
+        },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:admin-list-after-create",
+      "description": "Admin POSTs entry then LISTs — data.length>=1 and the created entry is present",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §2 LIST after-create",
+        "endpoint": "GET /api/v1/brands/:brandId/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "DnD LIST After Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${brandId}/dos-and-donts",
+          "body": { "type": "do", "category": "tone", "title": "Be specific", "body": "Concrete examples beat abstractions." }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}/dos-and-donts" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data": { "type": "array" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:admin-list-filter-by-category",
+      "description": "Admin POSTs two entries in different categories, LISTs ?category=tone — only tone returned",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §2 LIST filter",
+        "endpoint": "GET /api/v1/brands/:brandId/dos-and-donts?category=<enum>"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "DnD Filter Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${brandId}/dos-and-donts",
+          "body": { "type": "do", "category": "tone", "title": "Tone entry", "body": "tone body" }
+        },
+        { "kind": "expect", "status": 201 },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${brandId}/dos-and-donts",
+          "body": { "type": "dont", "category": "legal", "title": "Legal entry", "body": "legal body" }
+        },
+        { "kind": "expect", "status": 201 },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/brands/${brandId}/dos-and-donts?category=tone"
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data": { "type": "array" }
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:admin-list-filter-invalid-category-400",
+      "description": "Admin LISTs ?category=invalid — 400 (Zod query rejects unknown enum)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §2 LIST filter validation",
+        "endpoint": "GET /api/v1/brands/:brandId/dos-and-donts?category=<enum>"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "DnD Bad Filter Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/brands/${brandId}/dos-and-donts?category=invalid-cat"
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:admin-create-validation-empty-title",
+      "description": "POST with empty title (whitespace) — 400 validation",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §2 Validation empty-title",
+        "endpoint": "POST /api/v1/brands/:brandId/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "DnD Empty Title Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${brandId}/dos-and-donts",
+          "body": { "type": "do", "category": "tone", "title": "   ", "body": "body present" }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:admin-create-validation-unknown-type",
+      "description": "POST with unknown type enum — 400 validation",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §2 Validation unknown-type",
+        "endpoint": "POST /api/v1/brands/:brandId/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "DnD Bad Type Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${brandId}/dos-and-donts",
+          "body": { "type": "maybe", "category": "tone", "title": "x", "body": "y" }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:admin-create-validation-unknown-category",
+      "description": "POST with unknown category enum — 400 validation",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §2 Validation unknown-category",
+        "endpoint": "POST /api/v1/brands/:brandId/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "DnD Bad Category Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${brandId}/dos-and-donts",
+          "body": { "type": "do", "category": "marketing", "title": "x", "body": "y" }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:cross-tenant-list-404",
+      "description": "Admin creates a brand, viewer LISTs dos-and-donts — 404 (existence not leaked, not 403)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §3 cross-tenant",
+        "endpoint": "GET /api/v1/brands/:brandId/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Cross-Tenant DnD LIST Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}/dos-and-donts" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:cross-tenant-update-404",
+      "description": "Admin creates a brand + entry, viewer PUTs the entry — 404 (existence not leaked, not 403)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §3 cross-tenant",
+        "endpoint": "PUT /api/v1/brands/:brandId/dos-and-donts/:entryId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Cross-Tenant DnD UPDATE Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${brandId}/dos-and-donts",
+          "body": { "type": "do", "category": "tone", "title": "Admin entry", "body": "owned by admin" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "entryId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "viewer" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${brandId}/dos-and-donts/${entryId}",
+          "body": { "type": "do", "category": "tone", "title": "Hijack attempt", "body": "viewer override" }
+        },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-34c3:brand-delete-cascade-404",
+      "description": "Admin POSTs entry, DELETEs the brand, subsequent LIST on the brand — 404 (cascade applied)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-sfx-webapp-boilerplate-34c3 §1 J5 cascade",
+        "endpoint": "GET /api/v1/brands/:brandId/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "DnD Cascade Seed" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "brandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${brandId}/dos-and-donts",
+          "body": { "type": "do", "category": "tone", "title": "Will be cascaded", "body": "Soon gone" }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "api", "transport": "http", "method": "DELETE", "path": "/brands/${brandId}" },
+        { "kind": "expect", "status": 200 },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${brandId}/dos-and-donts" },
+        { "kind": "expect", "status": 404 }
+      ]
+    }
+  ]
+}
