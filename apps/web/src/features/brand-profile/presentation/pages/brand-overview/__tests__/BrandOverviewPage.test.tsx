@@ -43,6 +43,10 @@ vi.mock('@/features/visual-identity/data/remote/fetch-visual-identity', () => ({
   }),
 }));
 
+vi.mock('@/features/dos-and-donts/data/remote/fetch-dos-and-donts', () => ({
+  fetchDosAndDonts: vi.fn().mockResolvedValue([]),
+}));
+
 import { LanguageProvider } from '@/features/presentation/localization';
 
 function withClient(ui: ReactNode): ReactNode {
@@ -136,6 +140,11 @@ describe('BrandOverviewPage', () => {
       expect(
         screen.getByRole('link', { name: '+ Edit visual identity' }),
       ).toHaveAttribute('href', '/brands/brand-1/visual-identity/edit'),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: "Dos & Don'ts" }),
+      ).toBeInTheDocument(),
     );
   });
 

@@ -52,3 +52,20 @@ export type {
   BrandVoiceWriteInput,
   BrandVoiceShape,
 } from './schemas/brand-voice.schema';
+
+export {
+  DOS_AND_DONT_TYPE_VALUES,
+  DOS_AND_DONT_CATEGORY_VALUES,
+  DOS_AND_DONT_TITLE_MAX_LENGTH,
+  DOS_AND_DONT_BODY_MAX_LENGTH,
+  dosAndDontWriteSchema,
+  dosAndDontSchema,
+  dosAndDontListQuerySchema,
+} from './schemas/dos-and-donts.schema';
+export type {
+  DosAndDontType,
+  DosAndDontCategory,
+  DosAndDontWriteInput,
+  DosAndDontShape,
+  DosAndDontListQueryInput,
+} from './schemas/dos-and-donts.schema';
