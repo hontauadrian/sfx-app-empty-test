@@ -9,3 +9,5 @@ export {
   dosAndDontNewRoute,
   dosAndDontEditRoute,
 } from './constants';
+export { useDosAndDontsRepository } from './data/repositories/use-dos-and-donts-repository';
+export type { DosAndDont } from './data/mapper/map-to-dos-and-dont';

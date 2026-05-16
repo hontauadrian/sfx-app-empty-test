@@ -12,7 +12,7 @@ export interface AppShellUIModel {
   readonly signOutLabel: string;
   readonly signOutHref: string;
   readonly email: string | null;
-  readonly leftNavItems: readonly LeftNavItem[] | null;
+  readonly leftNavItems: readonly LeftNavItem[];
   readonly leftNavLabel: string;
 }
 

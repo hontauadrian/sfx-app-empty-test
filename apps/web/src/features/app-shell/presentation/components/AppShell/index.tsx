@@ -25,9 +25,7 @@ export function AppShell({ children }: AppShellProps): ReactNode {
         onCreateBrand={handleCreateBrand}
       />
       <div className="flex flex-1">
-        {uiModel.leftNavItems ? (
-          <LeftNav items={uiModel.leftNavItems} ariaLabel={uiModel.leftNavLabel} />
-        ) : null}
+        <LeftNav items={uiModel.leftNavItems} ariaLabel={uiModel.leftNavLabel} />
         <main className="flex-1">{children}</main>
       </div>
     </div>

@@ -69,3 +69,14 @@ export type {
   DosAndDontShape,
   DosAndDontListQueryInput,
 } from './schemas/dos-and-donts.schema';
+
+export {
+  CONTENT_CHECK_PASTED_TEXT_MAX_LENGTH,
+  CONTENT_CHECK_CATEGORY_ALL_VALUE,
+  contentCheckFormSchema,
+  mapFormCategoryToWireCategory,
+} from './schemas/content-check.schema';
+export type {
+  ContentCheckFormInput,
+  ContentCheckCategoryValue,
+} from './schemas/content-check.schema';

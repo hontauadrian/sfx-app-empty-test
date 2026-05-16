@@ -9,6 +9,7 @@ import {
   dosAndDontNewRoute,
   dosAndDontsEndpoint,
   dosAndDontsListQueryKey,
+  useDosAndDontsRepository,
 } from '../index';
 
 describe('dos-and-donts feature barrel', () => {
@@ -22,5 +23,6 @@ describe('dos-and-donts feature barrel', () => {
     expect(typeof dosAndDontEntryQueryKey).toBe('function');
     expect(typeof dosAndDontNewRoute).toBe('function');
     expect(typeof dosAndDontEditRoute).toBe('function');
+    expect(typeof useDosAndDontsRepository).toBe('function');
   });
 });

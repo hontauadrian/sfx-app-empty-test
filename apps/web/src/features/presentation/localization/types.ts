@@ -122,6 +122,28 @@ export interface CommonTranslations {
   readonly deleteDosAndDontConfirmTitle: string;
   readonly deleteDosAndDontConfirmBody: string;
   readonly dosAndDontNotFound: string;
+  readonly contentCheck: string;
+  readonly contentCheckPageTitle: string;
+  readonly contentCheckActiveBrandLabel: string;
+  readonly contentCheckPastedTextLabel: string;
+  readonly contentCheckPastedTextPlaceholder: string;
+  readonly contentCheckCategoryLabel: string;
+  readonly contentCheckCategoryAllOption: string;
+  readonly contentCheckSubmitLabel: string;
+  readonly contentCheckReferenceTextLabel: string;
+  readonly contentCheckResultsTitle: string;
+  readonly contentCheckSuggestedCorrectionLabel: string;
+  readonly contentCheckNoActiveBrandTitle: string;
+  readonly contentCheckNoActiveBrandBody: string;
+  readonly contentCheckNoActiveBrandCta: string;
+  readonly contentCheckZeroMatchesTitle: string;
+  readonly contentCheckZeroMatchesBody: string;
+  readonly contentCheckZeroMatchesCta: string;
+  readonly contentCheckBrandNotFoundTitle: string;
+  readonly contentCheckBrandNotFoundBody: string;
+  readonly contentCheckBrandNotFoundCta: string;
+  readonly contentCheckLoadError: string;
+  readonly contentCheckPastedTextTooLongError: string;
 }
 
 export interface TranslationNamespaces {
