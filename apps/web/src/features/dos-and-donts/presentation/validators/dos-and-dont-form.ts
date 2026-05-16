@@ -1,5 +1,5 @@
-import * as validation from '@sfx/validation';
+import { dosAndDontWriteSchema, type DosAndDontWriteInput } from '@sfx/validation';
 
-export const dosAndDontFormSchema = validation.dosAndDontWriteSchema;
+export const dosAndDontFormSchema = dosAndDontWriteSchema;
 
-export type DosAndDontFormValues = validation.DosAndDontWriteInput;
+export type DosAndDontFormValues = DosAndDontWriteInput;

@@ -110,6 +110,9 @@ services:
       - ./packages/domain/src:/app/packages/domain/src
       - ./packages/shared/src:/app/packages/shared/src
       - ./packages/validation/src:/app/packages/validation/src
+      - ./packages/domain/dist:/app/packages/domain/dist
+      - ./packages/shared/dist:/app/packages/shared/dist
+      - ./packages/validation/dist:/app/packages/validation/dist
     depends_on:
       - api
 

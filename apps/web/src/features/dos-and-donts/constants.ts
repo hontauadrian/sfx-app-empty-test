@@ -1,10 +1,17 @@
-import * as validation from '@sfx/validation';
+import {
+  DOS_AND_DONT_BODY_MAX_LENGTH,
+  DOS_AND_DONT_CATEGORY_VALUES,
+  DOS_AND_DONT_TITLE_MAX_LENGTH,
+  DOS_AND_DONT_TYPE_VALUES,
+} from '@sfx/validation';
 import type { DosAndDontCategory } from '@sfx/validation';
 
-export const DOS_AND_DONT_TYPE_VALUES = validation.DOS_AND_DONT_TYPE_VALUES;
-export const DOS_AND_DONT_CATEGORY_VALUES = validation.DOS_AND_DONT_CATEGORY_VALUES;
-export const DOS_AND_DONT_TITLE_MAX_LENGTH = validation.DOS_AND_DONT_TITLE_MAX_LENGTH;
-export const DOS_AND_DONT_BODY_MAX_LENGTH = validation.DOS_AND_DONT_BODY_MAX_LENGTH;
+export {
+  DOS_AND_DONT_BODY_MAX_LENGTH,
+  DOS_AND_DONT_CATEGORY_VALUES,
+  DOS_AND_DONT_TITLE_MAX_LENGTH,
+  DOS_AND_DONT_TYPE_VALUES,
+};
 
 export const DOS_AND_DONTS_ROOT_QUERY_KEY = 'dos-and-donts' as const;
 
