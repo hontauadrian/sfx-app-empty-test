@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { BrandHeader } from '../../components/BrandHeader';
 import { BrandVoiceCard } from '@/features/brand-voice';
-import { VisualIdentityCardPlaceholder } from '../../components/VisualIdentityCardPlaceholder';
+import { VisualIdentityCard } from '@/features/visual-identity';
 import { RenameBrandModal } from '../../components/RenameBrandModal';
 import { DeleteBrandConfirmModal } from '../../components/DeleteBrandConfirmModal';
 import { useBrandOverview } from './use-brand-overview';
@@ -49,11 +49,7 @@ export function BrandOverviewPage({ brandId }: BrandOverviewPageProps): ReactNod
       />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <BrandVoiceCard brandId={brandId} />
-        <VisualIdentityCardPlaceholder
-          title={uiModel.visualIdentityTitle}
-          ctaLabel={uiModel.visualIdentityCtaLabel}
-          ctaHref={uiModel.visualIdentityCtaHref}
-        />
+        <VisualIdentityCard brandId={brandId} />
       </div>
       {overview.isRenameOpen ? (
         <RenameBrandModal

@@ -12,3 +12,13 @@ export {
   type IBrandVoiceRepository,
   type BrandVoiceUpsertInput,
 } from './contracts/brand-voice-repository';
+export type {
+  VisualIdentity,
+  VisualIdentityColourPaletteEntry,
+  VisualIdentityTypographyRule,
+} from './entities/visual-identity';
+export {
+  VISUAL_IDENTITY_REPOSITORY,
+  type IVisualIdentityRepository,
+  type VisualIdentityWritePayload,
+} from './contracts/visual-identity-repository';

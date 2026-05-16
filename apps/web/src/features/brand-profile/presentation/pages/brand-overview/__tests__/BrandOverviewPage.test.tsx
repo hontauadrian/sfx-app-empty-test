@@ -27,6 +27,22 @@ vi.mock('@/features/brand-voice/data/remote/fetch-brand-voice', () => ({
   }),
 }));
 
+vi.mock('@/features/visual-identity/data/remote/fetch-visual-identity', () => ({
+  fetchVisualIdentity: vi.fn().mockResolvedValue({
+    id: '',
+    brandId: 'brand-1',
+    logoUsageRules: null,
+    colourPalette: [],
+    typographyRules: [],
+    spacingLayoutGuidance: null,
+    imageStyleGuidance: null,
+    iconographyGuidance: null,
+    usageRestrictions: null,
+    createdAt: '2026-05-15T00:00:00.000Z',
+    updatedAt: '2026-05-15T00:00:00.000Z',
+  }),
+}));
+
 import { LanguageProvider } from '@/features/presentation/localization';
 
 function withClient(ui: ReactNode): ReactNode {
@@ -116,9 +132,10 @@ describe('BrandOverviewPage', () => {
         screen.getByRole('link', { name: '+ Edit brand voice' }),
       ).toHaveAttribute('href', '/brands/brand-1/voice/edit'),
     );
-    expect(screen.getByRole('link', { name: '+ Edit visual identity' })).toHaveAttribute(
-      'href',
-      '/brands/brand-1/visual-identity/edit',
+    await waitFor(() =>
+      expect(
+        screen.getByRole('link', { name: '+ Edit visual identity' }),
+      ).toHaveAttribute('href', '/brands/brand-1/visual-identity/edit'),
     );
   });
 

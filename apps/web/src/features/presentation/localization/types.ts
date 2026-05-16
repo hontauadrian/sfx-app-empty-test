@@ -70,6 +70,26 @@ export interface CommonTranslations {
   readonly brandVoiceValidationAudienceRequired: string;
   readonly brandVoiceValidationRuleRequired: string;
   readonly brandVoiceValidationListTooLong: string;
+  readonly visualIdentityEditPageTitle: string;
+  readonly visualIdentityEmptyStateBody: string;
+  readonly visualIdentityLogoUsageRulesLabel: string;
+  readonly visualIdentitySpacingLayoutGuidanceLabel: string;
+  readonly visualIdentityImageStyleGuidanceLabel: string;
+  readonly visualIdentityIconographyGuidanceLabel: string;
+  readonly visualIdentityUsageRestrictionsLabel: string;
+  readonly visualIdentityColourPaletteLabel: string;
+  readonly visualIdentityTypographyRulesLabel: string;
+  readonly visualIdentityColourPaletteNameLabel: string;
+  readonly visualIdentityColourPaletteHexLabel: string;
+  readonly visualIdentityColourPaletteUsageLabel: string;
+  readonly visualIdentityTypographyRoleLabel: string;
+  readonly visualIdentityTypographyFamilyLabel: string;
+  readonly visualIdentityTypographyWeightLabel: string;
+  readonly visualIdentityTypographySizeLabel: string;
+  readonly visualIdentityTypographyNotesLabel: string;
+  readonly visualIdentityAddRow: string;
+  readonly visualIdentityRemoveRow: string;
+  readonly visualIdentityEmptyListPlaceholder: string;
 }
 
 export interface TranslationNamespaces {
