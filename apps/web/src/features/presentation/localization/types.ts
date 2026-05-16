@@ -90,6 +90,38 @@ export interface CommonTranslations {
   readonly visualIdentityAddRow: string;
   readonly visualIdentityRemoveRow: string;
   readonly visualIdentityEmptyListPlaceholder: string;
+  readonly dosAndDontsSectionTitle: string;
+  readonly dosAndDontsEmptyStateBody: string;
+  readonly addDosAndDontCta: string;
+  readonly editDosAndDontCta: string;
+  readonly deleteDosAndDontCta: string;
+  readonly dosAndDontTypeLabel: string;
+  readonly dosAndDontCategoryLabel: string;
+  readonly dosAndDontTitleLabel: string;
+  readonly dosAndDontBodyLabel: string;
+  readonly dosAndDontSuggestedCorrectionLabel: string;
+  readonly dosAndDontTypeDoLabel: string;
+  readonly dosAndDontTypeDontLabel: string;
+  readonly dosAndDontCategoryToneLabel: string;
+  readonly dosAndDontCategoryVocabularyLabel: string;
+  readonly dosAndDontCategoryVisualsLabel: string;
+  readonly dosAndDontCategoryLegalLabel: string;
+  readonly dosAndDontCategoryCampaignMessagingLabel: string;
+  readonly newDosAndDontPageTitle: string;
+  readonly editDosAndDontPageTitle: string;
+  readonly dosAndDontSubmitLabel: string;
+  readonly dosAndDontCancelLabel: string;
+  readonly dosAndDontSaveError: string;
+  readonly dosAndDontTitleRequiredError: string;
+  readonly dosAndDontTitleTooLongError: string;
+  readonly dosAndDontBodyRequiredError: string;
+  readonly dosAndDontBodyTooLongError: string;
+  readonly dosAndDontSuggestedCorrectionTooLongError: string;
+  readonly dosAndDontTypeRequiredError: string;
+  readonly dosAndDontCategoryRequiredError: string;
+  readonly deleteDosAndDontConfirmTitle: string;
+  readonly deleteDosAndDontConfirmBody: string;
+  readonly dosAndDontNotFound: string;
 }
 
 export interface TranslationNamespaces {

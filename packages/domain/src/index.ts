@@ -22,3 +22,15 @@ export {
   type IVisualIdentityRepository,
   type VisualIdentityWritePayload,
 } from './contracts/visual-identity-repository';
+export type {
+  DosAndDontEntry,
+  DosAndDontType,
+  DosAndDontCategory,
+} from './entities/dos-and-dont-entry';
+export {
+  DOS_AND_DONT_REPOSITORY,
+  type IDosAndDontRepository,
+  type DosAndDontCreateInput,
+  type DosAndDontUpdatePatch,
+  type DosAndDontListFilter,
+} from './contracts/dos-and-dont-repository';

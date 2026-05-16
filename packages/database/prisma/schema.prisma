@@ -16,9 +16,27 @@ model BrandProfile {
   updatedAt      DateTime        @updatedAt @map("updated_at")
   voice          BrandVoice?
   visualIdentity VisualIdentity?
+  dosAndDonts    DosAndDontEntry[]
 
   @@index([ownerSubject])
   @@map("brand_profile")
+}
+
+model DosAndDontEntry {
+  id                  String       @id @default(cuid())
+  brandId             String       @map("brand_id")
+  brand               BrandProfile @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  type                String
+  category            String
+  title               String
+  body                String
+  suggestedCorrection String?      @map("suggested_correction")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+
+  @@index([brandId])
+  @@index([brandId, category])
+  @@map("dos_and_dont_entries")
 }
 
 model VisualIdentity {
