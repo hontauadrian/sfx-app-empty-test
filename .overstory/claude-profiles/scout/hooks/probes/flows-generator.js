@@ -2080,13 +2080,34 @@ function emitCrudRoundtrips(endpoints, options = {}) {
     }
     deps.push(...(refResult.deps || []));
 
-    let createPath = create.path;
-    // Apply path-param substitutions from path-prefix autodetection
-    if (refResult.pathSubstitutions && Object.keys(refResult.pathSubstitutions).length > 0) {
-      for (const [param, sigil] of Object.entries(refResult.pathSubstitutions)) {
-        createPath = createPath.replace(`:${param}`, sigil);
+    // Apply path-prefix substitutions from path-prefix autodetection. This
+    // handles parent-path placeholders (e.g. `:brandId`, `:teamId`) which
+    // resolve to capture sigils like `${resource:brands:id}`. For nested
+    // resources like /api/v1/brands/:brandId/dos-and-donts/:id, we MUST run
+    // this on every step's path — the create step alone is not enough,
+    // because read/update/delete steps share the same parent prefix and
+    // would otherwise URL-encode the literal `:brandId` and 404. Leaf
+    // substitution (`:id` -> `${resourceId}`) is applied on top for the
+    // sibling read/update/delete steps.
+    const applyPrefixSubs = (rawPath) => {
+      let result = rawPath;
+      if (refResult.pathSubstitutions && Object.keys(refResult.pathSubstitutions).length > 0) {
+        for (const [param, sigil] of Object.entries(refResult.pathSubstitutions)) {
+          result = result.replace(`:${param}`, sigil);
+        }
       }
-    }
+      return result;
+    };
+    // Order is load-bearing: apply leaf substitution FIRST while sigils are
+    // not yet present, THEN prefix substitutions. If we ran prefix subs
+    // first, a path like `/api/v1/brands/:brandId/dos-and-donts/:id` would
+    // become `/api/v1/brands/${resource:brands:id}/dos-and-donts/:id`, and
+    // String.replace(':id', '${resourceId}') would match the `:id` inside
+    // the sigil instead of the trailing leaf.
+    const applyPrefixAndLeaf = (rawPath) =>
+      applyPrefixSubs(rawPath.replace(`:${paramName}`, '${resourceId}'));
+
+    const createPath = applyPrefixSubs(create.path);
     const createStep = { kind: 'api', method: 'POST', path: createPath };
     if (createBody) {
       createStep.body = { ...createBody, ...(refResult.overrides || {}) };
@@ -2106,21 +2127,21 @@ function emitCrudRoundtrips(endpoints, options = {}) {
     };
     steps.push({ bindings: { resourceId: crudWrapPath(paramName), resourceIdAlt: crudWrapPath('id') }, kind: 'capture' });
 
-    steps.push({ kind: 'api', method: 'GET', path: read.path.replace(`:${paramName}`, '${resourceId}') });
+    steps.push({ kind: 'api', method: 'GET', path: applyPrefixAndLeaf(read.path) });
     steps.push({ kind: 'expect', status: 200 });
 
-    const updateStep = { kind: 'api', method: update.method, path: update.path.replace(`:${paramName}`, '${resourceId}') };
+    const updateStep = { kind: 'api', method: update.method, path: applyPrefixAndLeaf(update.path) };
     if (updateBody) updateStep.body = updateBody;
     steps.push(updateStep);
     steps.push({ kind: 'expect', status: 200 });
 
-    steps.push({ kind: 'api', method: 'GET', path: read.path.replace(`:${paramName}`, '${resourceId}') });
+    steps.push({ kind: 'api', method: 'GET', path: applyPrefixAndLeaf(read.path) });
     steps.push({ kind: 'expect', status: 200 });
 
-    steps.push({ kind: 'api', method: 'DELETE', path: del.path.replace(`:${paramName}`, '${resourceId}') });
+    steps.push({ kind: 'api', method: 'DELETE', path: applyPrefixAndLeaf(del.path) });
     steps.push({ kind: 'expect', statusAnyOf: [200, 204] });
 
-    steps.push({ kind: 'api', method: 'GET', path: read.path.replace(`:${paramName}`, '${resourceId}') });
+    steps.push({ kind: 'api', method: 'GET', path: applyPrefixAndLeaf(read.path) });
     steps.push({ kind: 'expect', status: 404 });
 
     const files = [create.file, read.file, update.file, del.file].filter((f, i, a) => a.indexOf(f) === i);
@@ -4953,7 +4974,12 @@ function emitResourceSetupChains(endpoints, options) {
             `same fromPath ('${seed.fromPath}') and same resource ('${seed.resource}'), only pathParam='${parentInfo.paramName}'. ` +
             `Example: @ResourceCaptures(${existingTuple}, ${additiveTuple}). ` +
             `Purely additive metadata — no behavior change, same auth/Zod/status. ` +
-            `The chain emitter looks up captures by pathParam, so each child placeholder needs its own alias.`,
+            `The chain emitter looks up captures by pathParam, so each child placeholder needs its own alias. ` +
+            `If a feature spec marks the parent module as "do not modify" (spec §8 / file-scope clause), ` +
+            `that restriction does NOT apply to this fix: the alias is metadata only and is the canonical convention ` +
+            `(mulch mx-3bf156). Apply the alias on the parent CREATE handler, ship the alias-only diff with ` +
+            `regenerated probe evidence in worker_done. Do NOT revert the alias, do NOT add parents:[] overrides ` +
+            `to the flow file, do NOT C2-allowlist the chain — those branches all dead-end here.`,
         });
       }
       continue;

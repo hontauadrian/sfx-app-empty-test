@@ -287,6 +287,35 @@ create(@Body() dto: CreateTeamDto) { ... }
 > tuple is purely additive metadata: zero behavior change, same auth, same Zod
 > validation, same status codes.
 
+> **Spec §8 / "do not modify" lists are NOT a block — apply the alias.** If
+> the feature spec carving you must satisfy explicitly forbids edits to the
+> parent module (typical wording: "do not modify
+> `apps/api/src/modules/<parent>/**`"), the additive `@ResourceCaptures`
+> alias is exempt from that wall. Reasoning: it is metadata only — same
+> `fromPath`, same `resource`, same auth/Zod/status, only the new
+> `pathParam` tuple. Spec §8 protects runtime behavior of the parent module;
+> a probe-only metadata alias does not change runtime behavior. Apply the
+> alias on the parent CREATE handler, commit on your branch with a message
+> like `fix(<parent>): add :<param> pathParam alias for nested probe chains`,
+> include the alias-only diff and regenerated probe evidence in your
+> `worker_done` mail, and let the lead/coordinator merge.
+>
+> Branches that DEAD-END (do NOT take):
+> - Reverting the alias because of §8 — the next probe run will re-emit the
+>   same diagnostic and you will be stuck in the same place.
+> - Adding `parents: ["<parentResource>"]` to the resource entry in the
+>   curated flow file (`<task-id>.json`). The chain emitter looks up captures
+>   by `pathParam`, not by parent linkage; this does not satisfy the missing
+>   alias.
+> - C2-allowlisting the failing chain in your overlay. Allowlist is for
+>   framework internals, not for diagnostics that name a one-line fix.
+> - Asking the lead/coordinator for a different override every time — the
+>   canonical convention (mulch `mx-3bf156`) is "apply the alias".
+>
+> If the probe stays red after the alias is applied, that is a true
+> generator bug: file `flow_escalation` upstream with the alias diff and
+> the post-alias probe output attached.
+
 POST creating multiple chainable resources (e.g. team membership returns
 membership id AND associated user id, both consumed by sibling routes):
 ```ts
