@@ -143,6 +143,7 @@ packages/database/   → Prisma schema + client (@sfx/database)
 ## Boundaries
 
 ### Always do
+- Every user-initiated mutation (form submit, button-action, delete) produces a visible outcome: pending indicator on the trigger, success either navigates / toasts / updates an observable in-page state, failure surfaces an error per the Error Handling Classification rule. Silent-on-success is broken UX and counts as FAIL in qa-test.
 - Write tests for every new file — see "Testing Requirements" section above. A hook WILL block you if tests are missing.
 - Test every branch, edge case, and error path — not just the happy path
 - Use Zod schemas from `@sfx/validation` for both frontend forms and backend validation

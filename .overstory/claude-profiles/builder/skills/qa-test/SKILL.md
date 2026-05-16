@@ -53,6 +53,85 @@ first. A 'CORS error' or 'connection refused' on any non-`.stack.json` URL is
 your fault for using the wrong URL, not a bug to document.
 
 
+**Adversarial Review Contract.** Every PASS row in your report will be re-verified by an independent reviewer that does NOT see your reasoning, only your assertions plus the running app. If the reviewer can re-run your assertion and reach a different conclusion, the task fails. Write assertions that survive a reviewer who assumes nothing about your intent.
+
+**Binary Assertion Schema.** Every PASS row MUST carry four concrete fields: (i) exact selector or DOM query used, (ii) exact value asserted, (iii) exact value observed in the running app, (iv) reproducible interaction sequence (the Playwright calls in order). Subjective phrasing — "confirmed in snapshot", "labels correct", "page renders", "UI looks fine", "appears to work" — is FAIL. Those statements are not verifiable by anyone other than you.
+
+**State-Change Verification.** For any flow that toggles state — i18n language, theme, role, status, filter, sort, page, tab, selection — capture the observable surface BEFORE the toggle, perform the toggle, capture AFTER. The two captures MUST NOT BE IDENTICAL. If they match, mark `STATE_TOGGLE_NOOP` and FAIL — the toggle did not change what the user sees. This rule applies to every state mechanism without exception.
+
+**Spec-Derived Flows Over Diff-Derived Flows.** Walk every flow named in the spec's Demo / Acceptance / User can / Should be able to lines. Do not skip a flow because it is "out of diff scope" — if the spec promises the user can do X, you must verify the user can do X end-to-end from the entry point, regardless of which file your diff happened to touch. The spec is the contract; the diff is the implementation, not the verification scope.
+
+**Forbidden Assertion Patterns.** Each of the following is FAIL:
+- Asserting a label is "present" without comparing it to the expected text.
+- Asserting on a single captured state instead of comparing before/after for any toggle.
+- Marking PASS for a surface that loads but never reaches a steady usable state (infinite skeleton, blank screen, perpetual spinner).
+- Skipping a flow because the surface is "not new" — every file your diff touches enters the testing scope.
+- Asserting on attribute presence without verifying the attribute value.
+- Re-using a stale report from a previous state hash by copying the file under a new hash name. If the hash changed and the diff genuinely did not, investigate the hash inputs and document the cause — do not rename the report.
+- Wiring an orphan component into any random parent solely to clear the static gate without verifying that the parent itself is reachable, that the wiring is contextually correct, and that the full action flow works end-to-end for a real user.
+
+**Created-Entity Re-Reachability.** For every mutation that CREATES a new persistent resource of any kind, the qa-test flow MUST verify two distinct reachability properties:
+
+1. **Immediate post-create destination renders the new resource.** After submitting the create form, the user lands on a page that displays the resource just created OR a collection that contains it. Asserting "redirected to the detail route" is NOT enough — assert the rendered page contains observable content tied to the new resource (a displayed identifier, name, or contextual field whose value matches what was submitted).
+
+2. **Ongoing reachability after navigating away.** After the create succeeds, navigate AWAY from the post-create destination by returning to the entry surface (root route, primary nav, or any neutral starting point), then navigate BACK to the created resource using ONLY real user navigation — links, list views, breadcrumbs, parent-resource pages. Do NOT use the browser back button. Do NOT paste the URL. Do NOT rely on any state still cached from the create step. If the resource cannot be reached again without typing its URL or going back, mark `CREATED_ENTITY_UNREACHABLE` and FAIL. A create flow that produces a resource the user can never find again through normal navigation is a broken feature regardless of how clean the create form is.
+
+Required evidence shape per create flow:
+
+```
+{
+  "flow": "create <resource-name>",
+  "post_create_route": "<url-after-submit>",
+  "post_create_content_observed": "<literal text from page proving the new resource is rendered>",
+  "navigated_away_to": "<entry route returned to>",
+  "renav_path": ["<click 1>", "<click 2>", ...],
+  "renav_destination": "<url reached>",
+  "renav_content_observed": "<literal text proving the same resource is rendered>"
+}
+```
+
+If `renav_path` is empty or only contains URL pastes, the gate fails. Users do not remember identifiers — the path from "I just created this" to "I want to open it again later" must exist as a series of clicks in the UI itself.
+
+**Duplicate Affordance Detection.** On EVERY page you visit during this qa session, before moving to the next page, enumerate every visible affordance (link, button, menu item) on the rendered page by its label + its observable destination (target route, target modal, target action). This audit is NOT a separate one-off flow — it runs in-line as part of EACH page-visit assertion, and the per-page audit result is captured in the page's evidence block. Skipping the per-page audit on any visited page is FAIL. If two or more affordances on the SAME page produce the SAME observable result and live in the SAME contextual surface (e.g. both inside a primary nav, both inside a single dropdown's menu, both as adjacent header buttons, OR — critically — one inside a page-scoped sub-nav AND one inside a globally-rendered shell component like a user-menu or top bar that ALSO appears on this page), mark `UX_DUPLICATE_AFFORDANCE` and FAIL. Globally-rendered shell affordances (user-menu, top bar, persistent sidebar) count as present on every page they render on; if a page-scoped surface duplicates one of those entries, the page is broken even though the static code lives in separate files. Two affordances with the SAME label that route to the SAME destination from the SAME context are redundant and confuse users about which one is canonical.
+
+Acceptable redundancy (do NOT flag): a primary CTA on a landing surface plus a repeated CTA in an empty-state when the page contains zero records; a header link plus a breadcrumb to the same parent; a global action exposed in a top-level menu plus a contextual shortcut on a specific entity row. Disqualifying: a sub-nav and a user-menu both listing identical entries to the identical destinations on the same rendered page; two side-by-side buttons with identical labels and identical handlers; a sidebar entry duplicated as an inline page action with no contextual difference.
+
+Report the duplicate set as part of the assertion evidence:
+
+```
+{
+  "flow": "duplicate affordance audit on <route>",
+  "page": "<route>",
+  "duplicates": [
+    {
+      "label": "<exact visible text>",
+      "destination": "<route or action name>",
+      "instances": [
+        {"surface": "<sub-nav | user-menu | header | sidebar | inline>", "selector": "<query>"},
+        {"surface": "<...>", "selector": "<...>"}
+      ]
+    }
+  ]
+}
+```
+
+A page that exposes the same destination twice in the same context is broken UX even if every individual button works. The user cannot tell which one is canonical.
+
+**Evidence Schema Per Assertion.** Every PASS row must include a structured evidence block in the report:
+
+```
+{
+  "flow": "<short name>",
+  "preconditions": ["<setup steps>"],
+  "before": {"selector": "<query>", "state": "<state-name>", "value": "<observed-literal>"},
+  "after":  {"selector": "<query>", "state": "<state-name>", "value": "<observed-literal>"},
+  "assertion": "<exact predicate proved>",
+  "evidence_ref": "<path to playwright snapshot or console log>"
+}
+```
+
+For single-state flows (no toggle) omit the `before` field. The `value` field must be a literal string captured from the DOM, not your paraphrase.
+
 **You MAY NOT SKIP any criterion, page, or attack category.** Every flow listed
 in the success criteria, every page in the inventory, every input attack — all
 must be executed and reported PASS or FAIL with concrete evidence (screenshot
@@ -155,7 +234,7 @@ be wired. Code presence is NOT user reachability:
 When you discover a missing prerequisite during a workflow walk, the fix is
 to **wire the prerequisite into the user flow yourself in the same session**
 — do NOT ask the lead, do NOT defer to a follow-up task, do NOT label it
-"out of chunk scope". If the chunk modified a downstream feature, the chunk
+"out of current task scope". If the diff modified a downstream feature, the current task
 also owns making that feature reachable. The acceptance bar is: a user
 seeded with the project's standard seed data can navigate from the entry
 point to the touched feature, use it, and observe the expected outcome —
@@ -733,6 +812,30 @@ For each surface in the diff (page, form, list, modal, button, navigation entry,
 For every NEW component the diff added: search the app for where it is MOUNTED (imported by a page, layout, or other mounted component). If nothing imports it AND no UI surface triggers it → it's an orphan → FAIL. Users cannot reach it.
 
 This is universal: no matter what entity (user, team, project, blog post, product, ticket, comment, invoice — whatever), the patterns above apply.
+
+### Mandatory: every file you TOUCHED is a route you must visit
+
+Static reachability is not enough. For every `.tsx` file in your diff (added or modified), identify the route(s) on which that file actually renders, then visit those routes in Playwright. A diff that modifies any rendered surface without ever navigating to its containing route in qa-test is not verified — you only proved the code compiles, not that the user can use it.
+
+Mapping rule: a file under `apps/web/src/features/<feature>/presentation/{pages,components,modals,forms,layouts}/` renders on every route whose `app/**/page.tsx` imports it directly OR through any chain of pages, layouts, parent components, sidebar/nav entries, or buttons. For each diff file:
+
+1. Trace upward: what page/route mounts this surface?
+2. Set up real preconditions: log in, seed any required parent resource (a parent entity to access nested routes that depend on it, an owning record for permission-scoped routes, etc.). Use the public API, not direct database writes, so the full stack is exercised the same way a real user would exercise it.
+3. Visit the actual route in Playwright with the real entity id.
+4. Assert the surface renders successfully (not the loading skeleton, not Next.js's built-in 404 page, not a blank screen). The page must reach a STEADY USABLE STATE.
+5. Exercise every interaction this surface adds: click the new button, submit the new form, toggle the new control. Verify the observable outcome.
+6. After the action, navigate to where the resulting entity is supposed to show up (list, detail, sidebar count). The created entity must be visible to the same user via real navigation.
+
+### Mandatory: orphan-wire receivers
+
+When the orphan-ui-surfaces gate has previously fired and you wired an orphan into a parent page (e.g. `CreateProjectModal` mounted in `TeamPage`), you MUST:
+
+- Walk the parent page in Playwright with a real authenticated user and a real entity. If the parent itself 404s, infinitely loads, or crashes, your wiring is dead even though the import line exists.
+- Open the wired surface through the button/link the user would actually click — not by directly navigating to a sub-route.
+- Submit / complete the surface's action with a real payload that the API accepts.
+- Navigate to where the resulting entity should appear. If it cannot be found via real navigation, the feature is broken even if the gate passed.
+
+A static gate proves "the import exists." qa-test proves "the user flow works." Both are required.
 
 ## Spec-Derived Criteria (Quinn's job)
 

@@ -774,7 +774,24 @@ function checkProbeArtifact() {
       const probeMtime = fs.statSync(probePath).mtimeMs;
       let newest = 0;
       let newestFile = '';
+      // Skip orchestration scaffolding + build/test artifacts. These paths
+      // are also excluded from the state-hash (see computeGateStateHash);
+      // mirroring the filter here keeps the probe-staleness check aligned
+      // with what actually constitutes a code change for gate purposes.
+      const STALE_PATH_EXCLUSIONS = [
+        /^\.claude\//,
+        /^\.overstory\//,
+        /^\.mulch\//,
+        /^\.seeds\//,
+        /^\.canopy\//,
+        /^\.bridge\./,
+        /^\._/,
+        /^\.DS_Store$/,
+        /\.tsbuildinfo$/,
+        /\.(png|jpg|jpeg|webp)$/i,
+      ];
       for (const rel of sessionFiles) {
+        if (STALE_PATH_EXCLUSIONS.some((rgx) => rgx.test(rel))) continue;
         const abs = path.isAbsolute(rel) ? rel : path.join(PROJECT_DIR, rel);
         if (!fs.existsSync(abs)) continue;
         const stat = fs.statSync(abs);
