@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "task_id": "sfx-webapp-boilerplate-a051",
+  "owns": [],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" },
+    { "resource": "brandProfile" },
+    { "resource": "dosAndDontEntry" }
+  ],
+  "actors": [],
+  "resources": [],
+  "special_flows": []
+}
