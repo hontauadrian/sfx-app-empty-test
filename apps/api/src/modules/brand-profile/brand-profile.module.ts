@@ -20,5 +20,6 @@ const repositoryProvider: Provider = {
   imports: [AuthModule],
   controllers: [BrandProfileController],
   providers: [prismaProvider, repositoryProvider, BrandProfileRepository],
+  exports: [BRAND_PROFILE_REPOSITORY],
 })
 export class BrandProfileModule {}

@@ -1,5 +1,7 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { BrandOverviewPage } from '..';
 
@@ -8,6 +10,33 @@ const useBrandOverviewMock = vi.fn();
 vi.mock('../use-brand-overview', () => ({
   useBrandOverview: (...args: unknown[]): unknown => useBrandOverviewMock(...args),
 }));
+
+vi.mock('@/features/brand-voice/data/remote/fetch-brand-voice', () => ({
+  fetchBrandVoice: vi.fn().mockResolvedValue({
+    brandProfileId: 'brand-1',
+    toneOfVoice: null,
+    preferredVocabulary: [],
+    restrictedVocabulary: [],
+    messagingPillars: [],
+    writingStyleRules: [],
+    audienceRules: [],
+    approvedExamplePhrases: [],
+    rejectedExamplePhrases: [],
+    createdAt: null,
+    updatedAt: null,
+  }),
+}));
+
+import { LanguageProvider } from '@/features/presentation/localization';
+
+function withClient(ui: ReactNode): ReactNode {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return (
+    <QueryClientProvider client={client}>
+      <LanguageProvider>{ui}</LanguageProvider>
+    </QueryClientProvider>
+  );
+}
 
 const baseUI = {
   brandName: 'Acme',
@@ -18,9 +47,6 @@ const baseUI = {
   settingsLabel: 'Brand settings',
   renameLabel: 'Rename',
   deleteLabel: 'Delete brand',
-  brandVoiceTitle: 'Brand voice',
-  brandVoiceCtaLabel: '+ Edit brand voice',
-  brandVoiceCtaHref: '/brands/brand-1/voice/edit',
   visualIdentityTitle: 'Visual identity',
   visualIdentityCtaLabel: '+ Edit visual identity',
   visualIdentityCtaHref: '/brands/brand-1/visual-identity/edit',
@@ -81,13 +107,14 @@ describe('BrandOverviewPage', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders the header, both section placeholders and their CTAs', () => {
+  it('renders the header, the BrandVoiceCard, and the visual-identity CTA', async () => {
     (useBrandOverviewMock as Mock).mockReturnValue(baseHook());
-    render(<BrandOverviewPage brandId="brand-1" />);
+    render(withClient(<BrandOverviewPage brandId="brand-1" />));
     expect(screen.getByRole('heading', { name: 'Acme' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '+ Edit brand voice' })).toHaveAttribute(
-      'href',
-      '/brands/brand-1/voice/edit',
+    await waitFor(() =>
+      expect(
+        screen.getByRole('link', { name: '+ Edit brand voice' }),
+      ).toHaveAttribute('href', '/brands/brand-1/voice/edit'),
     );
     expect(screen.getByRole('link', { name: '+ Edit visual identity' })).toHaveAttribute(
       'href',
@@ -99,7 +126,7 @@ describe('BrandOverviewPage', () => {
     (useBrandOverviewMock as Mock).mockReturnValue(
       baseHook({ uiModel: { ...baseUI, notFound: true } }),
     );
-    render(<BrandOverviewPage brandId="brand-1" />);
+    render(withClient(<BrandOverviewPage brandId="brand-1" />));
     expect(screen.getByText('404')).toBeInTheDocument();
   });
 
@@ -107,7 +134,7 @@ describe('BrandOverviewPage', () => {
     const openRename = vi.fn();
     (useBrandOverviewMock as Mock).mockReturnValue(baseHook({ openRename }));
     const user = userEvent.setup();
-    render(<BrandOverviewPage brandId="brand-1" />);
+    render(withClient(<BrandOverviewPage brandId="brand-1" />));
     await user.click(screen.getByRole('button', { name: 'Brand settings' }));
     await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
     expect(openRename).toHaveBeenCalledTimes(1);
@@ -115,7 +142,7 @@ describe('BrandOverviewPage', () => {
 
   it('renders the rename modal when its flag is set', () => {
     (useBrandOverviewMock as Mock).mockReturnValue(baseHook({ isRenameOpen: true }));
-    render(<BrandOverviewPage brandId="brand-1" />);
+    render(withClient(<BrandOverviewPage brandId="brand-1" />));
     expect(screen.getByRole('dialog', { name: 'Rename brand' })).toBeInTheDocument();
   });
 });

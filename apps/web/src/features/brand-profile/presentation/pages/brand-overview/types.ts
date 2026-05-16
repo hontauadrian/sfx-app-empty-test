@@ -11,9 +11,6 @@ export interface BrandOverviewPageUIModel {
   readonly settingsLabel: string;
   readonly renameLabel: string;
   readonly deleteLabel: string;
-  readonly brandVoiceTitle: string;
-  readonly brandVoiceCtaLabel: string;
-  readonly brandVoiceCtaHref: string;
   readonly visualIdentityTitle: string;
   readonly visualIdentityCtaLabel: string;
   readonly visualIdentityCtaHref: string;

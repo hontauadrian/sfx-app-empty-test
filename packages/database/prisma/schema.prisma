@@ -8,13 +8,33 @@ datasource db {
 }
 
 model BrandProfile {
-  id           String   @id @default(cuid())
-  ownerSubject String   @map("owner_subject")
+  id           String      @id @default(cuid())
+  ownerSubject String      @map("owner_subject")
   name         String
   description  String?
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  voice        BrandVoice?
 
   @@index([ownerSubject])
   @@map("brand_profile")
+}
+
+model BrandVoice {
+  id                     String   @id @default(cuid())
+  brandProfileId         String   @unique @map("brand_profile_id")
+  toneOfVoice            String?  @map("tone_of_voice")
+  preferredVocabulary    Json     @default("[]") @map("preferred_vocabulary")
+  restrictedVocabulary   Json     @default("[]") @map("restricted_vocabulary")
+  messagingPillars       Json     @default("[]") @map("messaging_pillars")
+  writingStyleRules      Json     @default("[]") @map("writing_style_rules")
+  audienceRules          Json     @default("[]") @map("audience_rules")
+  approvedExamplePhrases Json     @default("[]") @map("approved_example_phrases")
+  rejectedExamplePhrases Json     @default("[]") @map("rejected_example_phrases")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  brandProfile BrandProfile @relation(fields: [brandProfileId], references: [id], onDelete: Cascade)
+
+  @@map("brand_voice")
 }

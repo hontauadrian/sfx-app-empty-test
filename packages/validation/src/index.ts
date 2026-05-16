@@ -18,3 +18,22 @@ export type {
   BrandProfileWriteInput,
   BrandProfileShape,
 } from './schemas/brand-profile.schema';
+
+export {
+  BRAND_VOICE_TONE_MAX_LENGTH,
+  BRAND_VOICE_LIST_ITEM_SHORT_MAX_LENGTH,
+  BRAND_VOICE_LIST_ITEM_LONG_MAX_LENGTH,
+  BRAND_VOICE_AUDIENCE_MAX_LENGTH,
+  BRAND_VOICE_PHRASE_MAX_LENGTH,
+  BRAND_VOICE_VOCAB_MAX_ITEMS,
+  BRAND_VOICE_PILLARS_MAX_ITEMS,
+  BRAND_VOICE_RULES_MAX_ITEMS,
+  BRAND_VOICE_AUDIENCE_RULES_MAX_ITEMS,
+  BRAND_VOICE_PHRASES_MAX_ITEMS,
+  brandVoiceWriteSchema,
+  brandVoiceSchema,
+} from './schemas/brand-voice.schema';
+export type {
+  BrandVoiceWriteInput,
+  BrandVoiceShape,
+} from './schemas/brand-voice.schema';
