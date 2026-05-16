@@ -1,0 +1,37 @@
+import {
+  BRAND_VOICE_AUDIENCE_MAX_LENGTH,
+  BRAND_VOICE_AUDIENCE_RULES_MAX_ITEMS,
+  BRAND_VOICE_LIST_ITEM_LONG_MAX_LENGTH,
+  BRAND_VOICE_LIST_ITEM_SHORT_MAX_LENGTH,
+  BRAND_VOICE_PHRASE_MAX_LENGTH,
+  BRAND_VOICE_PHRASES_MAX_ITEMS,
+  BRAND_VOICE_PILLARS_MAX_ITEMS,
+  BRAND_VOICE_RULES_MAX_ITEMS,
+  BRAND_VOICE_TONE_MAX_LENGTH,
+  BRAND_VOICE_VOCAB_MAX_ITEMS,
+} from '@sfx/validation';
+
+export {
+  BRAND_VOICE_AUDIENCE_MAX_LENGTH,
+  BRAND_VOICE_AUDIENCE_RULES_MAX_ITEMS,
+  BRAND_VOICE_LIST_ITEM_LONG_MAX_LENGTH,
+  BRAND_VOICE_LIST_ITEM_SHORT_MAX_LENGTH,
+  BRAND_VOICE_PHRASE_MAX_LENGTH,
+  BRAND_VOICE_PHRASES_MAX_ITEMS,
+  BRAND_VOICE_PILLARS_MAX_ITEMS,
+  BRAND_VOICE_RULES_MAX_ITEMS,
+  BRAND_VOICE_TONE_MAX_LENGTH,
+  BRAND_VOICE_VOCAB_MAX_ITEMS,
+};
+
+export function brandVoiceEndpoint(brandId: string): string {
+  return `api/v1/brands/${brandId}/voice`;
+}
+
+export function brandVoiceQueryKey(brandId: string): readonly [string, string] {
+  return ['brand-voice', brandId] as const;
+}
+
+export function voiceEditRoute(brandId: string): string {
+  return `/brands/${brandId}/voice/edit`;
+}

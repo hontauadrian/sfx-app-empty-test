@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { BrandHeader } from '../../components/BrandHeader';
-import { BrandVoiceCardPlaceholder } from '../../components/BrandVoiceCardPlaceholder';
+import { BrandVoiceCard } from '@/features/brand-voice';
 import { VisualIdentityCardPlaceholder } from '../../components/VisualIdentityCardPlaceholder';
 import { RenameBrandModal } from '../../components/RenameBrandModal';
 import { DeleteBrandConfirmModal } from '../../components/DeleteBrandConfirmModal';
@@ -48,11 +48,7 @@ export function BrandOverviewPage({ brandId }: BrandOverviewPageProps): ReactNod
         onDelete={overview.openDelete}
       />
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <BrandVoiceCardPlaceholder
-          title={uiModel.brandVoiceTitle}
-          ctaLabel={uiModel.brandVoiceCtaLabel}
-          ctaHref={uiModel.brandVoiceCtaHref}
-        />
+        <BrandVoiceCard brandId={brandId} />
         <VisualIdentityCardPlaceholder
           title={uiModel.visualIdentityTitle}
           ctaLabel={uiModel.visualIdentityCtaLabel}

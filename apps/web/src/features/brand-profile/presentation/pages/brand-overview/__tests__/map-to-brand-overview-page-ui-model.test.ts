@@ -50,6 +50,28 @@ const translations = {
   overview: '',
   brandVoice: '',
   visualIdentity: '',
+  brandVoiceEditPageTitle: '',
+  brandVoiceEmptyStateBody: '',
+  brandVoiceToneOfVoiceLabel: '',
+  brandVoicePreferredVocabularyLabel: '',
+  brandVoiceRestrictedVocabularyLabel: '',
+  brandVoiceMessagingPillarsLabel: '',
+  brandVoiceWritingStyleRulesLabel: '',
+  brandVoiceAudienceRulesLabel: '',
+  brandVoiceApprovedPhrasesLabel: '',
+  brandVoiceRejectedPhrasesLabel: '',
+  brandVoiceAudienceRuleAudienceLabel: '',
+  brandVoiceAudienceRuleRuleLabel: '',
+  brandVoiceAddRow: '',
+  brandVoiceRemoveRow: '',
+  brandVoiceEmptyListPlaceholder: '',
+  brandVoiceValidationToneTooLong: '',
+  brandVoiceValidationListItemRequired: '',
+  brandVoiceValidationListItemTooLong: '',
+  brandVoiceValidationListItemDuplicate: '',
+  brandVoiceValidationAudienceRequired: '',
+  brandVoiceValidationRuleRequired: '',
+  brandVoiceValidationListTooLong: '',
 } satisfies CommonTranslations;
 
 const brand = {
@@ -72,7 +94,6 @@ describe('mapToBrandOverviewPageUIModel', () => {
       notFound: false,
     });
     expect(model.brandName).toBe('Acme');
-    expect(model.brandVoiceCtaHref).toBe('/brands/brand-1/voice/edit');
     expect(model.visualIdentityCtaHref).toBe('/brands/brand-1/visual-identity/edit');
     expect(model.renameModalTitle).toBe('Rename brand');
     expect(model.deleteConfirmLabel).toBe('Delete');

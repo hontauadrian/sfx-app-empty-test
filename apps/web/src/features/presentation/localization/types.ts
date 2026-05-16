@@ -48,6 +48,28 @@ export interface CommonTranslations {
   readonly overview: string;
   readonly brandVoice: string;
   readonly visualIdentity: string;
+  readonly brandVoiceEditPageTitle: string;
+  readonly brandVoiceEmptyStateBody: string;
+  readonly brandVoiceToneOfVoiceLabel: string;
+  readonly brandVoicePreferredVocabularyLabel: string;
+  readonly brandVoiceRestrictedVocabularyLabel: string;
+  readonly brandVoiceMessagingPillarsLabel: string;
+  readonly brandVoiceWritingStyleRulesLabel: string;
+  readonly brandVoiceAudienceRulesLabel: string;
+  readonly brandVoiceApprovedPhrasesLabel: string;
+  readonly brandVoiceRejectedPhrasesLabel: string;
+  readonly brandVoiceAudienceRuleAudienceLabel: string;
+  readonly brandVoiceAudienceRuleRuleLabel: string;
+  readonly brandVoiceAddRow: string;
+  readonly brandVoiceRemoveRow: string;
+  readonly brandVoiceEmptyListPlaceholder: string;
+  readonly brandVoiceValidationToneTooLong: string;
+  readonly brandVoiceValidationListItemRequired: string;
+  readonly brandVoiceValidationListItemTooLong: string;
+  readonly brandVoiceValidationListItemDuplicate: string;
+  readonly brandVoiceValidationAudienceRequired: string;
+  readonly brandVoiceValidationRuleRequired: string;
+  readonly brandVoiceValidationListTooLong: string;
 }
 
 export interface TranslationNamespaces {
