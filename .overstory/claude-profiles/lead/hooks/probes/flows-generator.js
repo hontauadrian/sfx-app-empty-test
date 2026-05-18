@@ -208,6 +208,45 @@ function loadCuratedFlowSteps(projectDir) {
  * side of the prefix the comparison is performed on. Generated flows pass
  * `apiPrefix=null` because their step paths already include the prefix.
  */
+/**
+ * Replace path-parameter segments with a single canonical sentinel so the
+ * comparison between curated coverage and OpenAPI/NestJS diagnostics is
+ * shape-based rather than name-based.
+ *
+ *   `${brandId}` (curated template literal) -> `<P>`
+ *   `:id`       (NestJS / Express route param)  -> `<P>`
+ *
+ * Without this, a curated step path like `/brands/${brandId}` emits a
+ * coverage tuple `GET /api/v1/brands/${brandId}:200`, while the diagnostic
+ * for the same controller endpoint reports `GET /api/v1/brands/:id:200`.
+ * The two strings are literal-unequal, the suppression check misses, and
+ * `CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE` fires for endpoints that
+ * ARE genuinely covered. Reducing both forms to `<P>` makes the lookup
+ * symmetric.
+ *
+ * Real-world incident on 2026-05-15: F1 brand-profile builder hit the
+ * stop-gate with 6 UNGENERATABLE rows on `GET|PUT|DELETE /api/v1/brands/:id`
+ * despite having curated `${brandId}`-bound coverage that exercised every
+ * one of those status codes against a real Keycloak-authenticated stack.
+ *
+ * Path SEGMENTS that look like literal values (UUIDs, sentinels like
+ * `non-existent-id`, slugs) are intentionally NOT canonicalized — they
+ * stay as literal segments so curated 401-style flows (which use
+ * placeholder ids without a captured binding) only suppress the matching
+ * literal endpoint, never a parameterized success path.
+ */
+function canonicalizePathParams(rawPath) {
+  if (typeof rawPath !== 'string' || rawPath.length === 0) return rawPath;
+  return rawPath
+    // ${anyVarName} -> <P>
+    .replace(/\$\{[^}]+\}/g, '<P>')
+    // :paramName segment marker (NestJS / Express style) -> <P>
+    // Only match when preceded by `/` or start, then `:identifier`, ending
+    // at the next `/`, `?`, or end-of-string. Avoids munging colons inside
+    // query strings or anchors.
+    .replace(/(^|\/):([A-Za-z_][A-Za-z0-9_]*)(?=\/|$|\?)/g, '$1<P>');
+}
+
 function buildCoverageSet(flows, apiPrefix) {
   const covered = new Set();
   const normalizedPrefix = typeof apiPrefix === 'string' && apiPrefix.length > 0
@@ -238,6 +277,12 @@ function buildCoverageSet(flows, apiPrefix) {
         ) {
           prefixedEpStr = `${lastApiMethod} ${normalizedPrefix}${lastApiPath}`;
         }
+        // Canonical-shape variants: replace `${var}` and `:id`-style param
+        // markers with a single sentinel so coverage matches diagnostics
+        // regardless of naming style. Emitted alongside the literal forms
+        // so existing exact-match cases stay covered.
+        const canonicalEpStr = canonicalizePathParams(epStr);
+        const canonicalPrefixedEpStr = prefixedEpStr ? canonicalizePathParams(prefixedEpStr) : null;
         const statuses = [];
         if (step.status != null) statuses.push(step.status);
         if (Array.isArray(step.statusAnyOf)) {
@@ -246,6 +291,10 @@ function buildCoverageSet(flows, apiPrefix) {
         for (const eachStatus of statuses) {
           covered.add(`${epStr}:${eachStatus}`);
           if (prefixedEpStr) covered.add(`${prefixedEpStr}:${eachStatus}`);
+          if (canonicalEpStr !== epStr) covered.add(`${canonicalEpStr}:${eachStatus}`);
+          if (canonicalPrefixedEpStr && canonicalPrefixedEpStr !== prefixedEpStr) {
+            covered.add(`${canonicalPrefixedEpStr}:${eachStatus}`);
+          }
         }
       }
     }
@@ -892,7 +941,37 @@ function emitQueryInvalidatorFlows(ep, options = {}) {
   const baseQuery = buildSampleQuery(ep.queryContract);
   const errorShape = ep.errorShape || null;
 
+  // For cursor-style pagination, the cursor param's invalid-value behavior is
+  // a per-project semantic choice (reject-400 vs Linear/GitHub empty-200).
+  // Generator does not guess: skip invalidator flows for the cursor param
+  // unless the endpoint declares `x-cursor-invalid-behavior`. Pagination
+  // emitter applies the same rule for `:pagination:invalid-cursor`.
+  const cursorParamName = (ep.paginationProfile
+    && ep.paginationProfile.style === 'cursor'
+    && ep.paginationProfile.paramNames
+    && ep.paginationProfile.paramNames.cursor) || null;
+  const cursorBehavior = cursorParamName
+    ? (ep.swaggerDeclared && ep.swaggerDeclared.extensions
+        && ep.swaggerDeclared.extensions['x-cursor-invalid-behavior'])
+    : null;
+  let cursorDiagnosticEmitted = false;
+
   for (const field of ep.queryContract.fields) {
+    const isCursorField = cursorParamName && field.name === cursorParamName;
+    if (isCursorField && cursorBehavior !== 'reject-400' && cursorBehavior !== 'empty-200') {
+      if (!cursorDiagnosticEmitted) {
+        const diagArr = options.diagnostics || [];
+        diagArr.push({
+          code: 'CURSOR_INVALID_SEMANTICS_UNDECLARED',
+          endpoint: epKey(ep.method, ep.path),
+          file: ep.file || '(controller file unknown)',
+          message: `${ep.method} ${ep.path} cursor query-invalidator flows skipped: cursor param "${cursorParamName}" has no declared invalid-value semantics. Declare \`x-cursor-invalid-behavior: "reject-400" | "empty-200"\` via @ApiOperation extensions (or @CursorInvalid helper) so the generator can emit invalidator flows with the project's actual expected status. Without a declaration the generator would guess 400, contradicting Linear/GitHub-style 200-empty-page implementations.`,
+        });
+        cursorDiagnosticEmitted = true;
+      }
+      continue;
+    }
+
     const invalidators = (field.samples && field.samples.invalidators)
       ? field.samples.invalidators
       : constructInvalidators(field);
@@ -914,8 +993,11 @@ function emitQueryInvalidatorFlows(ep, options = {}) {
         envelope: errorEnvelopeWrapper,
       });
 
-      const expectStep = { kind: 'expect', status: 400 };
-      if (errorAssertions.length > 0) {
+      const isCursorEmpty200 = isCursorField && cursorBehavior === 'empty-200';
+      const expectStep = isCursorEmpty200
+        ? { kind: 'expect', status: 200 }
+        : { kind: 'expect', status: 400 };
+      if (!isCursorEmpty200 && errorAssertions.length > 0) {
         const assertion = errorAssertions[0];
         if (assertion.kind === 'expect-error-shape') {
           Object.assign(expectStep, assertion);
@@ -934,7 +1016,9 @@ function emitQueryInvalidatorFlows(ep, options = {}) {
         dependsOn: [],
         onFail: {
           check: [ep.file],
-          implies: `${ep.method} ${ep.path} does not reject invalid query param ${field.name} (${inv.kind}).`,
+          implies: isCursorEmpty200
+            ? `${ep.method} ${ep.path} cursor param ${field.name} (${inv.kind}) should return empty 200 per declared empty-200 semantics.`
+            : `${ep.method} ${ep.path} does not reject invalid query param ${field.name} (${inv.kind}).`,
         },
         steps: [
           apiStep,
@@ -1419,6 +1503,18 @@ function emitStatusReachabilityFlows(ep, coveredStatuses, diagnostics, options) 
       // POST/PUT/PATCH require a body to pass NestJS validation pipes;
       // without it, the pipe rejects with 400 before the route handler
       // can check resource existence and return 404.
+      if (['POST', 'PUT', 'PATCH'].includes(ep.method) && !ep.zodContract) {
+        // No Zod schema scanned → generator can't build a valid body → empty
+        // body hits 400 (pipe-validation) before reaching the 404 branch.
+        // Probe fails with misleading "expected 404, got 400". Emit a
+        // pointed diagnostic so the author fixes the binding at the source.
+        diagnostics.push({
+          code: 'ZOD_CONTRACT_UNDETECTED_FOR_STATUS_REACH',
+          endpoint: epKey(ep.method, ep.path),
+          file: ep.file || '(controller file unknown)',
+          message: `${ep.method} ${ep.path} declares 404 but no Zod schema scanned. Add @ApiBody({ type: <Dto> }) on the handler (under SWC, reflect-metadata on the @Body() param is not reliable). See build-verifiable-features skill (§ tsx-reflect-metadata-gap).`,
+        });
+      }
       if (['POST', 'PUT', 'PATCH'].includes(ep.method) && ep.zodContract) {
         const body404 = buildSampleBody(ep.zodContract, opts.uniqueFieldSet) || {};
         // Replace body resource-ref FK fields with a VALID-FORMAT but
@@ -2118,6 +2214,15 @@ function emitPaginationFlows(endpoints, options = {}) {
       source: ep.file,
     };
 
+    const refResult = resolveResourceRefDeps(ep, endpoints);
+    let probePath = ep.path;
+    if (refResult.pathSubstitutions) {
+      for (const [param, sigil] of Object.entries(refResult.pathSubstitutions)) {
+        probePath = probePath.replace(`:${param}`, sigil);
+      }
+    }
+    const parentDeps = refResult.deps || [];
+
     // Bare-array endpoints (link-header style with @Res()) bypass the NestJS
     // transform interceptor, so envelope wrapping does not apply and the
     // response body IS the array itself.
@@ -2151,13 +2256,13 @@ function emitPaginationFlows(endpoints, options = {}) {
     flows.push({
       id: `${base}:${ep.method.toLowerCase()}:pagination:first-page`,
       contract,
-      dependsOn: [],
+      dependsOn: [...parentDeps],
       onFail: {
         check: [ep.file],
         implies: `${ep.method} ${ep.path} first-page pagination does not return expected list shape.`,
       },
       steps: [
-        { kind: 'api', method: ep.method, path: ep.path, query: firstPageQuery },
+        { kind: 'api', method: ep.method, path: probePath, query: firstPageQuery },
         firstPageExpect,
       ],
     });
@@ -2179,13 +2284,13 @@ function emitPaginationFlows(endpoints, options = {}) {
       flows.push({
         id: `${base}:${ep.method.toLowerCase()}:pagination:past-end`,
         contract,
-        dependsOn: [],
+        dependsOn: [...parentDeps],
         onFail: {
           check: [ep.file],
           implies: `${ep.method} ${ep.path} past-end page does not return empty items array.`,
         },
         steps: [
-          { kind: 'api', method: ep.method, path: ep.path, query: pastEndQuery },
+          { kind: 'api', method: ep.method, path: probePath, query: pastEndQuery },
           pastEndExpect,
         ],
       });
@@ -2201,46 +2306,58 @@ function emitPaginationFlows(endpoints, options = {}) {
       flows.push({
         id: `${base}:${ep.method.toLowerCase()}:pagination:past-end`,
         contract,
-        dependsOn: [],
+        dependsOn: [...parentDeps],
         onFail: {
           check: [ep.file],
           implies: `${ep.method} ${ep.path} past-end cursor does not return empty items or 400.`,
         },
         steps: [
-          { kind: 'api', method: ep.method, path: ep.path, query: pastEndCursorQuery },
+          { kind: 'api', method: ep.method, path: probePath, query: pastEndCursorQuery },
           pastEndCursorExpect,
         ],
       });
     }
 
-    // --- :empty — use a declared non-pagination query param with impossible value ---
-    // Prefer a declared string filter param over hardcoded 'title' to avoid 400
-    // from strict validation on undeclared params.
+    // --- :empty — declaration-driven only. Require a DECLARED string filter
+    // param in the query schema. No "title" fallback: if the project uses
+    // `.strict()` on its query schema, an undeclared filter returns 400 and the
+    // synthetic-filter trick gives a wrong-expectation assertion. When no
+    // declared filter exists, the project must author a curated `:empty` flow
+    // (or declare a filter field), and we emit a diagnostic instead of guessing.
     const paginationParamNames = new Set(Object.values(profile.paramNames).filter(Boolean));
     const declaredFilterParam = (profile.queryContract && profile.queryContract.fields || [])
       .find((f) => f.type === 'string' && !paginationParamNames.has(f.name));
-    const filterKey = declaredFilterParam ? declaredFilterParam.name : 'title';
-    const emptyQuery = { ...firstPageQuery, [filterKey]: '__never_exists_probe_filter__' };
-    const emptyExpect = { kind: 'expect', status: 200 };
-    if (isBareArray) {
-      emptyExpect.bodyIsRootArray = true;
+    if (!declaredFilterParam) {
+      const diagArr = options.diagnostics || [];
+      diagArr.push({
+        code: 'PAGINATION_EMPTY_UNDERIVABLE',
+        endpoint: epKey(ep.method, ep.path),
+        file: ep.file || '(controller file unknown)',
+        message: `${ep.method} ${ep.path} has no declared string filter param in its query schema. The pagination ":empty" flow cannot be generated without one — synthesizing an undeclared param contradicts schemas that use Zod \`.strict()\`. Either (a) add a declared string filter field to the query schema (e.g. \`q: z.string().optional()\`), OR (b) author a curated \`:empty\` flow in .overstory/runtime-contract.flows/<task-id>.json that exercises the project's actual empty-result behavior.`,
+      });
     } else {
-      emptyExpect.bodyIsArray = [wrapPath(itemsKey)];
-    }
+      const emptyQuery = { ...firstPageQuery, [declaredFilterParam.name]: '__never_exists_probe_filter__' };
+      const emptyExpect = { kind: 'expect', status: 200 };
+      if (isBareArray) {
+        emptyExpect.bodyIsRootArray = true;
+      } else {
+        emptyExpect.bodyIsArray = [wrapPath(itemsKey)];
+      }
 
-    flows.push({
-      id: `${base}:${ep.method.toLowerCase()}:pagination:empty`,
-      contract,
-      dependsOn: [],
-      onFail: {
-        check: [ep.file],
-        implies: `${ep.method} ${ep.path} with impossible filter does not return empty items.`,
-      },
-      steps: [
-        { kind: 'api', method: ep.method, path: ep.path, query: emptyQuery },
-        emptyExpect,
-      ],
-    });
+      flows.push({
+        id: `${base}:${ep.method.toLowerCase()}:pagination:empty`,
+        contract,
+        dependsOn: [...parentDeps],
+        onFail: {
+          check: [ep.file],
+          implies: `${ep.method} ${ep.path} with impossible filter does not return empty items.`,
+        },
+        steps: [
+          { kind: 'api', method: ep.method, path: probePath, query: emptyQuery },
+          emptyExpect,
+        ],
+      });
+    }
 
     // --- :max-limit — declared max limit succeeds (200) ---
     if (profile.maxLimit && profile.paramNames.limit) {
@@ -2250,13 +2367,13 @@ function emitPaginationFlows(endpoints, options = {}) {
       flows.push({
         id: `${base}:${ep.method.toLowerCase()}:pagination:max-limit`,
         contract,
-        dependsOn: [],
+        dependsOn: [...parentDeps],
         onFail: {
           check: [ep.file],
           implies: `${ep.method} ${ep.path} rejects declared max limit=${profile.maxLimit}.`,
         },
         steps: [
-          { kind: 'api', method: ep.method, path: ep.path, query: maxLimitQuery },
+          { kind: 'api', method: ep.method, path: probePath, query: maxLimitQuery },
           { kind: 'expect', status: 200 },
         ],
       });
@@ -2268,13 +2385,13 @@ function emitPaginationFlows(endpoints, options = {}) {
       flows.push({
         id: `${base}:${ep.method.toLowerCase()}:pagination:over-max-limit`,
         contract,
-        dependsOn: [],
+        dependsOn: [...parentDeps],
         onFail: {
           check: [ep.file],
           implies: `${ep.method} ${ep.path} does not reject limit=${profile.maxLimit + 1} (over declared max).`,
         },
         steps: [
-          { kind: 'api', method: ep.method, path: ep.path, query: overMaxQuery },
+          { kind: 'api', method: ep.method, path: probePath, query: overMaxQuery },
           { kind: 'expect', status: 400 },
         ],
       });
@@ -2288,37 +2405,68 @@ function emitPaginationFlows(endpoints, options = {}) {
       flows.push({
         id: `${base}:${ep.method.toLowerCase()}:pagination:no-next`,
         contract,
-        dependsOn: [],
+        dependsOn: [...parentDeps],
         onFail: {
           check: [ep.file],
           implies: `${ep.method} ${ep.path} last page Link header should not contain rel="next".`,
         },
         steps: [
-          { kind: 'api', method: ep.method, path: ep.path, query: noNextQuery },
+          { kind: 'api', method: ep.method, path: probePath, query: noNextQuery },
           { kind: 'expect', status: 200 },
           { kind: 'expect', headerAbsent: 'link:rel="next"' },
         ],
       });
     }
 
-    // --- :invalid-cursor (cursor style only) — bad cursor returns 400 ---
+    // --- :invalid-cursor (cursor style only) — declaration-driven only.
+    // The behavior on an invalid cursor value is a per-project semantic choice:
+    // some projects reject (400), others return an empty page (200, Linear /
+    // GitHub style). Generator must NOT guess. Endpoint declares its behavior
+    // via the OpenAPI extension `x-cursor-invalid-behavior: "reject-400" |
+    // "empty-200"` (e.g. via @ApiExtension or an @CursorInvalid helper).
+    // Without a declaration → skip emit + push diagnostic.
     if (profile.style === 'cursor' && profile.paramNames.cursor) {
-      const invalidCursorQuery = { ...firstPageQuery };
-      invalidCursorQuery[profile.paramNames.cursor] = '__invalid_cursor_value__';
+      const cursorBehavior = ep.swaggerDeclared
+        && ep.swaggerDeclared.extensions
+        && ep.swaggerDeclared.extensions['x-cursor-invalid-behavior'];
+      if (cursorBehavior !== 'reject-400' && cursorBehavior !== 'empty-200') {
+        const diagArr = options.diagnostics || [];
+        diagArr.push({
+          code: 'CURSOR_INVALID_SEMANTICS_UNDECLARED',
+          endpoint: epKey(ep.method, ep.path),
+          file: ep.file || '(controller file unknown)',
+          message: `${ep.method} ${ep.path} uses cursor pagination but does not declare \`x-cursor-invalid-behavior\` (allowed: "reject-400" or "empty-200"). The pagination ":invalid-cursor" flow cannot be generated without this declaration — a hardcoded default would contradict projects that deliberately mirror Linear / GitHub empty-page semantics. Add @ApiExtension('x-cursor-invalid-behavior', 'reject-400' or 'empty-200') to the operation, OR author a curated :invalid-cursor flow in .overstory/runtime-contract.flows/<task-id>.json with the project's actual expected status.`,
+        });
+      } else {
+        const invalidCursorQuery = { ...firstPageQuery };
+        invalidCursorQuery[profile.paramNames.cursor] = '__invalid_cursor_value__';
 
-      flows.push({
-        id: `${base}:${ep.method.toLowerCase()}:pagination:invalid-cursor`,
-        contract,
-        dependsOn: [],
-        onFail: {
-          check: [ep.file],
-          implies: `${ep.method} ${ep.path} does not reject invalid cursor value.`,
-        },
-        steps: [
-          { kind: 'api', method: ep.method, path: ep.path, query: invalidCursorQuery },
-          { kind: 'expect', status: 400 },
-        ],
-      });
+        const expectedStatus = cursorBehavior === 'reject-400' ? 400 : 200;
+        const cursorExpect = { kind: 'expect', status: expectedStatus };
+        if (cursorBehavior === 'empty-200') {
+          if (isBareArray) {
+            cursorExpect.bodyIsRootArray = true;
+          } else {
+            cursorExpect.bodyIsArray = [wrapPath(itemsKey)];
+          }
+        }
+
+        flows.push({
+          id: `${base}:${ep.method.toLowerCase()}:pagination:invalid-cursor`,
+          contract,
+          dependsOn: [...parentDeps],
+          onFail: {
+            check: [ep.file],
+            implies: cursorBehavior === 'reject-400'
+              ? `${ep.method} ${ep.path} does not reject invalid cursor value with 400.`
+              : `${ep.method} ${ep.path} does not return empty page (200) for invalid cursor as declared.`,
+          },
+          steps: [
+            { kind: 'api', method: ep.method, path: probePath, query: invalidCursorQuery },
+            cursorExpect,
+          ],
+        });
+      }
     }
   }
 
@@ -4651,11 +4799,13 @@ function detectPathPrefixParent(ep, endpoints) {
       (e) => e.method === 'POST' && e.path === parentBasePath,
     );
     if (!parentPost) continue;
-    if (!parentPost.zodContract) continue;
 
-    // Structural match only: parent has POST + zodContract.
-    // Whether the parent declares capturable fields is checked by the caller
-    // via x-resource-captures. No field-name heuristic here.
+    // Structural match only: parent has POST.
+    // The zodContract presence is reported back to the caller via
+    // `parentHasBody` so callers can emit a targeted diagnostic instead of
+    // silently dropping the chain. Whether the parent declares capturable
+    // fields is checked by the caller via x-resource-captures. No
+    // field-name heuristic here.
 
     const resourceName = parentBasePath.split('/').pop(); // e.g. 'teams'
     return {
@@ -4663,6 +4813,7 @@ function detectPathPrefixParent(ep, endpoints) {
       paramName,
       resourceName,
       chainId: `chain:resource-setup:${resourceName}`,
+      parentHasBody: Boolean(parentPost.zodContract),
     };
   }
   return null;
@@ -4866,9 +5017,30 @@ function emitResourceSetupChains(endpoints, options) {
   }
 
   // --- Part A: path-prefix autodetection (declaration-driven via x-resource-captures) ---
+  const _parentBodyDiagEmitted = new Set();
   for (const ep of endpoints) {
     const parentInfo = detectPathPrefixParent(ep, endpoints);
     if (!parentInfo) continue;
+
+    // Parent POST exists but its body Zod schema was not scanned. Without it
+    // the chain create step cannot synthesize a valid body, so the chain is
+    // not emitted and every downstream pagination / status-reach / CRUD flow
+    // either keeps a literal :param in the path (404) or fails at binding
+    // interpolation. Surface a targeted source-fix diagnostic; dedupe per
+    // parent endpoint so a parent with many child consumers does not spam.
+    if (!parentInfo.parentHasBody) {
+      const parentKey = epKey(parentInfo.parentEp.method, parentInfo.parentEp.path);
+      if (opts.diagnostics && !_parentBodyDiagEmitted.has(parentKey)) {
+        _parentBodyDiagEmitted.add(parentKey);
+        opts.diagnostics.push({
+          code: 'PARENT_RESOURCE_BODY_UNDETECTED',
+          endpoint: parentKey,
+          file: parentInfo.parentEp.file || '(controller file unknown)',
+          message: `Parent POST ${parentInfo.parentEp.path} has no scanned Zod body — chain setup for child ${ep.path} cannot synthesize a create body (under SWC, reflect-metadata on @Body() is unreliable). FIX: on parent CREATE handler add @ApiBody(zodApiBody(<schema>, '<TypeName>')). See build-verifiable-features skill (§ tsx-reflect-metadata-gap).`,
+        });
+      }
+      continue;
+    }
 
     // Declaration-driven: read x-resource-captures from parent endpoint.
     // Absent declaration -> DIAG -> no chain emitted.
@@ -4890,10 +5062,21 @@ function emitResourceSetupChains(endpoints, options) {
     const matching = captures.find((c) => c.pathParam === parentInfo.paramName);
     if (!matching) {
       if (opts.diagnostics) {
+        const declared = captures.map((capture) => `'${capture.pathParam}'`).join(',');
+        const seed = captures[0];
+        const existingTuple = `{ fromPath: '${seed.fromPath}', resource: '${seed.resource}', pathParam: '${seed.pathParam}' }`;
+        const additiveTuple = `{ fromPath: '${seed.fromPath}', resource: '${seed.resource}', pathParam: '${parentInfo.paramName}' }`;
         opts.diagnostics.push({
           code: 'RESOURCE_CAPTURE_PATHPARAM_UNDECLARED',
           endpoint: epKey(parentInfo.parentEp.method, parentInfo.parentEp.path),
-          message: `${parentInfo.parentEp.path}: declared captures don't include pathParam='${parentInfo.paramName}'. Got: ${captures.map((c) => c.pathParam).join(',')}.`,
+          message:
+            `Parent POST ${parentInfo.parentEp.path} declares @ResourceCaptures with pathParam=[${declared}] ` +
+            `but consumer route ${ep.path} uses ':${parentInfo.paramName}'. ` +
+            `FIX: on the parent CREATE handler, ADD a second additive @ResourceCaptures tuple alongside the existing one — ` +
+            `same fromPath ('${seed.fromPath}') and same resource ('${seed.resource}'), only pathParam='${parentInfo.paramName}'. ` +
+            `Example: @ResourceCaptures(${existingTuple}, ${additiveTuple}). ` +
+            `Purely additive metadata — no behavior change, same auth/Zod/status. ` +
+            `The chain emitter looks up captures by pathParam, so each child placeholder needs its own alias.`,
         });
       }
       continue;
@@ -5485,6 +5668,45 @@ function generate(matrix, logical, overlay, curatedFlowSteps) {
     }
   }
 
+  // --- Post-process: resolve unresolved :param literals across every flow ---
+  // Some emitters (field-invalidator, query-invalidator, content-type,
+  // conditional-request, etc.) ship `step.path = ep.path` verbatim and
+  // `dependsOn: []`. For child routes like /brands/:brandId/guidelines/...
+  // that leaves :brandId literal at runtime → 404 before any field/cursor/
+  // body assertion can fire. Status-reach + pagination already call
+  // resolveResourceRefDeps in their own emitters; this pass applies the
+  // SAME resolution to every remaining flow centrally so future emitters
+  // can stay focused on their assertion logic without each having to
+  // re-implement parent-chain resolution. Idempotent: skips steps that
+  // already substituted (no literal :param remains) and dedupes deps.
+  for (const flow of deduped) {
+    if (!flow.contract || !flow.contract.endpoint) continue;
+    const sp = flow.contract.endpoint.indexOf(' ');
+    if (sp <= 0) continue;
+    const epMethod = flow.contract.endpoint.slice(0, sp);
+    const epPath = flow.contract.endpoint.slice(sp + 1);
+    const ep = endpoints.find((e) => e.method === epMethod && e.path === epPath);
+    if (!ep) continue;
+    const refResult = resolveResourceRefDeps(ep, endpoints);
+    const subs = refResult.pathSubstitutions || {};
+    const newDeps = refResult.deps || [];
+    if (Object.keys(subs).length === 0 && newDeps.length === 0) continue;
+    for (const step of flow.steps || []) {
+      if (step.kind !== 'api' || typeof step.path !== 'string') continue;
+      for (const [param, sigil] of Object.entries(subs)) {
+        if (step.path.includes(`:${param}`)) {
+          step.path = step.path.replace(`:${param}`, sigil);
+        }
+      }
+    }
+    if (newDeps.length > 0) {
+      flow.dependsOn = Array.isArray(flow.dependsOn) ? flow.dependsOn : [];
+      for (const dep of newDeps) {
+        if (!flow.dependsOn.includes(dep)) flow.dependsOn.push(dep);
+      }
+    }
+  }
+
   // --- Fan out resource-setup chains with multiple mutating dependents ---
   // A resource-setup chain creates a stateful record (e.g. a membership).
   // The runner shares its captured bindings session-wide. When two or more
@@ -5495,7 +5717,7 @@ function generate(matrix, logical, overlay, curatedFlowSteps) {
   // copy. Detection is purely declarative: dependsOn graph + step.method +
   // captured-sigil reference. No name patterns, no domain knowledge.
   // Endpoints declared `x-idempotent: true` opt out of mutation classification.
-  const fanned = fanOutMutableChains(deduped);
+  const fanned = fanOutMutableChains(deduped, { diagnostics });
 
   // --- Post-generation coverage-set suppression ---
   // Cross-endpoint emitters (tenant-isolation, auth chains, refresh chains,
@@ -5537,15 +5759,23 @@ function generate(matrix, logical, overlay, curatedFlowSteps) {
     apiPrefix
   );
   const coveredTuples = new Set([...generatedCoverage, ...curatedCoverage]);
-  const filteredDiagnostics = diagnostics.filter((d) => {
-    if (d.code !== 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE') return true;
-    // d.endpoint is "METHOD /path", d.message contains the status number.
+  const filteredDiagnostics = diagnostics.filter((diag) => {
+    if (diag.code !== 'CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE') return true;
+    // diag.endpoint is "METHOD /path", diag.message contains the status number.
     // Extract the status from the message: "Status NNN declared on ..."
-    const statusMatch = d.message && d.message.match(/^Status (\d+) declared on /);
+    const statusMatch = diag.message && diag.message.match(/^Status (\d+) declared on /);
     if (!statusMatch) return true;
     const status = parseInt(statusMatch[1], 10);
-    const key = `${d.endpoint}:${status}`;
-    return !coveredTuples.has(key);
+    const literalKey = `${diag.endpoint}:${status}`;
+    // Diagnostic endpoints from the OpenAPI/NestJS surface use `:id`-style
+    // param markers ("GET /api/v1/brands/:id"). Curated flows often use
+    // template-literal markers ("/brands/${brandId}") because that is what
+    // the runtime contract-flow runner needs for binding substitution.
+    // canonicalizePathParams reduces both shapes to `<P>` so a curated
+    // entry covers the diagnostic regardless of naming style. See the
+    // canonicalizePathParams JSDoc for the 2026-05-15 incident this fixes.
+    const canonicalKey = `${canonicalizePathParams(diag.endpoint)}:${status}`;
+    return !coveredTuples.has(literalKey) && !coveredTuples.has(canonicalKey);
   });
 
   // Sort by id for determinism.
@@ -5579,7 +5809,7 @@ function generate(matrix, logical, overlay, curatedFlowSteps) {
  * Original chain is preserved so non-mutating dependents (e.g. GETs) can
  * still share its single execution and bindings.
  */
-function fanOutMutableChains(flows) {
+function fanOutMutableChains(flows, fanOutOpts = {}) {
   // POST is intentionally excluded: POST typically creates a sub-resource of
   // the captured parent (e.g. POST /teams/:id/members) without mutating the
   // parent itself, so multiple POSTs do not invalidate each other's view of
@@ -5589,6 +5819,8 @@ function fanOutMutableChains(flows) {
   // captured record itself qualify.
   const MUTATION_METHODS = new Set(['DELETE', 'PATCH', 'PUT']);
   const out = flows.slice();
+  const _fanOutDiagnostics = fanOutOpts.diagnostics || null;
+  const _fanOutLiteralDiagEmitted = new Set();
 
   function containsSigil(value, sigil) {
     if (value === null || value === undefined) return false;
@@ -5681,6 +5913,39 @@ function fanOutMutableChains(flows) {
     });
 
     if (mutationDependents.length < 2) continue;
+
+    // Pre-clone safety check: the chain about to be cloned creates a stateful
+    // record. Each clone POSTs the same body. Any literal (non-sigil) string
+    // field in the create body will be identical across clones — and if the
+    // backend writes any DB-side @unique constraint that derives from one of
+    // those literal fields (including transparent derivations like slug =
+    // kebab(name)), the second clone collides with a unique-suffix or pkey
+    // violation. Emit a targeted diagnostic naming each literal field + the
+    // declarative fix; deduped per chain id so it surfaces once per parent.
+    if (_fanOutDiagnostics && !_fanOutLiteralDiagEmitted.has(chain.id)) {
+      const createStep = (chain.steps || []).find(
+        (step) => step.kind === 'api' && step.method === 'POST' && step.body && typeof step.body === 'object',
+      );
+      if (createStep) {
+        const literalFields = [];
+        for (const [fieldName, fieldValue] of Object.entries(createStep.body)) {
+          if (typeof fieldValue !== 'string') continue;
+          if (fieldValue.includes('${')) continue; // already a sigil
+          literalFields.push(fieldName);
+        }
+        if (literalFields.length > 0) {
+          _fanOutLiteralDiagEmitted.add(chain.id);
+          const fieldList = literalFields.map((f) => `'${f}'`).join(', ');
+          const extArrayLiteral = `[${literalFields.map((f) => `'${f}'`).join(', ')}]`;
+          _fanOutDiagnostics.push({
+            code: 'FANOUT_BODY_LITERAL_COLLISION_RISK',
+            endpoint: chain.contract && chain.contract.endpoint,
+            file: (chain.contract && chain.contract.source) || '(parent controller file unknown)',
+            message: `Chain ${chain.id} cloned ${mutationDependents.length}× for mutating dependents; body has literal field(s) ${fieldList} — all clones POST identical body, DB-side @unique derivations (e.g. slug=kebab(name)) collide on clone 2. FIX: on parent's @ApiBody add extension x-probe-unique-fields: ${extArrayLiteral} via zodApiBody(<schema>, '<TypeName>', { extensions: { 'x-probe-unique-fields': ${extArrayLiteral} } }). See build-verifiable-features skill.`,
+          });
+        }
+      }
+    }
 
     for (const dep of mutationDependents) {
       const suffix = suffixFor(dep.id);
@@ -5858,6 +6123,7 @@ module.exports = {
   generate,
   loadCuratedFlowSteps,
   deriveApiPrefixFromEndpoints,
+  canonicalizePathParams,
   fanOutMutableChains,
   sortKeys,
   matchesIgnore,

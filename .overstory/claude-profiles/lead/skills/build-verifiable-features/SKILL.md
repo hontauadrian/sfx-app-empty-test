@@ -7,10 +7,14 @@ description: |
   ANY of these — these strings auto-route here:
     - RESOURCE_CAPTURE_UNDECLARED
     - RESOURCE_CAPTURE_PATHPARAM_UNDECLARED
+    - PARENT_RESOURCE_BODY_UNDETECTED
+    - ZOD_CONTRACT_UNDETECTED_FOR_STATUS_REACH
+    - FANOUT_BODY_LITERAL_COLLISION_RISK
     - chain:resource-setup:* step failure
     - FLOW_STEP_FAILED on step2:expect (typically 403 or 404)
     - "chainable POST" / "fromPath" / "pathParam" / "x-resource-captures"
     - missing @ResourceCaptures, @ApiProperty(type:), or @Inject(Token)
+    - "x-probe-unique-fields" / per-clone uniqueness / slug-derivation collision
 
   ALSO INVOKE when authoring: chainable POST handlers (resource creation
   endpoints whose response IDs another route consumes), NestJS DTO classes
@@ -260,6 +264,61 @@ import { ResourceCaptures } from '@/common/decorators/resource-captures.decorato
 @ApiResponse({ status: 201, type: TeamResponseDto })
 create(@Body() dto: CreateTeamDto) { ... }
 ```
+
+POST whose id is consumed by sibling routes under MULTIPLE different path-param
+names — the parent's `:id` AND nested children's `:teamId` / `:projectId` /
+`:brandId` etc. The chain emitter looks up captures by `pathParam`, so each
+distinct placeholder name a child uses needs its own additive tuple. Same
+`fromPath`, same `resource`, only `pathParam` differs:
+```ts
+// /api/v1/teams/:id (PUT/DELETE/GET)              <- consumes ':id'
+// /api/v1/teams/:teamId/members (POST/GET/...)    <- consumes ':teamId'
+// /api/v1/teams/:teamId/projects (POST/GET/...)   <- consumes ':teamId'
+@Post()
+@ResourceCaptures(
+  { fromPath: 'id', resource: 'team', pathParam: 'id' },     // for sibling routes using :id
+  { fromPath: 'id', resource: 'team', pathParam: 'teamId' }, // for nested children using :teamId
+)
+@ApiResponse({ status: 201, type: TeamResponseDto })
+create(@Body() dto: CreateTeamDto) { ... }
+```
+
+> **When to add a second alias:** if any child route under your parent's path
+> uses a placeholder name other than `:id` (e.g. `:teamId`, `:brandId`,
+> `:projectId`), the runtime probe will surface
+> `RESOURCE_CAPTURE_PATHPARAM_UNDECLARED` naming the missing pathParam. The
+> diagnostic message includes the exact fix line — copy it. Adding the second
+> tuple is purely additive metadata: zero behavior change, same auth, same Zod
+> validation, same status codes.
+
+> **Spec §8 / "do not modify" lists are NOT a block — apply the alias.** If
+> the feature spec carving you must satisfy explicitly forbids edits to the
+> parent module (typical wording: "do not modify
+> `apps/api/src/modules/<parent>/**`"), the additive `@ResourceCaptures`
+> alias is exempt from that wall. Reasoning: it is metadata only — same
+> `fromPath`, same `resource`, same auth/Zod/status, only the new
+> `pathParam` tuple. Spec §8 protects runtime behavior of the parent module;
+> a probe-only metadata alias does not change runtime behavior. Apply the
+> alias on the parent CREATE handler, commit on your branch with a message
+> like `fix(<parent>): add :<param> pathParam alias for nested probe chains`,
+> include the alias-only diff and regenerated probe evidence in your
+> `worker_done` mail, and let the lead/coordinator merge.
+>
+> Branches that DEAD-END (do NOT take):
+> - Reverting the alias because of §8 — the next probe run will re-emit the
+>   same diagnostic and you will be stuck in the same place.
+> - Adding `parents: ["<parentResource>"]` to the resource entry in the
+>   curated flow file (`<task-id>.json`). The chain emitter looks up captures
+>   by `pathParam`, not by parent linkage; this does not satisfy the missing
+>   alias.
+> - C2-allowlisting the failing chain in your overlay. Allowlist is for
+>   framework internals, not for diagnostics that name a one-line fix.
+> - Asking the lead/coordinator for a different override every time — the
+>   canonical convention (mulch `mx-3bf156`) is "apply the alias".
+>
+> If the probe stays red after the alias is applied, that is a true
+> generator bug: file `flow_escalation` upstream with the alias diff and
+> the post-alias probe output attached.
 
 POST creating multiple chainable resources (e.g. team membership returns
 membership id AND associated user id, both consumed by sibling routes):
@@ -534,3 +593,116 @@ endpoint. See `forms.md` for the full status notice.
 | DIAG | Trigger | Fix |
 |---|---|---|
 | `DECORATOR_MATCH_AMBIGUOUS` | Matrix enrichment found multiple exact path matches in the OpenAPI document for one endpoint. Suffix-match (Pass 2) and handler-name-match (Pass 3) were removed — only normalized exact-path match (Pass 1) is accepted. | Make the path declaration unique. If two controller methods share the same path, give them distinct `operationId`s and route prefixes. |
+
+## tsx-reflect-metadata-gap (chain-parent body + status-reach body)
+
+### `PARENT_RESOURCE_BODY_UNDETECTED`
+
+**Symptom.** A child route like `GET /api/v1/brands/:brandId/guidelines/...`
+ships its `:brandId` segment literal at runtime (404 everywhere). The
+generator diagnostic names the parent: `Parent POST /api/v1/brands has no
+scanned Zod body contract. Child route ... depends on this parent for chain
+setup.`
+
+**Cause.** The chain emitter walks path-prefix ancestors and finds the
+parent CREATE handler (e.g. `POST /api/v1/brands`), but the parent's body
+schema was not picked up via reflection. Under SWC + tsx + esbuild,
+reflect-metadata on `@Body()` parameters is unreliable — the inferred Zod
+contract is missing, the chain create step has no body to send, and the
+emitter cannot synthesize the parent resource. Every downstream pagination,
+status-reach, and CRUD flow on child `:param` routes degrades silently to a
+404 because the captured-id binding never resolves.
+
+**Fix.** On the parent CREATE handler, bind the Zod body via `@ApiBody`
+using the schema that already validates the request:
+
+```ts
+@Post()
+@HttpCode(201)
+@ApiOperation({ summary: '...' })
+@ApiBody(zodApiBody(createBrandSchema, 'CreateBrandInput'))   // ← ADD THIS
+@ResourceCaptures({ fromPath: 'id', resource: 'brand', pathParam: 'id' })
+async createBrand(@Body(CreateBrandPipe) input: CreateBrandInput): Promise<Brand> {
+  // unchanged
+}
+```
+
+Purely declarative metadata — no behaviour change, no auth change, no Zod
+change. The diagnostic body names the exact snippet for any resource by
+filling in `<schema>` + `<TypeName>` — copy it.
+
+### `ZOD_CONTRACT_UNDETECTED_FOR_STATUS_REACH`
+
+**Symptom.** A PATCH/PUT/POST handler declares `@ApiResponse({ status: 404
+})` (or `400` / `409`) but the probe surfaces `expected 404, got 400` and
+the diagnostic block names this code.
+
+**Cause.** Same reflection gap as above, applied to the endpoint's own
+404-reach probe. The status-reachability emitter generates a flow that
+sends a known-bad path-param (e.g. `non-existent-id-00000`) and expects
+404. Without a scanned Zod body it sends an empty body, NestJS validation
+pipe rejects with 400 BEFORE the controller ever runs the "not found"
+branch, and the assertion fails.
+
+**Fix.** Same template — declare `@ApiBody(zodApiBody(<schema>, '<Type>'))`
+on the handler whose 4xx-reach is failing. The status-reach emitter then
+synthesizes a valid sample body, the pipe accepts it, the controller runs,
+and the 404 path is reached.
+
+## fan-out unique-collision (`FANOUT_BODY_LITERAL_COLLISION_RISK`)
+
+**Symptom.** Probe diagnostic block names a resource-setup chain (e.g.
+`chain:resource-setup:brands`) with text:
+
+> `Chain ... will be cloned for N mutating dependents ... The create-step
+> body has literal string field(s) 'name', ... that will be IDENTICAL across
+> every clone.`
+
+**Cause.** When a parent resource has ≥2 mutating dependents (PATCH/PUT/
+DELETE consuming the captured id), `fanOutMutableChains` clones the
+resource-setup chain per mutator so they don't see each other's mutations.
+Each clone POSTs the same body. If the backend writes any DB-side `@unique`
+constraint that derives from those body fields — including transparent
+derivations like `slug = kebab(name)` where `slug` is `@unique` but `name`
+is not — the second clone's POST collides. The backend may suffix
+(`acme-holdings-2`), reject with 409, or violate the constraint. Any flow
+asserting the literal value then fails.
+
+**Fix.** On the parent CREATE handler's `@ApiBody`, declare the OpenAPI
+extension `x-probe-unique-fields` listing every field whose backend write
+participates in a unique-constrained derivation:
+
+```ts
+@ApiBody(
+  zodApiBody(createBrandSchema, 'CreateBrandInput', {
+    extensions: { 'x-probe-unique-fields': ['name'] },
+  }),
+)
+```
+
+`effectiveUniqueFieldSet` reads this extension and unions the named fields
+into the unique set. `buildSampleBody` then substitutes `${uniqString}` per
+field. `seedUniqueBindings` is fresh per flow run, and each fan-out copy is
+its own flow, so every clone POSTs a distinct random value. The derived
+unique column (slug, code, key, etc.) gets a fresh value too — no
+collision, no suffix, no 409, no assertion break.
+
+**Coverage rule.** Declare `x-probe-unique-fields` for every body field
+that participates in a backend-side `@unique` write — direct or derived.
+Common cases:
+- `name` → `slug = kebab(name)` and `slug @unique`
+- `title` → `code = slugify(title)` and `code @unique`
+- `email` (already covered by `${uniqEmail}` when format=email is declared)
+- `username`, `handle`, `displayId` — anything used to derive a unique
+  identifier
+
+The probe cannot introspect backend derivations, so the declaration is the
+contract. Adding more fields than strictly necessary is harmless (they get
+random values, the resource is still valid).
+
+> **When NOT needed.** If the parent resource has only one mutating
+> dependent (single DELETE or single PATCH), fan-out does not fire, the
+> chain runs once, and literal body fields are fine. The diagnostic only
+> emits when the cloning condition is real (≥2 mutators). Declare anyway
+> for any resource you expect to grow further mutators on — additive
+> metadata, zero cost.

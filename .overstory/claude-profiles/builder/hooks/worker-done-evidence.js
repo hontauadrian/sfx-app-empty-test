@@ -18,6 +18,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { execSync } = require('node:child_process');
+const { checkQualityGates } = require('./lib/quality-gates');
 
 /**
  * Parse runtime-evidence block from mail body text.
@@ -194,6 +195,15 @@ function runGuard({ stdinRaw, cwd } = {}) {
     }
 
     const projectDir = cwd || process.env.CLAUDE_PROJECT_DIR || process.env.PROJECT_ROOT || process.cwd();
+
+    const gatesFailure = checkQualityGates({ projectDir });
+    if (gatesFailure) {
+      return {
+        allow: false,
+        decision: 'block',
+        reason: `WORKER_DONE_QUALITY_GATES_FAILED:\n\n${gatesFailure}`,
+      };
+    }
 
     // Evidence policy: the on-disk probe artifact (.claude/hooks/.http-smoke.json)
     // is the SOLE source of truth. Agents are no longer required to paste the

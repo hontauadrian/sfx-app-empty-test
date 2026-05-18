@@ -103,6 +103,29 @@ const SESSION_FILE = path.join(
 const MCP_EVIDENCE_DIR = path.join(PROJECT_DIR, '.claude', 'hooks', '.mcp-evidence');
 
 // ────────────────────────────────────────────────────────────────────
+// Umbrella marker — short-circuit when this exact diff already passed
+// every gate during a prior `worker_done` / `sd close` / `ov merge`.
+// State-hash already excludes `.claude/**`, `.overstory/**`, `.mulch/**`,
+// `.seeds/**`, build artifacts and images, so the marker stays valid
+// across hook re-fires as long as the tracked code surface is unchanged.
+// ────────────────────────────────────────────────────────────────────
+const { computeGateStateHash } = require('./lib/quality-gates');
+const UMBRELLA_MARKER_DIR = path.join(PROJECT_DIR, '.claude', 'hook-reports');
+let UMBRELLA_STATE_HASH = null;
+try {
+  UMBRELLA_STATE_HASH = computeGateStateHash(PROJECT_DIR);
+} catch {}
+if (UMBRELLA_STATE_HASH) {
+  const umbrellaMarker = path.join(
+    UMBRELLA_MARKER_DIR,
+    `all-gates-pass-${UMBRELLA_STATE_HASH}.json`,
+  );
+  if (fs.existsSync(umbrellaMarker)) {
+    process.exit(0);
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
 // Gate 1: Unit test coverage for session-modified files
 // (mirrors require-tests-for-changes.js)
 // ────────────────────────────────────────────────────────────────────
@@ -618,105 +641,10 @@ function checkE2EVerification() {
 //
 // Skipped if node_modules isn't installed yet (bootstrap/dry-run repos).
 // ────────────────────────────────────────────────────────────────────
-function computeGateStateHash() {
-  const sh = (cmd) => {
-    try {
-      return execSync(cmd, { cwd: PROJECT_DIR, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024 });
-    } catch { return ''; }
-  };
-  const baseBranch = (sh('git symbolic-ref refs/remotes/origin/HEAD').trim().replace('refs/remotes/origin/', '')) || 'master';
-  const mergeBase = sh(`git merge-base HEAD origin/${baseBranch}`).trim();
-  // Hash the actual diff content, NOT just file names. Pathspec excludes strip
-  // orchestration scaffolding so mulch/seeds/canopy/etc commits don't flip the
-  // hash — but any real source-code change does.
-  const excludes = [
-    "':(exclude,glob)**/*.tsbuildinfo'",
-    "':(exclude,glob)*.tsbuildinfo'",
-    "':(exclude,glob)**/*.png'",
-    "':(exclude,glob)*.png'",
-    "':(exclude,glob)**/*.jpg'",
-    "':(exclude,glob)*.jpg'",
-    "':(exclude,glob)**/*.jpeg'",
-    "':(exclude,glob)*.jpeg'",
-    "':(exclude,glob)**/*.webp'",
-    "':(exclude,glob)*.webp'",
-    "':(exclude,glob).claude/**'",
-    "':(exclude,glob).overstory/**'",
-    "':(exclude,glob).mulch/**'",
-    "':(exclude,glob).seeds/**'",
-    "':(exclude,glob).canopy/**'",
-    "':(exclude,glob).bridge.*'",
-    "':(exclude,glob)._*'",
-    "':(exclude,glob).DS_Store'",
-  ].join(' ');
-  const range = mergeBase ? `${mergeBase} HEAD` : 'HEAD';
-  const diff = sh(`git diff ${range} -- . ${excludes}`);
-  return crypto.createHash('sha1').update(diff).digest('hex').slice(0, 12);
-}
+const { checkQualityGates: runQualityGates } = require('./lib/quality-gates');
 
 function checkQualityGates() {
-  if (!fs.existsSync(path.join(PROJECT_DIR, 'package.json'))) return null;
-  if (!fs.existsSync(path.join(PROJECT_DIR, 'node_modules'))) return null;
-
-  const gates = [
-    { name: 'Typecheck', command: 'pnpm typecheck', timeoutMs: 180000 },
-    { name: 'Lint', command: 'pnpm lint', timeoutMs: 180000 },
-    { name: 'Tests', command: 'pnpm test', timeoutMs: 600000 },
-    { name: 'Integration tests', command: 'pnpm test:integration', timeoutMs: 600000 },
-  ];
-
-  // State-hash gate-pass marker: if every gate in this set already passed for
-  // the current source-code state, skip re-running them. Marker only written
-  // after a FULL pass; any single gate failure leaves no marker so the next
-  // attempt re-runs everything.
-  const stateHash = computeGateStateHash();
-  const markerDir = path.join(PROJECT_DIR, '.claude', 'hook-reports');
-  const markerPath = path.join(markerDir, `gate-pass-pre-close-${stateHash}.json`);
-  if (fs.existsSync(markerPath)) {
-    return null;
-  }
-
-  for (const gate of gates) {
-    try {
-      execSync(gate.command, {
-        cwd: PROJECT_DIR,
-        stdio: 'pipe',
-        timeout: gate.timeoutMs,
-        env: { ...process.env, CI: '1', FORCE_COLOR: '0' },
-      });
-    } catch (error) {
-      const stdout = error.stdout ? error.stdout.toString() : '';
-      const stderr = error.stderr ? error.stderr.toString() : '';
-      const combined = `${stdout}\n${stderr}`.trim() || 'Command failed with no output';
-      const tail = combined.split('\n').slice(-40).join('\n');
-      return [
-        `${gate.name} failed when running \`${gate.command}\`.`,
-        '',
-        'Last output (tail):',
-        '```',
-        tail,
-        '```',
-        '',
-        'This gate runs the real quality checks — you cannot bypass it with',
-        'stub tests (e.g. `expect(true).toBe(true)`). Fix the failing code or',
-        'tests, re-run the command locally until it passes, then retry.',
-      ].join('\n');
-    }
-  }
-
-  // All gates passed — write marker so subsequent close-intent commands at
-  // the same state hash can short-circuit.
-  try {
-    fs.mkdirSync(markerDir, { recursive: true });
-    fs.writeFileSync(markerPath, JSON.stringify({
-      stateHash,
-      timestamp: new Date().toISOString(),
-      gates: gates.map((g) => g.name),
-    }, null, 2));
-  } catch {
-    // best-effort cache write; never fail the gate because of cache failure
-  }
-  return null;
+  return runQualityGates({ projectDir: PROJECT_DIR });
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -774,7 +702,24 @@ function checkProbeArtifact() {
       const probeMtime = fs.statSync(probePath).mtimeMs;
       let newest = 0;
       let newestFile = '';
+      // Skip orchestration scaffolding + build/test artifacts. These paths
+      // are also excluded from the state-hash (see computeGateStateHash);
+      // mirroring the filter here keeps the probe-staleness check aligned
+      // with what actually constitutes a code change for gate purposes.
+      const STALE_PATH_EXCLUSIONS = [
+        /^\.claude\//,
+        /^\.overstory\//,
+        /^\.mulch\//,
+        /^\.seeds\//,
+        /^\.canopy\//,
+        /^\.bridge\./,
+        /^\._/,
+        /^\.DS_Store$/,
+        /\.tsbuildinfo$/,
+        /\.(png|jpg|jpeg|webp)$/i,
+      ];
       for (const rel of sessionFiles) {
+        if (STALE_PATH_EXCLUSIONS.some((rgx) => rgx.test(rel))) continue;
         const abs = path.isAbsolute(rel) ? rel : path.join(PROJECT_DIR, rel);
         if (!fs.existsSync(abs)) continue;
         const stat = fs.statSync(abs);
@@ -878,6 +823,24 @@ if (gateReasons.length === 0) {
       execSync(
         'git -c user.email="overstory@sfx.local" -c user.name="overstory-orchestrator" commit -m "chore(flows): auto-commit runtime-contract.flows before close" --no-verify',
         { cwd: PROJECT_DIR },
+      );
+    }
+  } catch {}
+  try {
+    if (UMBRELLA_STATE_HASH) {
+      fs.mkdirSync(UMBRELLA_MARKER_DIR, { recursive: true });
+      fs.writeFileSync(
+        path.join(UMBRELLA_MARKER_DIR, `all-gates-pass-${UMBRELLA_STATE_HASH}.json`),
+        JSON.stringify(
+          {
+            stateHash: UMBRELLA_STATE_HASH,
+            gates: ['unitTests', 'integrationTests', 'e2eVerification', 'qualityGates', 'probeArtifact'],
+            intent: matchedIntent,
+            passedAt: new Date().toISOString(),
+          },
+          null,
+          2,
+        ),
       );
     }
   } catch {}

@@ -1,0 +1,71 @@
+F1 backend recovery complete. Branch: overstory/merger-f1-recover/sfx-webapp-boilerplate-06d8 @ 7645a96.
+
+## Procedure
+Tier 1 path-scoped checkout from overstory/builder-f1-backend/sfx-webapp-boilerplate-8907.
+WIP-ZOMBIE commits 4e77841 + b4eab6d. Pulled only feature paths; intentionally
+excluded the WIP's deletions under hook-profile source dirs (per parent task
+06d8 + your dispatch). Also excluded qa-company-info-admin.png (root binary
+clutter) and .overstory/runtime-contract.flows/sfx-webapp-boilerplate-8907.json
+(per your dispatch — though that file did not exist on dev, I honored the
+directive to leave flow authorship to the lead).
+
+Commit: 7645a96 feat(company-info): F1 backend expansion (recovered from zombie WIP)
+  23 files changed, 1208 insertions(+), 5 deletions(-)
+  - packages/domain/src/entities/company-info.ts + tests
+  - packages/validation/src/schemas/company-info.schema.ts + tests
+  - packages/database/prisma/schema.prisma + migration 20260517011632_expand_company_info_fields
+  - apps/api/src/modules/company-info/{application,data,__integration__}
+  - apps/web/src/features/company-info/{data,presentation}
+
+## Quality Gates
+- pnpm typecheck: PASS (10/10 turbo tasks)
+- pnpm lint: PASS (9/9 turbo tasks)
+- pnpm test: PASS (web 48 files / 190 tests)
+- pnpm test:integration: PASS (api 21 supertest tests, web 8 MSW tests)
+- pnpm probe:smoke: PASS
+
+## runtime-evidence
+```
+[response-envelope] successWrapper=["data"] errorPath="error"
+[contract-flows] loaded 6 files: 3 actors, 3 resources, 15 special flows
+[contract-flows-execute] total=15 passed=15 failed=0 skipped=0 duration=301ms
+flows-generator: wrote 14 flows (auth-boundary:12, endpoint-happy:1, logical-contract:1)
+Contract verification: 4/4 passed
+  - GET /api/v1/auth/me -> 401
+  - GET /api/v1/health -> 200
+  - GET /api/v1/company-info -> 401
+  - HTTP-smoke 43/43 cases passed in 4018ms
+[probes-summary] total=4 passed=4 skipped=0 failed=0
+```
+
+## qa-test-evidence
+- Report path: .claude/hook-reports/qa-test-sfx-webapp-boilerplate-06d8-d085fd703869.md
+- Mode: full
+- Flows verified:
+  - Real OIDC login as admin@example.com via Keycloak hosted form -> /oauth2/callback -> authed home
+  - Sidebar navigation: Home -> Admin -> Company Info (real link clicks, no URL pastes)
+  - F4 admin form save round-trip: edit Legal name, submit, full reload, value persisted
+  - PUT /api/v1/company-info full expanded payload (8 new fields) -> 200; GET echoes identical body
+  - 6 validation acceptance rows: foundedYear string, foundedYear float, teamSize -1,
+    coreValues mixed types, coreValues 33 items, missionStatement 4001 chars -> all 400
+    with the exact field name + expected message
+  - Auth: 401 on unauth (probe contract verification), 403 on non-admin (contract-flow
+    task-e4c8:put-non-admin-forbidden + get-non-admin-forbidden)
+  - Per-page duplicate-affordance audit on /, /admin, /admin/company-info: zero duplicates
+  - Created-entity re-reachability satisfied trivially (singleton resource, no list view)
+  - Console-error audit: only baseline favicon 404 + 7 intentional 400s from validation probes
+- Final counts: PASSED=14, FAILED=0, CRITICAL=0, HIGH=0
+- State hash: d085fd703869
+
+## Diagnostics (warnings, non-fatal)
+- AUTH_FLOW_MEPOLL_UNDETECTED -- pre-existing on dev, not from recovery diff.
+- RESOURCE_GRAPH_NO_CREATE_ENDPOINT for CompanyInfo -- CompanyInfo is a singleton
+  (PUT-only, no POST). Expected; chain-emitters cannot bootstrap a singleton.
+
+## Mulch
+ml record api-modules --type pattern "recover-zombie-wip-feature-only" -- captured
+the path-scoped-checkout recovery procedure (use `git checkout <wip> -- <feature-paths>`
+from a fresh dev branch instead of merging when the WIP also contains out-of-scope
+deletions).
+
+Ready for `ov merge` into dev. Feature task sfx-webapp-boilerplate-8907 closes on merge.

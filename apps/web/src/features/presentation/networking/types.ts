@@ -12,8 +12,14 @@ export interface RequestResponse<T> {
   readonly status: number;
 }
 
+export interface RequestFieldError {
+  readonly field: string;
+  readonly message: string;
+}
+
 export interface RequestError {
   readonly message: string;
   readonly status: number;
   readonly code?: string;
+  readonly errors?: ReadonlyArray<RequestFieldError>;
 }

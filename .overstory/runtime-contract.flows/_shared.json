@@ -4,7 +4,8 @@
   "owns": [
     { "actor": "anonymous" },
     { "actor": "admin" },
-    { "actor": "viewer" }
+    { "actor": "viewer" },
+    { "actor": "agent" }
   ],
   "actors": [
     {
@@ -42,6 +43,25 @@
             "client_id": "${env:OAUTH2_PROXY_CLIENT_ID}",
             "client_secret": "${env:OAUTH2_PROXY_CLIENT_SECRET}",
             "username": "viewer@example.com",
+            "password": "password",
+            "scope": "openid"
+          },
+          "key": "$.access_token"
+        }
+      }
+    },
+    {
+      "name": "agent",
+      "auth": {
+        "scheme": "bearer-in-body",
+        "login": {
+          "path": "${env:OAUTH_ISSUER_URL}/protocol/openid-connect/token",
+          "contentType": "application/x-www-form-urlencoded",
+          "body": {
+            "grant_type": "password",
+            "client_id": "${env:OAUTH2_PROXY_CLIENT_ID}",
+            "client_secret": "${env:OAUTH2_PROXY_CLIENT_SECRET}",
+            "username": "agent@example.com",
             "password": "password",
             "scope": "openid"
           },

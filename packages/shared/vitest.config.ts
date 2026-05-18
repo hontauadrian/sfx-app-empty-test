@@ -5,6 +5,16 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["**/__tests__/**/*.test.ts"],
+    poolOptions: {
+      threads: {
+        maxThreads: Number(process.env.VITEST_MAX_THREADS) || undefined,
+        minThreads: Number(process.env.VITEST_MIN_THREADS) || undefined,
+      },
+      forks: {
+        maxForks: Number(process.env.VITEST_MAX_THREADS) || undefined,
+        minForks: Number(process.env.VITEST_MIN_THREADS) || undefined,
+      },
+    },
     coverage: {
       provider: "v8",
       thresholds: {

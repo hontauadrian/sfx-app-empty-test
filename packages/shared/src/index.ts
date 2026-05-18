@@ -8,3 +8,4 @@ export type {
 } from './types/api-response.type';
 export { createSuccessResponse, createErrorResponse } from './types/api-response.type';
 export { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, API_VERSION } from './constants/index';
+export { AUTH_ROLE_ADMIN, AUTH_ROLE_AGENT } from './auth-roles';

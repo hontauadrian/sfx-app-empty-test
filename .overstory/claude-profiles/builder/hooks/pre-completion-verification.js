@@ -20,6 +20,25 @@ if (!fs.existsSync(path.join(projectRoot, 'node_modules', '.bin', 'tsc'))) {
   process.exit(0);
 }
 
+// Honor the state-hash markers written by pre-close-gate.js and lib/quality-gates.js.
+// If this exact code state already passed gates during a prior worker_done /
+// sd close / ov merge / Stop, skip re-running them here — re-execution wastes
+// CPU and exposes us to flaky-rerun failures on transient resource contention.
+try {
+  const { computeGateStateHash } = require('./lib/quality-gates');
+  const stateHash = computeGateStateHash(projectRoot);
+  if (stateHash) {
+    const reportsDir = path.join(projectRoot, '.claude', 'hook-reports');
+    for (const marker of [
+      `all-gates-pass-${stateHash}.json`,
+      `quality-gates-pass-${stateHash}.json`,
+      `stop-gates-pass-${stateHash}.json`,
+    ]) {
+      if (fs.existsSync(path.join(reportsDir, marker))) process.exit(0);
+    }
+  }
+} catch {}
+
 const checks = [
   { command: 'pnpm run typecheck', label: 'Type errors' },
   { command: 'pnpm run lint', label: 'Lint errors' },
@@ -128,5 +147,25 @@ function runCheck(check) {
       process.exit(0);
     }
   }
+  try {
+    const { computeGateStateHash } = require('./lib/quality-gates');
+    const stateHash = computeGateStateHash(projectRoot);
+    if (stateHash) {
+      const reportsDir = path.join(projectRoot, '.claude', 'hook-reports');
+      fs.mkdirSync(reportsDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(reportsDir, `stop-gates-pass-${stateHash}.json`),
+        JSON.stringify(
+          {
+            stateHash,
+            gates: checks.map((c) => c.label),
+            passedAt: new Date().toISOString(),
+          },
+          null,
+          2,
+        ),
+      );
+    }
+  } catch {}
   process.exit(0);
 })();

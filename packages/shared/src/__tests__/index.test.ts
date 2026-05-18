@@ -11,5 +11,6 @@ describe("@sfx/shared barrel", () => {
     expect(shared.DEFAULT_PAGE_SIZE).toBe(20);
     expect(shared.MAX_PAGE_SIZE).toBe(100);
     expect(shared.API_VERSION).toBe("v1");
+    expect(shared.AUTH_ROLE_ADMIN).toBe("admin");
   });
 });

@@ -1,21 +1,3 @@
-// Boilerplate Prisma schema.
-//
-// Prisma requires at least one non-ignored model for `prisma generate` to
-// succeed, so a minimal `BoilerplatePlaceholder` model lives here purely
-// to keep the client generator happy. The baseline API does not query it,
-// no migration is committed, and no table exists in the database.
-//
-// The runtime-verification probe (resource-graph) would otherwise emit a
-// spurious `RESOURCE_GRAPH_NO_CREATE_ENDPOINT` for this scaffold model.
-// That diagnostic is suppressed by `flows.config.json` →
-// `resourceGraph.ignoreModels`, NOT by `@@ignore`: marking the only model
-// `@@ignore` would empty the generated client and break `prisma generate`.
-//
-// When you add your first real feature, delete this placeholder, declare
-// your model, and run `pnpm db:migrate --name <feature>` to generate the
-// first migration. Once a real model exists, you can also remove the
-// `BoilerplatePlaceholder` entry from `flows.config.json`.
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -25,8 +7,163 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model BoilerplatePlaceholder {
-  id String @id @default(cuid())
+model CompanyInfo {
+  id                 String   @id @default(cuid())
+  legalName          String   @map("legal_name")
+  tradingName        String?  @map("trading_name")
+  email              String?
+  phone              String?
+  website            String?
+  addressLine1       String?  @map("address_line1")
+  addressLine2       String?  @map("address_line2")
+  city               String?
+  postalCode         String?  @map("postal_code")
+  country            String?
+  taxId              String?  @map("tax_id")
+  registrationNumber String?  @map("registration_number")
+  companyName        String?  @map("company_name")
+  foundedYear        Int?     @map("founded_year")
+  teamSize           Int?     @map("team_size")
+  industry           String?
+  missionStatement   String?  @map("mission_statement") @db.Text
+  visionStatement    String?  @map("vision_statement")  @db.Text
+  coreValues         String[] @default([]) @map("core_values")
+  certifications     String[] @default([])
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
-  @@map("boilerplate_placeholder")
+  versions           CompanyInfoVersion[]
+
+  @@map("company_info")
+}
+
+model CompanyInfoVersion {
+  id                  String      @id @default(cuid())
+  companyInfoId       String      @map("company_info_id")
+  snapshot            Json
+  editorUserId        String      @map("editor_user_id")
+  editorDisplayName   String      @map("editor_display_name")
+  createdAt           DateTime    @default(now()) @map("created_at")
+
+  companyInfo         CompanyInfo @relation(fields: [companyInfoId], references: [id], onDelete: Cascade)
+
+  @@index([companyInfoId, createdAt(sort: Desc), id(sort: Desc)], map: "company_info_version_company_created_idx")
+  @@map("company_info_version")
+}
+
+model Brand {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String
+  ownerUserId String    @map("owner_user_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  dosDontsEntries DosDontsEntry[]
+  metadata        BrandMetadata?
+  voice           BrandVoice?
+  visualIdentity  VisualIdentity?
+  versions        BrandGuidelinesVersion[]
+
+  @@unique([slug], map: "brand_slug_uniq", name: "slug_uniq")
+  @@index([deletedAt], map: "brand_deleted_at_idx")
+  @@index([createdAt(sort: Desc), id(sort: Desc)], map: "brand_created_desc_idx")
+  @@map("brand")
+}
+
+model DosDontsEntry {
+  id          String   @id @default(cuid())
+  brandId     String   @map("brand_id")
+  type        String
+  category    String
+  ruleText    String   @map("rule_text") @db.Text
+  exampleText String?  @map("example_text") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  brand       Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, createdAt(sort: Desc), id(sort: Desc)], map: "dos_donts_brand_created_desc_idx")
+  @@index([brandId, type, category], map: "dos_donts_brand_type_category_idx")
+  @@map("dos_donts_entry")
+}
+
+model BrandMetadata {
+  brandId             String   @id @map("brand_id")
+  ownerUserId         String   @map("owner_user_id")
+  lastUpdatedAt       DateTime @default(now()) @map("last_updated_at")
+  lastUpdatedByUserId String   @map("last_updated_by_user_id")
+  tags                String[] @default([])
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  brand               Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@map("brand_metadata")
+}
+
+model BrandVoice {
+  brandId              String   @id @map("brand_id")
+  tone                 String   @db.Text
+  preferredVocabulary  String[] @default([]) @map("preferred_vocabulary")
+  restrictedVocabulary String[] @default([]) @map("restricted_vocabulary")
+  messagingPillars     Json     @default("[]") @map("messaging_pillars")
+  writingStyleRules    String   @default("") @map("writing_style_rules") @db.Text
+  audienceRules        Json     @default("[]") @map("audience_rules")
+  approvedExamples     Json     @default("[]") @map("approved_examples")
+  rejectedExamples     Json     @default("[]") @map("rejected_examples")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  brand                Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@map("brand_voice")
+}
+
+model BrandGuidelinesVersion {
+  id                String   @id @default(cuid())
+  brandId           String   @map("brand_id")
+  snapshot          Json
+  editorUserId      String   @map("editor_user_id")
+  editorDisplayName String   @map("editor_display_name")
+  changeNote        String?  @map("change_note") @db.Text
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  brand             Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([brandId, createdAt(sort: Desc), id(sort: Desc)], map: "brand_guidelines_version_brand_created_desc_idx")
+  @@map("brand_guidelines_version")
+}
+
+model AgentAuditLog {
+  id                String   @id @default(cuid())
+  requestId         String   @map("request_id")
+  clientId          String   @map("client_id")
+  endpointPath      String   @map("endpoint_path") @db.Text
+  brandId           String?  @map("brand_id")
+  versionIdReturned String?  @map("version_id_returned")
+  requestTimestamp  DateTime @default(now()) @map("request_timestamp")
+  responseStatus    Int      @map("response_status")
+
+  @@index([brandId, requestTimestamp(sort: Desc), id(sort: Desc)], map: "agent_audit_log_brand_timestamp_idx")
+  @@index([clientId, requestTimestamp(sort: Desc)], map: "agent_audit_log_client_timestamp_idx")
+  @@map("agent_audit_log")
+}
+
+model VisualIdentity {
+  brandId             String   @id @map("brand_id")
+  logoUsage           String   @db.Text @map("logo_usage")
+  colorPalette        Json     @default("[]") @map("color_palette")
+  typography          Json     @default("[]")
+  spacingGuidance     String   @default("") @map("spacing_guidance") @db.Text
+  imageStyleGuidance  String   @default("") @map("image_style_guidance") @db.Text
+  iconographyGuidance String   @default("") @map("iconography_guidance") @db.Text
+  usageRestrictions   String   @default("") @map("usage_restrictions") @db.Text
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  brand               Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@map("visual_identity")
 }

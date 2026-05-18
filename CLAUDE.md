@@ -143,6 +143,7 @@ packages/database/   → Prisma schema + client (@sfx/database)
 ## Boundaries
 
 ### Always do
+- Every user-initiated mutation (form submit, button-action, delete) produces a visible outcome: pending indicator on the trigger, success either navigates / toasts / updates an observable in-page state, failure surfaces an error per the Error Handling Classification rule. Silent-on-success is broken UX and counts as FAIL in qa-test.
 - Write tests for every new file — see "Testing Requirements" section above. A hook WILL block you if tests are missing.
 - Test every branch, edge case, and error path — not just the happy path
 - Use Zod schemas from `@sfx/validation` for both frontend forms and backend validation
@@ -388,6 +389,11 @@ skill, then edit code.
 | `FLOW_MERGE_CONFLICT` / `FLOW_DUPLICATE_ID` / `FLOW_FILE_MISSING_OWNS_OR_EXTENDS` | `flow-failure-response` (mail the lead with the diagnostic block) |
 | `RESOURCE_CAPTURE_UNDECLARED` | `build-verifiable-features` |
 | `RESOURCE_CAPTURE_PATHPARAM_UNDECLARED` | `build-verifiable-features` |
+| `PAGINATION_EMPTY_UNDERIVABLE` | `per-pagination` (declare a string filter field in the query schema OR author a curated `:empty` flow) |
+| `CURSOR_INVALID_SEMANTICS_UNDECLARED` | `per-pagination` (declare `x-cursor-invalid-behavior: "reject-400" \| "empty-200"` via @ApiOperation extensions / @CursorInvalid helper) |
+| `ZOD_CONTRACT_UNDETECTED_FOR_STATUS_REACH` | `build-verifiable-features` (PATCH/PUT/POST declares 404 but no Zod schema scanned — bind via @ApiBody({ schema }) / @Body() + createZodDto; without it generator sends empty body → 400 masks real 404 path) |
+| `PARENT_RESOURCE_BODY_UNDETECTED` | `build-verifiable-features` (a parent POST referenced by child `:param` routes has no scanned Zod body — bind via `@ApiBody(zodApiBody(<schema>, '<TypeName>'))` on the parent CREATE handler; without it the chain emitter cannot synthesize a create body and every downstream pagination / status-reach / CRUD flow on child routes 404s with literal `:param`) |
+| `FANOUT_BODY_LITERAL_COLLISION_RISK` | `build-verifiable-features` (a resource-setup chain about to be cloned for ≥2 mutating dependents has literal string field(s) in its create body — all clones will POST identical bodies and collide on any DB-side @unique constraint that derives from those fields (e.g. slug=kebab(name)); declare per-run uniqueness via `x-probe-unique-fields: ['<field>']` extension on the parent's @ApiBody so the probe substitutes `${uniqString}` per-clone) |
 | `chain:resource-setup:*` step failure | `build-verifiable-features` |
 | `FLOW_STEP_FAILED` on `step2:expect` (403/404) | `build-verifiable-features` (capture path) + audit service for permission-before-existence ordering |
 | `CONTRACT_STATUS_UNREACHABLE_UNGENERATABLE` | `nestjs-probe-coverage` (§ 2.8) |

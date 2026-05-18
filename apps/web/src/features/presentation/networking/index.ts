@@ -1,2 +1,8 @@
 export { executeRequest } from './execute-request';
-export type { RequestConfig, RequestResponse, RequestError, HttpMethod } from './types';
+export type {
+  RequestConfig,
+  RequestResponse,
+  RequestError,
+  RequestFieldError,
+  HttpMethod,
+} from './types';

@@ -9,7 +9,7 @@ cd "$PROJECT_DIR"
 PROJECT_NAME="${PROJECT_NAME:-app-dev-host}"
 
 echo "[post-merge-canonical] pnpm install"
-pnpm install --prefer-offline --silent
+CI=true NODE_ENV=development pnpm install --frozen-lockfile --prefer-offline
 
 # docker-compose.mounts.generated.yml bind-mounts the HOST packages/<pkg>/dist
 # directories into the api+web containers. Image dist is masked by that mount,

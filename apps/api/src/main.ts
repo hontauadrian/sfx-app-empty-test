@@ -11,7 +11,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { buildSwaggerDocument } from './swagger';
 import { createHelmetOptions } from './config/helmet-options';
 
-async function bootstrap(): Promise<void> {
+export async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
 
   const configService = app.get(ConfigService);
@@ -46,4 +46,6 @@ async function bootstrap(): Promise<void> {
   console.warn(`API running on port ${port}`);
 }
 
-bootstrap();
+if (require.main === module) {
+  bootstrap();
+}

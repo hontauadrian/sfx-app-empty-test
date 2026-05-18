@@ -118,3 +118,6 @@ docker-compose.mounts.generated.yml
 .stack.stop.log
 .post-merge-migrate.log
 .smoke-logs/
+
+# TypeScript build cache (regenerated on every typecheck)
+*.tsbuildinfo

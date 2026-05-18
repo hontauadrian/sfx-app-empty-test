@@ -1,0 +1,341 @@
+{
+  "version": 1,
+  "task_id": "sfx-webapp-boilerplate-72fd",
+  "owns": [],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" },
+    { "resource": "brand" }
+  ],
+  "special_flows": [
+    {
+      "id": "sfx-webapp-boilerplate-72fd:voice-get-unauth-rejected",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 + spec-ba09 §5 J2 cross-cutting auth boundary",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/voice" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:voice-get-non-admin-forbidden",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice with viewer (non-admin, non-agent) is rejected with 403. At Chunk B, agent role is not yet wired — only admin reads pass.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 + spec-ba09 §5 J2 auth matrix",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/voice" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:voice-get-unknown-brand-404",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice with admin + unknown brandId returns 404 via brand-existence guard",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 Task B-B2 brand-exists.helper",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/voice" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:voice-get-admin-empty-ok",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice with admin on a brand that has no voice yet returns 200 with data:null envelope",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 Task B-B6 GET handler",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Voice Get Empty Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/voice" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:voice-put-unauth-rejected",
+      "description": "PUT /api/v1/brands/:brandId/guidelines/voice without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 + spec-ba09 §5 J2 cross-cutting auth boundary",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "PUT", "path": "/brands/clxxxbrand0000000099/guidelines/voice", "body": { "tone": "Warm and direct" } },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:voice-put-non-admin-forbidden",
+      "description": "PUT /api/v1/brands/:brandId/guidelines/voice with viewer is rejected with 403 (admin-only write)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 + spec-ba09 §5 J2 admin-only write",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "PUT", "path": "/brands/clxxxbrand0000000099/guidelines/voice", "body": { "tone": "Warm and direct" } },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:voice-put-bad-body-empty-tone-400",
+      "description": "PUT /api/v1/brands/:brandId/guidelines/voice with admin + empty tone is rejected with 400 by Zod pipe (tone required min(1))",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §3 upsertBrandVoiceSchema tone min(1)",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Voice Bad Body Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "PUT", "path": "/brands/${createdBrandId}/guidelines/voice", "body": { "tone": "" } },
+        { "kind": "expect", "status": 400 }
+      ]
+    },
+    {
+      "id": "flow:brands-brandId-guidelines-voice:put:status-reach:404",
+      "description": "OVERRIDE generator default. mx-967e12: PUT 404 reach requires VALID body so Zod doesn't 400 first; existence guard fires after Zod, returns 404 on unknown brandId.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 Task B-B2 pipe-then-existence order + mulch mx-967e12",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "PUT", "path": "/brands/clxxxbrand0000000099/guidelines/voice", "body": { "tone": "Warm and direct" } },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:voice-put-admin-ok",
+      "description": "PUT /api/v1/brands/:brandId/guidelines/voice with admin + valid body upserts and returns 200 with persisted envelope",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 J2 happy-path persistence + spec-ba09 §5 J2",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Voice Happy Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${createdBrandId}/guidelines/voice",
+          "body": {
+            "tone": "Warm, expert, never condescending",
+            "preferredVocabulary": ["craft", "partner"],
+            "restrictedVocabulary": ["cheap", "guarantee"],
+            "messagingPillars": [{ "title": "Trust", "description": "We earn long-term partnerships." }],
+            "writingStyleRules": "Use active voice. Avoid jargon.",
+            "audienceRules": [{ "audience": "Designers", "rules": "Show work, link sources." }],
+            "approvedExamples": [{ "phrase": "Crafted for clarity." }],
+            "rejectedExamples": [{ "phrase": "Cheap promises.", "reason": "Restricted vocab + tone mismatch" }]
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.tone": "Warm, expert, never condescending"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:visual-get-unauth-rejected",
+      "description": "GET /api/v1/brands/:brandId/guidelines/visual without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 + spec-ba09 §5 J3 cross-cutting auth boundary",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/visual"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/visual" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:visual-get-non-admin-forbidden",
+      "description": "GET /api/v1/brands/:brandId/guidelines/visual with viewer is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 + spec-ba09 §5 J3 auth matrix",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/visual"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/visual" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:visual-get-unknown-brand-404",
+      "description": "GET /api/v1/brands/:brandId/guidelines/visual with admin + unknown brandId returns 404 via brand-existence guard",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 Task B-B2 brand-exists.helper",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/visual"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/visual" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:visual-get-admin-empty-ok",
+      "description": "GET /api/v1/brands/:brandId/guidelines/visual with admin on a brand with no visual yet returns 200 with data:null envelope",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 Task B-B6 GET handler",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/visual"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Visual Get Empty Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/visual" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:visual-put-unauth-rejected",
+      "description": "PUT /api/v1/brands/:brandId/guidelines/visual without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 + spec-ba09 §5 J3",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/visual"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "PUT", "path": "/brands/clxxxbrand0000000099/guidelines/visual", "body": { "logoUsage": "Primary mark only on white." } },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:visual-put-non-admin-forbidden",
+      "description": "PUT /api/v1/brands/:brandId/guidelines/visual with viewer is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 + spec-ba09 §5 J3 admin-only write",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/visual"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "PUT", "path": "/brands/clxxxbrand0000000099/guidelines/visual", "body": { "logoUsage": "Primary mark only on white." } },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:visual-put-bad-body-invalid-hex-400",
+      "description": "PUT /api/v1/brands/:brandId/guidelines/visual with admin + invalid hex in palette is rejected with 400 by Zod regex (hex /^#([0-9a-fA-F]{3}){1,2}$/)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §3 upsertVisualIdentitySchema HEX_COLOR_REGEX + spec-ba09 §5 J3 hex validation",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/visual"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Visual Bad Hex Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${createdBrandId}/guidelines/visual",
+          "body": {
+            "logoUsage": "Primary mark only on white.",
+            "colorPalette": [{ "name": "Primary", "hex": "not-a-hex", "usageNotes": null }]
+          }
+        },
+        { "kind": "expect", "status": 400 }
+      ]
+    },
+    {
+      "id": "flow:brands-brandId-guidelines-visual:put:status-reach:404",
+      "description": "OVERRIDE generator default. mx-967e12: PUT 404 reach requires VALID body so Zod doesn't 400 first; existence guard fires after Zod, returns 404 on unknown brandId.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 Task B-B2 pipe-then-existence order + mulch mx-967e12",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/visual"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "PUT", "path": "/brands/clxxxbrand0000000099/guidelines/visual", "body": { "logoUsage": "Primary mark only on white." } },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-72fd:visual-put-admin-ok",
+      "description": "PUT /api/v1/brands/:brandId/guidelines/visual with admin + valid body upserts and returns 200 with persisted envelope",
+      "contract": {
+        "kind": "http",
+        "source": "spec-72fd §5 J3 happy-path persistence + spec-ba09 §5 J3",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/visual"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Visual Happy Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${createdBrandId}/guidelines/visual",
+          "body": {
+            "logoUsage": "Primary mark only on white; minimum clear-space 1x cap-height.",
+            "colorPalette": [
+              { "name": "Primary", "hex": "#1A2B3C", "usageNotes": "Headings + nav" },
+              { "name": "Accent", "hex": "#F2A30B", "usageNotes": "CTAs only" }
+            ],
+            "typography": [
+              { "font": "Inter", "weight": "600", "usageContext": "Headings" },
+              { "font": "Inter", "weight": "400", "usageContext": "Body" }
+            ],
+            "spacingGuidance": "8px base scale.",
+            "imageStyleGuidance": "Editorial, natural light.",
+            "iconographyGuidance": "Outlined, 1.5px stroke.",
+            "usageRestrictions": "No logo on photographic backgrounds without scrim."
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.logoUsage": "Primary mark only on white; minimum clear-space 1x cap-height."
+          }
+        }
+      ]
+    }
+  ]
+}

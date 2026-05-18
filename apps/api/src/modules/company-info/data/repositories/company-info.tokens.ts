@@ -1,0 +1,2 @@
+export const COMPANY_INFO_REPOSITORY = Symbol('COMPANY_INFO_REPOSITORY');
+export const PRISMA_CLIENT = Symbol('PRISMA_CLIENT');

@@ -1,0 +1,362 @@
+{
+  "version": 1,
+  "task_id": "sfx-webapp-boilerplate-3e6a",
+  "owns": [
+    { "resource": "brand" }
+  ],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" }
+  ],
+  "resources": [
+    {
+      "name": "brand",
+      "kind": "crud",
+      "create": {
+        "method": "POST",
+        "path": "/brands",
+        "body": { "name": "Probe Brand" }
+      },
+      "capture": {
+        "bindings": { "id": "$.data.id" }
+      }
+    }
+  ],
+  "special_flows": [
+    {
+      "id": "sfx-webapp-boilerplate-3e6a:list-unauth-rejected",
+      "description": "GET /api/v1/brands without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A9 + spec-ba09 §5 J1 auth boundary",
+        "endpoint": "GET /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-3e6a:list-non-admin-forbidden",
+      "description": "GET /api/v1/brands with viewer (non-admin) is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A9 + spec-ba09 §5 J1 auth boundary",
+        "endpoint": "GET /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-3e6a:list-admin-empty-ok",
+      "description": "GET /api/v1/brands with admin bearer on empty db returns 200 envelope with brands array",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A9",
+        "endpoint": "GET /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": { "$.success": true }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-3e6a:create-unauth-rejected",
+      "description": "POST /api/v1/brands without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A9 + spec-ba09 §5 J1",
+        "endpoint": "POST /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Test Brand" }
+        },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-3e6a:create-non-admin-forbidden",
+      "description": "POST /api/v1/brands with viewer is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A9 + spec-ba09 §5 J1",
+        "endpoint": "POST /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Test Brand" }
+        },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-3e6a:create-admin-ok",
+      "description": "POST /api/v1/brands with admin + valid name creates brand and returns 201 with persisted envelope (slug derived server-side, ownerUserId from req.user)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A9 + spec-ba09 §3 Chunk A",
+        "endpoint": "POST /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Acme Holdings" }
+        },
+        {
+          "kind": "expect",
+          "status": 201,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.name": "Acme Holdings",
+            "$.data.slug": "acme-holdings"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-3e6a:create-bad-empty-name",
+      "description": "POST /api/v1/brands with empty name is rejected with 400 by Zod pipe",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A6 + §A9",
+        "endpoint": "POST /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "" }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-3e6a:create-bad-unknown-key",
+      "description": "POST /api/v1/brands with unknown body key is rejected with 400 by .strict()",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A2 + §A9",
+        "endpoint": "POST /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Test", "slug": "client-attempted-override" }
+        },
+        { "kind": "expect", "status": 400 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-3e6a:rename-unauth-rejected",
+      "description": "PATCH /api/v1/brands/:id without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A9 + spec-ba09 §5 J1",
+        "endpoint": "PATCH /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PATCH",
+          "path": "/brands/clxxxbrand0000000099",
+          "body": { "name": "Renamed" }
+        },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-3e6a:rename-non-admin-forbidden",
+      "description": "PATCH /api/v1/brands/:id with viewer is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A9 + spec-ba09 §5 J1",
+        "endpoint": "PATCH /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PATCH",
+          "path": "/brands/clxxxbrand0000000099",
+          "body": { "name": "Renamed" }
+        },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-3e6a:rename-unknown-id-404",
+      "description": "PATCH /api/v1/brands/:id with admin + unknown id returns 404",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A9",
+        "endpoint": "PATCH /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PATCH",
+          "path": "/brands/clxxxbrand0000000099",
+          "body": { "name": "Renamed" }
+        },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "flow:brands-id:patch:status-reach:404",
+      "description": "OVERRIDE generator default. Per spec A8 pipe order: Zod runs FIRST then existence check. Generator's empty-body+unknown-id fixture hits 400 (Zod) before reaching 404. Override with valid-body+unknown-id to reach the 404 branch deterministically.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A8 pipe-then-existence order",
+        "endpoint": "PATCH /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PATCH",
+          "path": "/brands/clxxxbrand0000000099",
+          "body": { "name": "Renamed" }
+        },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "flow:brands-id:patch:status-reach:400",
+      "description": "OVERRIDE generator default. Reach 400 via PATCH on a freshly-created brand id with empty body (Zod rejects). Pairs with the 404 override above so both status branches are covered by curated flows the runner can execute deterministically.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A8 + A6 Zod pipe rejects empty",
+        "endpoint": "PATCH /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands",
+          "body": { "name": "Reach 400 Probe Brand" }
+        },
+        {
+          "kind": "expect",
+          "status": 201,
+          "bodyHas": { "$.success": true }
+        },
+        {
+          "kind": "capture",
+          "bindings": { "createdId": "$.data.id" }
+        },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PATCH",
+          "path": "/brands/${createdId}",
+          "body": {}
+        },
+        { "kind": "expect", "status": 400 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-3e6a:delete-unauth-rejected",
+      "description": "DELETE /api/v1/brands/:id without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A9 + spec-ba09 §5 J1",
+        "endpoint": "DELETE /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "DELETE",
+          "path": "/brands/clxxxbrand0000000099"
+        },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-3e6a:delete-non-admin-forbidden",
+      "description": "DELETE /api/v1/brands/:id with viewer is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A9 + spec-ba09 §5 J1",
+        "endpoint": "DELETE /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "DELETE",
+          "path": "/brands/clxxxbrand0000000099"
+        },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-3e6a:delete-unknown-id-404",
+      "description": "DELETE /api/v1/brands/:id with admin + unknown id returns 404",
+      "contract": {
+        "kind": "http",
+        "source": "spec-3e6a §A9",
+        "endpoint": "DELETE /api/v1/brands/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "DELETE",
+          "path": "/brands/clxxxbrand0000000099"
+        },
+        { "kind": "expect", "status": 404 }
+      ]
+    }
+  ]
+}

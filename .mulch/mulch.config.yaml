@@ -1,5 +1,9 @@
 version: '1'
-domains: []
+domains:
+  domain-layer: {}
+  hooks-and-gates: {}
+  api-modules: {}
+  web-ui: {}
 governance:
   max_entries: 100
   warn_entries: 150

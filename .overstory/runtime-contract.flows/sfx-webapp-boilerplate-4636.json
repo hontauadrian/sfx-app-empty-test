@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "task_id": "sfx-webapp-boilerplate-4636",
+  "owns": [],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" },
+    { "actor": "agent" },
+    { "resource": "brand" }
+  ],
+  "special_flows": [
+    {
+      "id": "sfx-webapp-boilerplate-4636:audit-log-records-m2m-client-id",
+      "description": "After agent (M2M client_credentials) reads a brand-guidelines endpoint, admin GET /agent-audit-log returns a row whose clientId reflects the JWT azp/client_id claim of the M2M client — NOT a user email. Verifies the pickClientId middleware refactor + oauth-scoped actor token shape.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E demo state + operator msg-ho8sem8bua3d refactor item 5",
+        "endpoint": "GET /api/v1/brands/:brandId/agent-audit-log"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "M2M Audit Log Verification Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "agent" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/voice" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } },
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/agent-audit-log" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    }
+  ]
+}

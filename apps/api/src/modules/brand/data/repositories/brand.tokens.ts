@@ -1,0 +1,2 @@
+export const BRAND_REPOSITORY = Symbol('BRAND_REPOSITORY');
+export const PRISMA_CLIENT = Symbol('BRAND_PRISMA_CLIENT');

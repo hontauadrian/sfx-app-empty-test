@@ -149,6 +149,14 @@ No `domain/` folder in features — all domain types come from `@sfx/domain`.
 **Trigger:** Creating a new feature folder under `features/`.
 **Action:** Create all layers before writing code: `data/remote/`, `data/repositories/`, `data/model/`, `data/mapper/`, `presentation/pages/`, `presentation/components/`. Create `constants.ts` and `index.ts` barrel.
 
+### Rule: Submit/Action Feedback
+**Trigger:** Any user-initiated mutation (form submit, button-action, delete, mutation hook firing, etc.).
+**Action:** EVERY mutation MUST produce a user-visible outcome. Three required states:
+  - **Pending** — the trigger control is disabled AND a visible loading indicator is present (spinner, label "Saving...", skeleton row, etc.). The user must know the action is in flight.
+  - **Success** — at least ONE of: (a) navigate to the resulting entity / its list, (b) close the form + emit a success toast in the hook, (c) update an in-page state the user can observe (the new item appears in a list, a badge increments, status changes). Never silently complete.
+  - **Failure** — render per the Error Handling Classification rule. Never silent.
+A submit that completes without any observable feedback is broken UX — the user cannot tell success from broken from no-network. qa-test treats silent-on-success as FAIL.
+
 ### Rule: Error Handling Classification
 **Trigger:** Implementing error handling for any operation.
 **Action:** Classify the error first: (1) Transient (network, timeout)? → toast in hook, never in page, never `window.alert()`. (2) Persistent (validation, business logic)? → add to UIModel and render in JSX. (3) Unrecoverable (crash)? → let it bubble to root error boundary. Never swallow an error silently.

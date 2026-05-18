@@ -146,14 +146,14 @@ const actors = Array.isArray(parsed.actors) ? parsed.actors : [];
 const AUTH_SCHEMES = {
   'anonymous':         { required: ['scheme'], optional: [] },
   'bearer-in-body':    { required: ['scheme', 'login'], optional: ['register', 'token'],
-                          login: { required: ['path'], optional: ['body', 'key'] },
-                          register: { required: ['path'], optional: ['body', 'key'] } },
+                          login: { required: ['path'], optional: ['body', 'key', 'contentType'] },
+                          register: { required: ['path'], optional: ['body', 'key', 'contentType'] } },
   'bearer-in-header':  { required: ['scheme', 'login'], optional: ['token'],
-                          login: { required: ['path'], optional: ['body', 'headerName'] } },
+                          login: { required: ['path'], optional: ['body', 'headerName', 'contentType'] } },
   'cookie':            { required: ['scheme', 'login'], optional: [],
-                          login: { required: ['path'], optional: ['body'] } },
+                          login: { required: ['path'], optional: ['body', 'contentType'] } },
   'api-key':           { required: ['scheme', 'headerName', 'value'], optional: [] },
-  'oauth-scoped':      { required: ['scheme', 'tokenEndpoint', 'scopes'], optional: [] },
+  'oauth-scoped':      { required: ['scheme', 'tokenEndpoint', 'scopes', 'clientId', 'clientSecret'], optional: ['audience'] },
 };
 
 function validateBlock(blockSpec, block, actorName, blockPath) {

@@ -1,0 +1,384 @@
+{
+  "version": 1,
+  "task_id": "sfx-webapp-boilerplate-e614",
+  "owns": [],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" },
+    { "resource": "brand" }
+  ],
+  "special_flows": [
+    {
+      "id": "sfx-webapp-boilerplate-e614:versions-list-unauth-rejected",
+      "description": "GET /api/v1/brands/:brandId/guidelines/versions without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 + spec-ba09 §5 J6 cross-cutting auth",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/versions" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:versions-list-non-admin-forbidden",
+      "description": "GET /api/v1/brands/:brandId/guidelines/versions with viewer is rejected with 403 (admin-only at D; agent role wired in Chunk E)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 admin-only at D",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/versions" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:versions-list-unknown-brand-404",
+      "description": "GET /api/v1/brands/:brandId/guidelines/versions with admin + unknown brandId returns 404 via brand-existence guard",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 + spec-72fd brand-exists.helper pattern",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/versions" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:versions-list-admin-empty-ok",
+      "description": "GET /api/v1/brands/:brandId/guidelines/versions with admin on a brand with no versions yet returns 200 with empty page envelope",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §5.B versions list ordered newest-first cursor pagination",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Versions Empty Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/versions" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:versions-list-cursor-unknown-empty-200",
+      "description": "GET /api/v1/brands/:brandId/guidelines/versions?cursor=<unknown> returns 200 with empty page per Linear/GitHub semantics (x-cursor-invalid-behavior: empty-200)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §5.B + mulch mx-foundational-protocol cursor semantics",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions?cursor=..."
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Versions Bad Cursor Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/versions?cursor=clxxxxunknowncursorxxx" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:versions-list-admin-after-voice-save-ok",
+      "description": "After saving Voice on a fresh brand, GET versions returns 200 with at least one version row containing snapshot + editor + createdAt + nullable changeNote",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §5.D snapshot-write carve-out — saving Voice produces a BrandGuidelinesVersion row in same transaction",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Versions After Voice Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${createdBrandId}/guidelines/voice",
+          "body": { "tone": "Confident and warm" }
+        },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/versions" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:version-single-unauth-rejected",
+      "description": "GET /api/v1/brands/:brandId/guidelines/versions/:versionId without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 cross-cutting auth",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions/:versionId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/versions/clxxxver000000009999" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:version-single-non-admin-forbidden",
+      "description": "GET /api/v1/brands/:brandId/guidelines/versions/:versionId with viewer is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 admin-only at D",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions/:versionId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/versions/clxxxver000000009999" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:version-single-unknown-brand-404",
+      "description": "GET /api/v1/brands/:brandId/guidelines/versions/:versionId with admin + unknown brandId returns 404 via brand-existence guard",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 brand-existence",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions/:versionId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/versions/clxxxver000000009999" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:version-single-unknown-version-404",
+      "description": "GET /api/v1/brands/:brandId/guidelines/versions/:versionId with admin + existing brand + unknown versionId returns 404 via cross-brand isolation check",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §5.B cross-brand 404 isolation",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions/:versionId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Version 404 Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/versions/clxxxver000000009999" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:voice-restricted-vocab-unauth-rejected",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice/restricted-vocabulary without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 cross-cutting auth",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice/restricted-vocabulary"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/voice/restricted-vocabulary" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:voice-restricted-vocab-non-admin-forbidden",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice/restricted-vocabulary with viewer is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 admin-only at D",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice/restricted-vocabulary"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/voice/restricted-vocabulary" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:voice-restricted-vocab-unknown-brand-404",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice/restricted-vocabulary with admin + unknown brandId returns 404 via brand-existence guard",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 brand-existence",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice/restricted-vocabulary"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/voice/restricted-vocabulary" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:voice-restricted-vocab-admin-empty-ok",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice/restricted-vocabulary with admin on brand with no voice row yet returns 200 with empty array (per spec-e614 §9)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §9 standalone Voice list reads — empty array when no voice row exists",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice/restricted-vocabulary"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Restricted Vocab Empty Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/voice/restricted-vocabulary" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:voice-approved-examples-unauth-rejected",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice/approved-examples without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 cross-cutting auth",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice/approved-examples"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/voice/approved-examples" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:voice-approved-examples-non-admin-forbidden",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice/approved-examples with viewer is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 admin-only at D",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice/approved-examples"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/voice/approved-examples" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:voice-approved-examples-unknown-brand-404",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice/approved-examples with admin + unknown brandId returns 404",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 brand-existence",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice/approved-examples"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/voice/approved-examples" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:voice-rejected-examples-unauth-rejected",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice/rejected-examples without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 cross-cutting auth",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice/rejected-examples"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/voice/rejected-examples" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:voice-rejected-examples-non-admin-forbidden",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice/rejected-examples with viewer is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 admin-only at D",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice/rejected-examples"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/voice/rejected-examples" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e614:voice-rejected-examples-unknown-brand-404",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice/rejected-examples with admin + unknown brandId returns 404",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 brand-existence",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice/rejected-examples"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/voice/rejected-examples" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "flow:brands-brandId-guidelines-versions:get:pagination:first-page",
+      "description": "OVERRIDE generator default pagination first-page. Pagination flows for /versions require chain-setup (POST /brands → use brandId) because /versions is mounted under /brands/:brandId. Generator's default emits a synthetic brandId that hits the brand-existence 404 guard before reaching pagination logic. Same brand-existence pattern as Chunk A renameBrand 404-reach override.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 brand-existence + §5.B versions list cursor pagination + flows-generator pagination-without-parent-chain gap",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Versions Pagination First Page Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/versions" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "flow:brands-brandId-guidelines-versions:get:pagination:past-end",
+      "description": "OVERRIDE generator default pagination past-end. Same brand-existence chain-setup needed. Unknown cursor on a real brand returns 200 with empty page per x-cursor-invalid-behavior: empty-200.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 brand-existence + §5.B cursor empty-200 semantics",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions?cursor=..."
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Versions Past End Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/versions?cursor=clxxxxpastendcursorxxxxxx" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "flow:brands-brandId-guidelines-versions:get:pagination:invalid-cursor",
+      "description": "OVERRIDE generator default pagination invalid-cursor. Same brand-existence chain. Malformed cursor on a real brand returns 200 with empty page per x-cursor-invalid-behavior: empty-200 (Linear/GitHub semantics).",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 brand-existence + §5.B cursor empty-200 + mulch mx-foundational-protocol",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions?cursor=..."
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Versions Invalid Cursor Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/versions?cursor=not-a-cuid" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "flow:brands-brandId-guidelines-versions:get:query-cursor:invalid-cursor",
+      "description": "OVERRIDE generator default query-cursor:invalid-cursor sub-row. Same chain. Empty-200 semantics on unknown cursor.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e614 §10 brand-existence + §5.B cursor empty-200",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions?cursor=..."
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Versions Query Cursor Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/versions?cursor=clxxxxunknownqueryxxxx" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    }
+  ]
+}

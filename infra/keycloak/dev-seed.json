@@ -28,6 +28,20 @@
           "roles": ["viewer"]
         }
       ]
+    },
+    {
+      "username": "agent@example.com",
+      "email": "agent@example.com",
+      "firstName": "Dev",
+      "lastName": "Agent",
+      "enabled": true,
+      "password": "password",
+      "clientRoleAssignments": [
+        {
+          "clientId": "${repoName}-dev-api",
+          "roles": ["agent"]
+        }
+      ]
     }
   ]
 }

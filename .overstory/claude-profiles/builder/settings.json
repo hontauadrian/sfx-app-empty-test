@@ -689,6 +689,15 @@
 						"command": "node .claude/hooks/no-orphan-ui-surfaces.js"
 					}
 				]
+			},
+			{
+				"matcher": "Write|Edit|MultiEdit",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "node .claude/hooks/require-ui-ux-skill.js"
+					}
+				]
 			}
 		],
 		"PostToolUse": [

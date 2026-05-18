@@ -67,15 +67,29 @@ export function getOpenApiSchemas(): Record<string, OpenApiSchemaObject> {
  * empty operation in the emitted OpenAPI dump and a probe runner that
  * synthesizes empty request bodies.
  *
+ * Optional `extensions` are spread onto the returned object so OpenAPI
+ * extensions (`x-*`) declared on the request body — e.g.
+ * `x-probe-unique-fields` for the runtime probe's fan-out unique-field
+ * substitution — surface in the emitted operation's `requestBody`.
+ *
  * Usage:
  *   @ApiBody(zodApiBody(createTeamSchema, 'CreateTeamInput'))
+ *   @ApiBody(
+ *     zodApiBody(createBrandSchema, 'CreateBrandInput', {
+ *       extensions: { 'x-probe-unique-fields': ['name'] },
+ *     }),
+ *   )
  */
 export function zodApiBody(
   schema: z.ZodTypeAny,
   ref: string,
-): { schema: { $ref: string } } {
+  opts?: { extensions?: Record<string, unknown> },
+): { schema: { $ref: string } } & Record<string, unknown> {
   zodToOpenApi(schema, { ref });
-  return { schema: { $ref: `#/components/schemas/${ref}` } };
+  return {
+    schema: { $ref: `#/components/schemas/${ref}` },
+    ...(opts?.extensions ?? {}),
+  };
 }
 
 /**

@@ -28,6 +28,11 @@ export class JwtAuthGuard implements CanActivate {
       request.headers['x-forwarded-access-token'],
     );
     const user = await this.authTokenService.verifyAccessToken(token);
+    // Bind the authenticated user to the request BEFORE the role check so
+    // downstream observers (audit-log middleware on res.finish, exception
+    // filters) can read it even when the role check rejects.
+    request.user = user;
+
     const requiredRoles = this.reflector.getAllAndOverride<string[]>(AUTH_ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -37,7 +42,6 @@ export class JwtAuthGuard implements CanActivate {
       throw new ForbiddenException('Missing required role');
     }
 
-    request.user = user;
     return true;
   }
 }

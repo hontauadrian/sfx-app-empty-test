@@ -1,0 +1,170 @@
+{
+  "version": 1,
+  "task_id": "sfx-webapp-boilerplate-8907",
+  "owns": [],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" },
+    { "resource": "company-info" }
+  ],
+  "resources": [],
+  "special_flows": [
+    {
+      "id": "sfx-webapp-boilerplate-8907:put-admin-full-field-set",
+      "description": "PUT /api/v1/company-info with admin bearer + full expanded payload returns 200 with persisted record echoing the new fields",
+      "contract": {
+        "kind": "http",
+        "source": "spec-26a0 §3 Chunk A + §5 J1",
+        "endpoint": "PUT /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": {
+            "legalName": "Probe Test Co SRL",
+            "companyName": "ProbeCo",
+            "foundedYear": 1998,
+            "teamSize": 42,
+            "industry": "Software",
+            "missionStatement": "We probe the runtime so users do not have to.",
+            "visionStatement": "A world where every endpoint is asserted.",
+            "coreValues": ["transparency", "rigor", "curiosity"],
+            "certifications": ["ISO 27001", "SOC 2"]
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.legalName": "Probe Test Co SRL",
+            "$.data.companyName": "ProbeCo",
+            "$.data.foundedYear": 1998,
+            "$.data.teamSize": 42,
+            "$.data.industry": "Software"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-8907:put-invalid-founded-year-string",
+      "description": "PUT with foundedYear as a string is rejected with 400 by ZodValidationPipe",
+      "contract": {
+        "kind": "http",
+        "source": "spec-26a0 §5 J1",
+        "endpoint": "PUT /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": {
+            "legalName": "Probe Co",
+            "foundedYear": "not-a-number"
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-8907:put-invalid-corevalues-mixed-types",
+      "description": "PUT with coreValues containing non-string entries is rejected with 400",
+      "contract": {
+        "kind": "http",
+        "source": "spec-26a0 §5 J1",
+        "endpoint": "PUT /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": {
+            "legalName": "Probe Co",
+            "coreValues": ["ok", 12345]
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": { "$.success": false }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-8907:put-invalid-website-not-url",
+      "description": "PUT with malformed website (not a URL) is rejected with 400",
+      "contract": {
+        "kind": "http",
+        "source": "spec-26a0 §5 J1",
+        "endpoint": "PUT /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": {
+            "legalName": "Probe Co",
+            "website": "not-a-url"
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": { "$.success": false }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-8907:put-empty-optional-arrays",
+      "description": "PUT with empty coreValues + certifications arrays succeeds (lists optional, empty = explicit clear)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-26a0 §3 Chunk A",
+        "endpoint": "PUT /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": {
+            "legalName": "Probe Co",
+            "coreValues": [],
+            "certifications": []
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.legalName": "Probe Co"
+          }
+        }
+      ]
+    }
+  ]
+}

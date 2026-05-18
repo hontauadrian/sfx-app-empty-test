@@ -31,6 +31,16 @@ On a new top-level objective, BEFORE `sd create` for sub-issues, BEFORE `ov slin
   Do not add `/login`, `/register`, email+password auth, local HS256 JWT cookies,
   or remove `OAUTH_*`/Keycloak/oauth2-proxy unless the operator explicitly asks
   for that replacement.
+- Carving a chunk so that one chunk's parent module is later marked
+  "do not modify" while a downstream chunk introduces children nested under
+  that parent. When chunk B's children attach under chunk A's parent path
+  (e.g. chunk A delivers `/api/v1/brands`, chunk B delivers
+  `/api/v1/brands/:brandId/...`), state explicitly in chunk A's notes that
+  chunk A's parent CREATE handler may need additive `@ResourceCaptures`
+  tuples added by chunk B's builders. Do NOT lock the parent module behind a
+  blanket "do not modify" wall. Without this, builders in chunk B hit
+  `RESOURCE_CAPTURE_PATHPARAM_UNDECLARED` and have no legal path to fix it.
+  Canonical convention: mulch `mx-3bf156`.
 
 ## Required sections
 

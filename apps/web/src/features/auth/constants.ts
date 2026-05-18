@@ -7,11 +7,11 @@ const DEFAULT_OIDC_LOGOUT_ENDPOINT =
 const DEFAULT_OAUTH2_PROXY_CLIENT_ID = 'sfx-webapp-boilerplate-dev-proxy';
 
 const postLogoutRedirectUri =
-  process.env.NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI ?? DEFAULT_POST_LOGOUT_REDIRECT_URI;
+  process.env.NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI || DEFAULT_POST_LOGOUT_REDIRECT_URI;
 const oidcLogoutEndpoint =
-  process.env.NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT ?? DEFAULT_OIDC_LOGOUT_ENDPOINT;
+  process.env.NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT || DEFAULT_OIDC_LOGOUT_ENDPOINT;
 const oauth2ProxyClientId =
-  process.env.NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID ?? DEFAULT_OAUTH2_PROXY_CLIENT_ID;
+  process.env.NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID || DEFAULT_OAUTH2_PROXY_CLIENT_ID;
 
 function getBrowserHostname(): string | null {
   if (typeof window === 'undefined') return null;

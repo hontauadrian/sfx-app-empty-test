@@ -12,5 +12,64 @@
 		"status": "active",
 		"createdAt": "2026-04-22T16:36:39.164Z",
 		"completedAt": null
+	},
+	{
+		"id": "group-1a571488",
+		"name": "admin-sidebar-company-info",
+		"memberIssueIds": [
+			"sfx-webapp-boilerplate-c33f",
+			"sfx-webapp-boilerplate-51de",
+			"sfx-webapp-boilerplate-e4c8",
+			"sfx-webapp-boilerplate-641b",
+			"sfx-webapp-boilerplate-63de"
+		],
+		"status": "completed",
+		"createdAt": "2026-05-16T20:03:51.484Z",
+		"completedAt": "2026-05-17T02:10:43.046Z"
+	},
+	{
+		"id": "group-6f748fa0",
+		"name": "phase2-admin-extension",
+		"memberIssueIds": [
+			"sfx-webapp-boilerplate-26a0",
+			"sfx-webapp-boilerplate-8907",
+			"sfx-webapp-boilerplate-30fe",
+			"sfx-webapp-boilerplate-1c10",
+			"sfx-webapp-boilerplate-1ef9",
+			"sfx-webapp-boilerplate-d0fe"
+		],
+		"status": "completed",
+		"createdAt": "2026-05-17T00:47:32.846Z",
+		"completedAt": "2026-05-17T10:29:18.985Z"
+	},
+	{
+		"id": "group-504abddc",
+		"name": "phase2-crash-recovery",
+		"memberIssueIds": [
+			"sfx-webapp-boilerplate-ecdf",
+			"sfx-webapp-boilerplate-06d8"
+		],
+		"status": "completed",
+		"createdAt": "2026-05-17T02:23:04.530Z",
+		"completedAt": "2026-05-17T18:21:41.634Z"
+	},
+	{
+		"id": "group-367834d8",
+		"name": "phase3-brand-guidelines",
+		"memberIssueIds": [
+			"sfx-webapp-boilerplate-ba09",
+			"sfx-webapp-boilerplate-3e6a",
+			"sfx-webapp-boilerplate-72fd",
+			"sfx-webapp-boilerplate-e554",
+			"sfx-webapp-boilerplate-e614",
+			"sfx-webapp-boilerplate-0d59",
+			"sfx-webapp-boilerplate-fb12",
+			"sfx-webapp-boilerplate-fa5d",
+			"sfx-webapp-boilerplate-a34f",
+			"sfx-webapp-boilerplate-4636"
+		],
+		"status": "active",
+		"createdAt": "2026-05-17T13:01:42.794Z",
+		"completedAt": null
 	}
 ]

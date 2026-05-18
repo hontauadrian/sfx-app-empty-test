@@ -41,9 +41,28 @@ auto-generates the eight sub-flow set:
 `shape` is `"cursor"` or `"offset"`. `emptyResultAllowed: true` means
 out-of-range returns 200 + empty body; `false` means 404.
 
-After emitter runs, leads review and flip `"source": "generated"` to
-`"source": "curated"`. Custom edge-cases (filter+sort+paginate combo)
-remain hand-authored.
+### Declaration requirements
+
+The pagination emitter is declaration-driven. Two flows emit only when
+the necessary declaration is present; otherwise the emitter skips and
+pushes a diagnostic.
+
+- **`:pagination:empty`** — requires a DECLARED string filter field on
+  the query schema (e.g. `q: z.string().optional()`). No declared
+  filter → diagnostic `PAGINATION_EMPTY_UNDERIVABLE`. Fix: add a
+  declared filter field OR author a curated `:empty` flow.
+
+- **`:pagination:invalid-cursor`** (cursor style only) — requires the
+  OpenAPI extension `x-cursor-invalid-behavior` on the operation.
+  Allowed values: `"reject-400"` or `"empty-200"` (Linear / GitHub
+  style — empty page). Missing → diagnostic
+  `CURSOR_INVALID_SEMANTICS_UNDECLARED`. Declare:
+  ```ts
+  @ApiOperation({ extensions: { 'x-cursor-invalid-behavior': 'empty-200' } })
+  ```
+  or via a project-local helper decorator (e.g. `@CursorInvalid('empty-200')`).
+
+Custom edge-cases (filter+sort+paginate combo) remain hand-authored.
 
 ## Failure mode if missing
 

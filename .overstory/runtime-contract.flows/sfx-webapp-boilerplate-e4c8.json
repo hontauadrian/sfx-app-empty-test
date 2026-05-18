@@ -1,0 +1,277 @@
+{
+  "version": 1,
+  "task_id": "sfx-webapp-boilerplate-e4c8",
+  "owns": [
+    { "resource": "company-info" }
+  ],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" }
+  ],
+  "resources": [
+    {
+      "name": "company-info",
+      "kind": "endpoint"
+    }
+  ],
+  "special_flows": [
+    {
+      "id": "task-e4c8:get-admin-empty-db",
+      "description": "GET /api/v1/company-info with admin bearer on empty DB returns 200 envelope with data:null",
+      "contract": {
+        "kind": "http",
+        "source": "plan-e4c8 §2 T4 + product-plan §5 J2",
+        "endpoint": "GET /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/company-info" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "task-e4c8:get-unauth-rejected",
+      "description": "GET /api/v1/company-info without bearer is rejected with 401 by JwtAuthGuard",
+      "contract": {
+        "kind": "http",
+        "source": "plan-e4c8 §4 Guard contract + product-plan §5 J5",
+        "endpoint": "GET /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/company-info" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "task-e4c8:get-non-admin-forbidden",
+      "description": "GET /api/v1/company-info with viewer bearer (no admin role) is rejected with 403 by JwtAuthGuard AuthRoles check",
+      "contract": {
+        "kind": "http",
+        "source": "plan-e4c8 §4 Guard contract + product-plan §5 J4",
+        "endpoint": "GET /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/company-info" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "task-e4c8:put-admin-creates-singleton",
+      "description": "PUT /api/v1/company-info with admin bearer + valid body creates singleton and returns 200 with persisted record",
+      "contract": {
+        "kind": "http",
+        "source": "plan-e4c8 §2 T4 + product-plan §5 J3",
+        "endpoint": "PUT /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": {
+            "legalName": "Probe Test Co SRL",
+            "tradingName": "ProbeCo",
+            "email": "ops@probetest.example",
+            "phone": "+40000000000",
+            "website": "https://probetest.example",
+            "addressLine1": "1 Probe Street",
+            "city": "Bucharest",
+            "country": "Romania",
+            "taxId": "RO99999999",
+            "registrationNumber": "J00/0/2000"
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.legalName": "Probe Test Co SRL",
+            "$.data.tradingName": "ProbeCo"
+          }
+        }
+      ]
+    },
+    {
+      "id": "task-e4c8:put-admin-roundtrip-get",
+      "description": "After PUT writes singleton, subsequent GET returns persisted record",
+      "contract": {
+        "kind": "http",
+        "source": "plan-e4c8 §2 T4 demo state",
+        "endpoint": "GET /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/company-info" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "task-e4c8:put-admin-update-existing",
+      "description": "Second PUT with different legalName updates same singleton; verifies upsert-as-update semantics (no duplicate row)",
+      "contract": {
+        "kind": "http",
+        "source": "plan-e4c8 §2 T3 repository upsertSingleton",
+        "endpoint": "PUT /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": {
+            "legalName": "Probe Test Co SRL (renamed)"
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.legalName": "Probe Test Co SRL (renamed)"
+          }
+        }
+      ]
+    },
+    {
+      "id": "task-e4c8:put-validation-error-missing-legalname",
+      "description": "PUT with body missing required legalName is rejected with 400 by ZodValidationPipe",
+      "contract": {
+        "kind": "http",
+        "source": "plan-e4c8 §2 T4 pipe test 2 + product-plan §5 J3",
+        "endpoint": "PUT /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": {
+            "tradingName": "MissingLegalName"
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "task-e4c8:put-validation-error-bad-email",
+      "description": "PUT with malformed email is rejected with 400",
+      "contract": {
+        "kind": "http",
+        "source": "plan-e4c8 §2 T4 pipe test 3",
+        "endpoint": "PUT /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": {
+            "legalName": "Probe Co",
+            "email": "not-an-email"
+          }
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "task-e4c8:put-validation-error-unknown-key",
+      "description": "PUT with unknown body key is rejected with 400 by .strict() schema",
+      "contract": {
+        "kind": "http",
+        "source": "plan-e4c8 §2 T4 pipe test 4 + F1 upsertCompanyInfoSchema .strict()",
+        "endpoint": "PUT /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": {
+            "legalName": "Probe Co",
+            "notAField": "shouldReject"
+          }
+        },
+        { "kind": "expect", "status": 400 }
+      ]
+    },
+    {
+      "id": "task-e4c8:put-unauth-rejected",
+      "description": "PUT /api/v1/company-info without bearer is rejected with 401 before pipe runs",
+      "contract": {
+        "kind": "http",
+        "source": "plan-e4c8 §4 Guard contract + product-plan §5 J5",
+        "endpoint": "PUT /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": { "legalName": "Probe Co" }
+        },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "task-e4c8:put-non-admin-forbidden",
+      "description": "PUT /api/v1/company-info with viewer (no admin role) is rejected with 403 before pipe runs",
+      "contract": {
+        "kind": "http",
+        "source": "plan-e4c8 §4 Guard contract + product-plan §5 J4",
+        "endpoint": "PUT /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": { "legalName": "Probe Co" }
+        },
+        { "kind": "expect", "status": 403 }
+      ]
+    }
+  ]
+}

@@ -777,6 +777,92 @@ describe('emitCrudRoundtrips resource-ref + auth wiring', () => {
     const createStep = f.steps.find((s) => s.kind === 'api' && s.method === 'POST');
     assert.equal(createStep.body.teamId, '${resource:teamId:id}', 'should override teamId');
   });
+
+  it('substitutes parent path-prefix placeholder on every nested step (not only create)', () => {
+    // Regression for chain-emitter generator bug observed during
+    // brand-guidelines part-2 run (operator escalation msg-gaqfpn3880nh):
+    // chain-crud-roundtrip emitted '/api/v1/brands/${resource:brands:id}/...'
+    // for the create POST but kept the literal ':brandId' for sibling
+    // GET/PUT/DELETE steps, causing the probe to URL-encode ':brandId' and
+    // hit a real 404. Fix: applyPrefixSubs runs on every step's path, not
+    // only the create step.
+    const endpoints = [
+      {
+        method: 'POST',
+        path: '/api/v1/brands/:brandId/dos-and-donts',
+        file: 'dos-and-donts.controller.ts',
+        operationId: 'DosController_create',
+        zodContract: { sampleValid: { kind: 'do', text: 'Always smile' }, fields: {} },
+        swaggerDeclared: { statuses: [201] },
+      },
+      {
+        method: 'GET',
+        path: '/api/v1/brands/:brandId/dos-and-donts/:id',
+        file: 'dos-and-donts.controller.ts',
+        operationId: 'DosController_findOne',
+      },
+      {
+        method: 'PATCH',
+        path: '/api/v1/brands/:brandId/dos-and-donts/:id',
+        file: 'dos-and-donts.controller.ts',
+        operationId: 'DosController_update',
+        zodContract: { sampleValid: { text: 'Updated' }, fields: {} },
+      },
+      {
+        method: 'DELETE',
+        path: '/api/v1/brands/:brandId/dos-and-donts/:id',
+        file: 'dos-and-donts.controller.ts',
+        operationId: 'DosController_remove',
+      },
+      {
+        method: 'POST',
+        path: '/api/v1/brands',
+        operationId: 'BrandController_create',
+        file: 'brand-profile.controller.ts',
+        zodContract: { sampleValid: { name: 'Acme' }, fields: {} },
+        responseContract: { requiredPaths: ['id'] },
+      },
+    ];
+
+    const flows = emitCrudRoundtrips(endpoints, {
+      endpoints,
+      uniqueFieldSet: new Set(),
+    });
+
+    assert.equal(flows.length, 1);
+    const flow = flows[0];
+    const apiSteps = flow.steps.filter((s) => s.kind === 'api');
+    // 1 POST + 1 GET + 1 PATCH + 1 GET + 1 DELETE + 1 GET (404 after delete) = 6 api steps.
+    assert.equal(apiSteps.length, 6, `expected 6 api steps, got ${apiSteps.length}`);
+
+    // Every api step must have the parent placeholder ':brandId' substituted
+    // for the sigil — none of them may carry the literal ':brandId' through
+    // to the executed HTTP request.
+    for (const step of apiSteps) {
+      assert.ok(
+        !step.path.includes(':brandId'),
+        `step ${step.method} ${step.path} still contains literal ':brandId' — prefix substitution missed`,
+      );
+      assert.ok(
+        step.path.includes('${resource:brands:id}'),
+        `step ${step.method} ${step.path} should contain parent sigil`,
+      );
+    }
+
+    // Sibling read/update/delete steps must also substitute the leaf :id with
+    // ${resourceId}. Only the create step (POST) does NOT have a leaf to
+    // substitute.
+    for (const step of apiSteps.filter((s) => s.method !== 'POST')) {
+      assert.ok(
+        step.path.includes('${resourceId}'),
+        `step ${step.method} ${step.path} should substitute the leaf :id with \${resourceId}`,
+      );
+      assert.ok(
+        !step.path.endsWith(':id'),
+        `step ${step.method} ${step.path} still ends with literal ':id'`,
+      );
+    }
+  });
 });
 
 // --- status-reach:404 with path-prefix parent ---
@@ -1389,8 +1475,50 @@ describe('resource-captures: declaration-driven capture via x-resource-captures'
     assert.equal(chain, undefined);
     const diag = diags.find((d) => d.code === 'RESOURCE_CAPTURE_PATHPARAM_UNDECLARED');
     assert.ok(diag);
-    assert.match(diag.message, /pathParam='id'/);
-    assert.match(diag.message, /Got: slug/);
+    assert.match(diag.message, /pathParam=\['slug'\]/);
+    assert.match(diag.message, /uses ':id'/);
+  });
+
+  it('PATHPARAM_UNDECLARED diagnostic is actionable: names parent route, consumer route, fix tuple', () => {
+    // Regression for multi-alias case: parent /api/v1/teams declares only
+    // pathParam='id', but child /api/v1/teams/:teamId/projects uses ':teamId'.
+    // The diagnostic must give the builder a copy-pasteable fix without
+    // requiring them to consult external docs.
+    const endpoints = buildEndpoints(
+      [{ fromPath: 'id', resource: 'team', pathParam: 'id' }],
+      { childPath: '/api/v1/teams/:teamId/projects' },
+    );
+    const diags = [];
+    emitResourceSetupChains(endpoints, { diagnostics: diags, uniqueFieldSet: new Set() });
+    const diag = diags.find((d) => d.code === 'RESOURCE_CAPTURE_PATHPARAM_UNDECLARED');
+    assert.ok(diag, 'expected RESOURCE_CAPTURE_PATHPARAM_UNDECLARED diagnostic');
+    // Parent route is named (so the builder knows which controller to edit).
+    assert.match(diag.message, /Parent POST \/api\/v1\/teams\b/);
+    // Consumer route is named (so the builder knows where the placeholder comes from).
+    assert.match(diag.message, /\/api\/v1\/teams\/:teamId\/projects/);
+    // Missing placeholder is named.
+    assert.match(diag.message, /uses ':teamId'/);
+    // Existing captures are listed.
+    assert.match(diag.message, /pathParam=\['id'\]/);
+    // Diagnostic shows a copy-pasteable additive tuple keeping the same
+    // fromPath and resource — only pathParam differs.
+    assert.match(diag.message, /Example: @ResourceCaptures\(/);
+    assert.match(diag.message, /fromPath: 'id'.+resource: 'team'.+pathParam: 'id'/);
+    assert.match(diag.message, /fromPath: 'id'.+resource: 'team'.+pathParam: 'teamId'/);
+    // Diagnostic states the fix is purely additive (no behavior change).
+    assert.match(diag.message, /[Aa]dditive/);
+    // §8 governance carve-out: diagnostic explicitly tells builders that a
+    // "do not modify" parent-module clause does NOT block this fix. Without
+    // this, builders revert the alias on spec grounds and re-trigger the
+    // same diagnostic on the next probe run (observed dd-r4 incident,
+    // mulch mx-3bf156).
+    assert.match(diag.message, /spec §8|do not modify/i);
+    // Mulch convention is named so builders/leads can find the canonical
+    // resolution without re-deriving it.
+    assert.match(diag.message, /mx-3bf156/);
+    // Dead-end branches are named-and-blocked: parents:[] override and
+    // C2-allowlist are mentioned as wrong responses to this diagnostic.
+    assert.match(diag.message, /parents:|C2-allowlist|allowlist/i);
   });
 
   it('empty captures array same as missing emits DIAG no chain', () => {

@@ -289,6 +289,46 @@ export function formatSummary(report: SmokeReport): string {
     lines.push(`[http-smoke-FAIL] ${failed.length} cases failed out of ${report.summary.total}`);
     lines.push('═══════════════════════════════════════════════════════════════');
     lines.push('');
+    // Universal root-cause checklist — appears ONCE per probe run, before the
+    // per-case listing. Forces the agent to walk REQUEST/RESPONSE/declaration
+    // comparison BEFORE pattern-matching to "the probe is wrong" or escalating.
+    // The agent cannot edit probe tests directly; fix surface is always their
+    // own source + declarations. Runtime-/framework-agnostic.
+    lines.push('PROBE FAILURE — diagnose before escalating.');
+    lines.push('');
+    lines.push('You CANNOT edit the probe tests directly. Your only fix surfaces are');
+    lines.push('your own source code and your DECLARATIONS (decorators, schemas).');
+    lines.push('');
+    lines.push('For EACH failure below, walk this checklist in order, do NOT skip:');
+    lines.push('');
+    lines.push('  1. Look at the REQUEST the probe sent (request body, query, headers');
+    lines.push('     in the failure detail) and compare it to your endpoint\'s contract.');
+    lines.push('     Did the probe send what your endpoint declared it expects? If your');
+    lines.push('     declarations are incomplete, the probe synthesizes a different');
+    lines.push('     shape than what your handler can accept.');
+    lines.push('');
+    lines.push('  2. If REQUEST looks incomplete (empty body, missing query, no');
+    lines.push('     headers): the probe builds inputs FROM your declarations');
+    lines.push('     (decorators, schemas). Missing declaration → wrong synthesized');
+    lines.push('     input → wrong test path. Add the missing declaration in YOUR code.');
+    lines.push('');
+    lines.push('  3. Compare the RESPONSE against your handler\'s actual logic. If the');
+    lines.push('     RESPONSE diverges from EXPECTED with a properly-shaped REQUEST,');
+    lines.push('     your handler\'s code contradicts the contract you declared. Fix');
+    lines.push('     YOUR HANDLER.');
+    lines.push('');
+    lines.push('If 1-3 don\'t yield a fix on the FIRST pass: you\'ve not understood the');
+    lines.push('contract. Re-load build-verifiable-features skill, re-read your');
+    lines.push('endpoint file, re-walk 1-3 with that lens. Most probe failures are');
+    lines.push('declaration gaps you missed on first reading — three patient passes');
+    lines.push('usually find them.');
+    lines.push('');
+    lines.push('Repeat passes BEFORE you consider escalating. Escalation is reserved');
+    lines.push('for cases where the contract IS correct AND the handler IS correct');
+    lines.push('AND the probe still fails — that\'s rare and means runner infrastructure.');
+    lines.push('');
+    lines.push('───────────────────────────────────────────────────────────────');
+    lines.push('');
 
     // Cluster failures by (status, body-fingerprint) so cascades collapse
     // into a single root-cause line. A single 404 missing-user cascades

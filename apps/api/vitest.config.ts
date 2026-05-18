@@ -6,6 +6,16 @@ export default defineConfig({
     environment: "node",
     root: "src",
     include: ["**/*.test.ts"],
+    poolOptions: {
+      threads: {
+        maxThreads: Number(process.env.VITEST_MAX_THREADS) || undefined,
+        minThreads: Number(process.env.VITEST_MIN_THREADS) || undefined,
+      },
+      forks: {
+        maxForks: Number(process.env.VITEST_MAX_THREADS) || undefined,
+        minForks: Number(process.env.VITEST_MIN_THREADS) || undefined,
+      },
+    },
     coverage: {
       provider: "v8",
       reportsDirectory: "../coverage",

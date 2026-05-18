@@ -1,0 +1,608 @@
+{
+  "version": 1,
+  "task_id": "sfx-webapp-boilerplate-e554",
+  "owns": [],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" },
+    { "resource": "brand" }
+  ],
+  "special_flows": [
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-list-unauth-rejected",
+      "description": "GET /api/v1/brands/:brandId/guidelines/dos-and-donts without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 cross-cutting auth + spec-ba09 §5 J4",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/dos-and-donts" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-list-non-admin-forbidden",
+      "description": "GET /api/v1/brands/:brandId/guidelines/dos-and-donts with viewer is rejected with 403 (admin-only at Chunk C; agent role wired in Chunk E)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §2 guard contract",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/dos-and-donts" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-list-unknown-brand-404",
+      "description": "GET /api/v1/brands/:brandId/guidelines/dos-and-donts with admin + unknown brandId returns 404 via brand-existence guard",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 brand-existence + spec-72fd brand-exists.helper pattern",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/dos-and-donts" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-list-admin-empty-ok",
+      "description": "GET /api/v1/brands/:brandId/guidelines/dos-and-donts with admin on a brand that has no entries yet returns 200 with empty array",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §6.4 NOT paginated — full active set ordered createdAt DESC, id DESC",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "DnD Empty List Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/dos-and-donts" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-list-filter-by-type-narrows",
+      "description": "GET /api/v1/brands/:brandId/guidelines/dos-and-donts?type=Don't narrows server-side after seeding mixed entries",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 J4 filter by Type + spec-ba09 §5 J4",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/dos-and-donts?type=..."
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "DnD Filter Type Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${createdBrandId}/guidelines/dos-and-donts",
+          "body": { "type": "do", "category": "tone", "ruleText": "Use plain language." }
+        },
+        { "kind": "expect", "status": 201 },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${createdBrandId}/guidelines/dos-and-donts",
+          "body": { "type": "dont", "category": "vocabulary", "ruleText": "Avoid cheap." }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/dos-and-donts?type=dont" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-create-unauth-rejected",
+      "description": "POST /api/v1/brands/:brandId/guidelines/dos-and-donts without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 cross-cutting auth + spec-ba09 §5 J4",
+        "endpoint": "POST /api/v1/brands/:brandId/guidelines/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/clxxxbrand0000000099/guidelines/dos-and-donts",
+          "body": { "type": "do", "category": "tone", "ruleText": "Use plain language." }
+        },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-create-non-admin-forbidden",
+      "description": "POST /api/v1/brands/:brandId/guidelines/dos-and-donts with viewer is rejected with 403 (admin-only write)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §2 admin-only write",
+        "endpoint": "POST /api/v1/brands/:brandId/guidelines/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/clxxxbrand0000000099/guidelines/dos-and-donts",
+          "body": { "type": "do", "category": "tone", "ruleText": "Use plain language." }
+        },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-create-bad-empty-rule-400",
+      "description": "POST /api/v1/brands/:brandId/guidelines/dos-and-donts with admin + empty ruleText is rejected with 400 by Zod min(1)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §6.1 + §6.2 + Zod min(1) on ruleText",
+        "endpoint": "POST /api/v1/brands/:brandId/guidelines/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "DnD Bad Body Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${createdBrandId}/guidelines/dos-and-donts",
+          "body": { "type": "do", "category": "tone", "ruleText": "" }
+        },
+        { "kind": "expect", "status": 400 }
+      ]
+    },
+    {
+      "id": "flow:brands-brandId-guidelines-dos-and-donts:post:status-reach:404",
+      "description": "OVERRIDE generator default. mx-967e12: POST 404 reach requires VALID body so Zod doesn't 400 first; existence guard fires after Zod, returns 404 on unknown brandId.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 brand-existence + mulch mx-967e12",
+        "endpoint": "POST /api/v1/brands/:brandId/guidelines/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/clxxxbrand0000000099/guidelines/dos-and-donts",
+          "body": { "type": "do", "category": "tone", "ruleText": "Use plain language." }
+        },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-create-admin-ok",
+      "description": "POST /api/v1/brands/:brandId/guidelines/dos-and-donts with admin + valid body creates and returns 201 with persisted envelope",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 J4 create + spec-ba09 §5 J4",
+        "endpoint": "POST /api/v1/brands/:brandId/guidelines/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "DnD Happy Create Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${createdBrandId}/guidelines/dos-and-donts",
+          "body": { "type": "dont", "category": "vocabulary", "ruleText": "Avoid the word cheap.", "exampleText": "Use 'value' instead." }
+        },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true, "$.data.type": "dont", "$.data.category": "vocabulary" } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-patch-unauth-rejected",
+      "description": "PATCH /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 cross-cutting auth + spec-ba09 §5 J4",
+        "endpoint": "PATCH /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PATCH",
+          "path": "/brands/clxxxbrand0000000099/guidelines/dos-and-donts/clxxxentry000000099",
+          "body": { "ruleText": "Updated rule." }
+        },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-patch-non-admin-forbidden",
+      "description": "PATCH /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId with viewer is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §2 admin-only write",
+        "endpoint": "PATCH /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PATCH",
+          "path": "/brands/clxxxbrand0000000099/guidelines/dos-and-donts/clxxxentry000000099",
+          "body": { "ruleText": "Updated rule." }
+        },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "flow:brands-brandId-guidelines-dos-and-donts-entryId:patch:status-reach:404",
+      "description": "OVERRIDE generator default. PATCH 404 reach via valid body on unknown entry id under existing brand. Zod runs first then existence check on entry — 404 if entry missing.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 entry-existence + mulch mx-967e12",
+        "endpoint": "PATCH /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "DnD Patch 404 Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PATCH",
+          "path": "/brands/${createdBrandId}/guidelines/dos-and-donts/clxxxentry000000099",
+          "body": { "ruleText": "Updated rule." }
+        },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-patch-admin-ok",
+      "description": "PATCH /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId with admin + valid body updates and returns 200",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 J4 edit + spec-ba09 §5 J4",
+        "endpoint": "PATCH /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "DnD Patch Happy Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${createdBrandId}/guidelines/dos-and-donts",
+          "body": { "type": "do", "category": "tone", "ruleText": "Original." }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "createdEntryId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PATCH",
+          "path": "/brands/${createdBrandId}/guidelines/dos-and-donts/${createdEntryId}",
+          "body": { "ruleText": "Updated rule." }
+        },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true, "$.data.ruleText": "Updated rule." } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-delete-unauth-rejected",
+      "description": "DELETE /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 cross-cutting auth + spec-ba09 §5 J4",
+        "endpoint": "DELETE /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "DELETE", "path": "/brands/clxxxbrand0000000099/guidelines/dos-and-donts/clxxxentry000000099" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-delete-non-admin-forbidden",
+      "description": "DELETE /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId with viewer is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §2 admin-only write",
+        "endpoint": "DELETE /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "DELETE", "path": "/brands/clxxxbrand0000000099/guidelines/dos-and-donts/clxxxentry000000099" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-delete-unknown-entry-404",
+      "description": "DELETE /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId with admin + unknown entryId under existing brand returns 404",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 entry-existence",
+        "endpoint": "DELETE /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "DnD Delete 404 Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "DELETE", "path": "/brands/${createdBrandId}/guidelines/dos-and-donts/clxxxentry000000099" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:dnd-delete-admin-ok",
+      "description": "DELETE /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId with admin + existing entry returns 204",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 J4 delete + spec-ba09 §5 J4",
+        "endpoint": "DELETE /api/v1/brands/:brandId/guidelines/dos-and-donts/:entryId"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "DnD Delete Happy Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${createdBrandId}/guidelines/dos-and-donts",
+          "body": { "type": "do", "category": "tone", "ruleText": "Will be deleted." }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "capture", "bindings": { "createdEntryId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "DELETE", "path": "/brands/${createdBrandId}/guidelines/dos-and-donts/${createdEntryId}" },
+        { "kind": "expect", "status": 204 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:metadata-get-unauth-rejected",
+      "description": "GET /api/v1/brands/:brandId/guidelines/metadata without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 cross-cutting auth",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/metadata"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/metadata" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:metadata-get-non-admin-forbidden",
+      "description": "GET /api/v1/brands/:brandId/guidelines/metadata with viewer is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §2 admin-only read at C",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/metadata"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/metadata" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:metadata-get-unknown-brand-404",
+      "description": "GET /api/v1/brands/:brandId/guidelines/metadata with admin + unknown brandId returns 404 via brand-existence guard",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 brand-existence",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/metadata"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/metadata" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:metadata-get-admin-empty-ok",
+      "description": "GET /api/v1/brands/:brandId/guidelines/metadata with admin on a brand with no metadata yet returns 200 with data:null envelope",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 metadata GET handler",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/metadata"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Metadata Get Empty Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/metadata" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:metadata-put-unauth-rejected",
+      "description": "PUT /api/v1/brands/:brandId/guidelines/metadata without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 cross-cutting auth",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/metadata"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "PUT", "path": "/brands/clxxxbrand0000000099/guidelines/metadata", "body": { "tags": ["campaign-q1"] } },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:metadata-put-non-admin-forbidden",
+      "description": "PUT /api/v1/brands/:brandId/guidelines/metadata with viewer is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §2 admin-only write",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/metadata"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "PUT", "path": "/brands/clxxxbrand0000000099/guidelines/metadata", "body": { "tags": ["campaign-q1"] } },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:metadata-put-bad-tag-too-long-400",
+      "description": "PUT /api/v1/brands/:brandId/guidelines/metadata with admin + invalid tag (>200 chars) is rejected with 400 by Zod",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §6.6 tag max-length",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/metadata"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Metadata Bad Tag Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${createdBrandId}/guidelines/metadata",
+          "body": { "tags": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"] }
+        },
+        { "kind": "expect", "status": 400 }
+      ]
+    },
+    {
+      "id": "flow:brands-brandId-guidelines-metadata:put:status-reach:404",
+      "description": "OVERRIDE generator default. mx-967e12: PUT 404 reach requires VALID body so Zod doesn't 400 first.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 brand-existence + mulch mx-967e12",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/metadata"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "PUT", "path": "/brands/clxxxbrand0000000099/guidelines/metadata", "body": { "tags": ["campaign-q1"] } },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:metadata-put-admin-ok",
+      "description": "PUT /api/v1/brands/:brandId/guidelines/metadata with admin + valid tags upserts and returns 200",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 J4 metadata + spec-ba09 §5",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/metadata"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Metadata Happy Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/brands/${createdBrandId}/guidelines/metadata",
+          "body": { "tags": ["campaign-q1", "en-US", "blog"] }
+        },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:search-unauth-rejected",
+      "description": "GET /api/v1/brands/:brandId/guidelines/search without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 cross-cutting auth + spec-ba09 §5 J5",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/search"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/search?q=voice" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:search-non-admin-forbidden",
+      "description": "GET /api/v1/brands/:brandId/guidelines/search with viewer is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §2 admin-only read at C",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/search"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/search?q=voice" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:search-unknown-brand-404",
+      "description": "GET /api/v1/brands/:brandId/guidelines/search with admin + unknown brandId returns 404",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 brand-existence",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/search"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/guidelines/search?q=voice" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:search-empty-q-ok-empty",
+      "description": "GET /api/v1/brands/:brandId/guidelines/search?q= with admin + empty query returns 200 with empty results envelope (no error per spec-ba09 §5 J5)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 J5 empty-query handling + spec-ba09 §5 J5",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/search"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Search Empty Q Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/search?q=" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-e554:search-admin-ok",
+      "description": "GET /api/v1/brands/:brandId/guidelines/search?q=word with admin + seeded D&D entry returns 200 with grouped matches envelope",
+      "contract": {
+        "kind": "http",
+        "source": "spec-e554 §1 J5 search + spec-ba09 §5 J5",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/search"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Search Happy Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "POST",
+          "path": "/brands/${createdBrandId}/guidelines/dos-and-donts",
+          "body": { "type": "dont", "category": "vocabulary", "ruleText": "Avoid jargon when writing for users." }
+        },
+        { "kind": "expect", "status": 201 },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/search?q=jargon" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    }
+  ]
+}

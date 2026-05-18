@@ -1,0 +1,295 @@
+{
+  "version": 1,
+  "task_id": "sfx-webapp-boilerplate-0d59",
+  "owns": [],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" },
+    { "actor": "agent" },
+    { "resource": "brand" }
+  ],
+  "special_flows": [
+    {
+      "id": "sfx-webapp-boilerplate-0d59:audit-log-list-unauth-rejected",
+      "description": "GET /api/v1/brands/:brandId/agent-audit-log without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E + §5 J9 audit-log admin surface — cross-cutting auth",
+        "endpoint": "GET /api/v1/brands/:brandId/agent-audit-log"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/agent-audit-log" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:audit-log-list-non-admin-forbidden",
+      "description": "GET /api/v1/brands/:brandId/agent-audit-log with viewer is rejected with 403 (admin-only)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E + §5 J9 admin-only audit-log read",
+        "endpoint": "GET /api/v1/brands/:brandId/agent-audit-log"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/agent-audit-log" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:audit-log-list-agent-forbidden",
+      "description": "GET /api/v1/brands/:brandId/agent-audit-log with agent is rejected with 403 (admin-only — agents must NOT view their own audit trail)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E audit-log admin-only — agent role denied",
+        "endpoint": "GET /api/v1/brands/:brandId/agent-audit-log"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "agent" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/agent-audit-log" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:audit-log-list-unknown-brand-404",
+      "description": "GET /api/v1/brands/:brandId/agent-audit-log with admin + unknown brandId returns 404 via brand-existence guard",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E brand-existence guard pattern",
+        "endpoint": "GET /api/v1/brands/:brandId/agent-audit-log"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/clxxxbrand0000000099/agent-audit-log" },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:audit-log-list-admin-empty-ok",
+      "description": "GET /api/v1/brands/:brandId/agent-audit-log with admin on fresh brand returns 200 with empty envelope (no agent requests yet)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E audit-log empty state + §5 J9 audit-log admin view",
+        "endpoint": "GET /api/v1/brands/:brandId/agent-audit-log"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Audit Log Empty Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/agent-audit-log" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:agent-can-read-brands-list",
+      "description": "GET /api/v1/brands with agent role returns 200 (multi-role read endpoint accepts admin OR agent)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E + §5 J8 — agent reads all guideline read endpoints",
+        "endpoint": "GET /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "agent" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:agent-can-read-voice",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice with agent returns 200 on existing brand",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E agent-can-read-guidelines",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Agent Voice Read Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "agent" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/voice" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:agent-can-read-restricted-vocab",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice/restricted-vocabulary with agent returns 200",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E agent-can-read-standalone-vocab",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice/restricted-vocabulary"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Agent Restricted Vocab Read Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "agent" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/voice/restricted-vocabulary" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:agent-can-read-approved-examples",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice/approved-examples with agent returns 200",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E agent-can-read-standalone-vocab",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice/approved-examples"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Agent Approved Read Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "agent" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/voice/approved-examples" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:agent-can-read-rejected-examples",
+      "description": "GET /api/v1/brands/:brandId/guidelines/voice/rejected-examples with agent returns 200",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E agent-can-read-standalone-vocab",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/voice/rejected-examples"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Agent Rejected Read Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "agent" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/voice/rejected-examples" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:agent-can-read-visual",
+      "description": "GET /api/v1/brands/:brandId/guidelines/visual with agent returns 200",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E agent-can-read-guidelines",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/visual"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Agent Visual Read Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "agent" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/visual" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:agent-can-read-metadata",
+      "description": "GET /api/v1/brands/:brandId/guidelines/metadata with agent returns 200",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E agent-can-read-guidelines",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/metadata"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Agent Metadata Read Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "agent" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/metadata" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:agent-can-read-dos-and-donts",
+      "description": "GET /api/v1/brands/:brandId/guidelines/dos-and-donts with agent returns 200",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E agent-can-read-dos-and-donts-with-filter",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/dos-and-donts"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Agent DnD Read Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "agent" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/dos-and-donts" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:agent-can-read-versions",
+      "description": "GET /api/v1/brands/:brandId/guidelines/versions with agent returns 200 with paginated envelope",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E agent-can-read-versions",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Agent Versions Read Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "agent" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/versions" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:agent-can-read-search",
+      "description": "GET /api/v1/brands/:brandId/guidelines/search with agent returns 200",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E — search is a read endpoint accessible to admin OR agent",
+        "endpoint": "GET /api/v1/brands/:brandId/guidelines/search"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Agent Search Read Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "agent" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/brands/${createdBrandId}/guidelines/search" },
+        { "kind": "expect", "status": 200, "bodyHas": { "$.success": true } }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:agent-write-create-brand-403",
+      "description": "POST /api/v1/brands with agent role returns 403 (writes are admin-only)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E + §5 J8 — agent gets 403 on every write",
+        "endpoint": "POST /api/v1/brands"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "agent" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Agent Write Denied Brand" } },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-0d59:agent-write-update-voice-403",
+      "description": "PUT /api/v1/brands/:brandId/guidelines/voice with agent role returns 403 on an existing brand",
+      "contract": {
+        "kind": "http",
+        "source": "spec-ba09 §3 Chunk E agent-write-rejected-403",
+        "endpoint": "PUT /api/v1/brands/:brandId/guidelines/voice"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "POST", "path": "/brands", "body": { "name": "Agent Voice Write Denied Brand" } },
+        { "kind": "expect", "status": 201, "bodyHas": { "$.success": true } },
+        { "kind": "capture", "bindings": { "createdBrandId": "$.data.id" } },
+        { "kind": "setAuth", "binding": "agent" },
+        { "kind": "api", "transport": "http", "method": "PUT", "path": "/brands/${createdBrandId}/guidelines/voice", "body": { "tone": "Should not save" } },
+        { "kind": "expect", "status": 403 }
+      ]
+    }
+  ]
+}

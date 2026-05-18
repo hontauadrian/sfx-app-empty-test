@@ -1052,6 +1052,7 @@ function joinUrl(base: string, path: string): string {
   return base + path;
 }
 
+
 function truncate(s: string | undefined, max = 2048): string | undefined {
   if (s === undefined) return undefined;
   return s.length > max ? s.slice(0, max) + `… (truncated, total ${s.length} chars)` : s;

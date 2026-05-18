@@ -25,7 +25,7 @@
     "api": {
       "clientId": "${repoName}-dev-api",
       "audience": "${repoName}-dev-api",
-      "roles": ["viewer", "editor", "admin"]
+      "roles": ["viewer", "editor", "admin", "agent"]
     }
   },
   "oauth2Proxy": {

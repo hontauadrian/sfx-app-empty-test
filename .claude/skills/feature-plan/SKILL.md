@@ -35,6 +35,18 @@ After reading the product-plan spec and identifying your grouping, BEFORE `sd cr
   oauth2-proxy + RS256/JWKS remain in place; do not ask scouts/builders to add
   email+password auth, `/login`, `/register`, local HS256 JWT cookies, or remove
   `OAUTH_*`, Keycloak, or oauth2-proxy.
+- Letting a feature spec mark a parent CRUD module as "do not modify" without an
+  additive `@ResourceCaptures` carve-out. When a feature introduces nested
+  resources under an existing parent (e.g. `/api/v1/brands/:brandId/...`,
+  `/api/v1/teams/:teamId/...`), the parent CREATE handler MUST gain one
+  additional `@ResourceCaptures` tuple per child placeholder name (same
+  `fromPath`, same `resource`, only `pathParam` differs). This is purely
+  metadata — no behavior change, same auth/Zod/status. Any "do not modify
+  apps/api/src/modules/<parent>/**" clause in a scout-written spec MUST
+  explicitly carve out additive `@ResourceCaptures` decorator metadata on the
+  parent CREATE handler, or builders will be blocked behind a 404 cross-actor
+  failure they cannot fix from inside their file scope. Canonical convention:
+  mulch `mx-3bf156`.
 
 ## Required output (inline — no file write)
 
@@ -74,6 +86,14 @@ For each feature, draft the scout prompt that will produce `.overstory/specs/<fe
 - Auth preservation note: if the feature is protected and the product plan did not
   explicitly request auth replacement, instruct the scout to keep the existing auth
   stack untouched and implement the feature behind that authenticated session.
+- Nested-resource carve-out note: if the feature attaches child routes under an
+  existing parent's path (e.g. `/api/v1/<parent>/:<parentId>/<child>`), the
+  scout MUST be told that any "do not modify `apps/api/src/modules/<parent>/**`"
+  clause it writes has to explicitly exempt additive `@ResourceCaptures`
+  decorator tuples on the parent CREATE handler. Word it: "Exception: a single
+  additive `@ResourceCaptures` tuple on the parent's CREATE handler — same
+  `fromPath`, same `resource`, only `pathParam` differs — is permitted and
+  required when the runtime probe emits `RESOURCE_CAPTURE_PATHPARAM_UNDECLARED`."
 
 ### 4. Dispatch sequence (respecting MAX AGENTS)
 
@@ -96,6 +116,10 @@ State the mode + math. List the exact dispatch order.
 8. If auth replacement was not explicitly requested by the operator, no scout
    prompt or feature spec asks for local email/password auth, local JWT cookies,
    `/login`, `/register`, or removal of the existing auth/proxy services.
+9. If any feature in your grouping introduces routes nested under an existing
+   parent's path, every scout prompt that touches that parent module's
+   "do not modify" list explicitly carves out additive `@ResourceCaptures`
+   decorator tuples on the parent CREATE handler (per the note in §3).
 
 Fix inline. Don't re-review.
 

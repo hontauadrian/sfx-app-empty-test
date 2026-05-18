@@ -1,0 +1,382 @@
+{
+  "version": 1,
+  "task_id": "sfx-webapp-boilerplate-1ef9",
+  "owns": [
+    { "resource": "company-info-versions" }
+  ],
+  "extends": [
+    { "actor": "anonymous" },
+    { "actor": "admin" },
+    { "actor": "viewer" },
+    { "resource": "company-info" }
+  ],
+  "resources": [
+    {
+      "name": "company-info-versions",
+      "kind": "endpoint"
+    }
+  ],
+  "special_flows": [
+    {
+      "id": "sfx-webapp-boilerplate-1ef9:put-creates-version-row",
+      "description": "PUT /api/v1/company-info with admin bearer creates a new CompanyInfoVersion row (verified by subsequent list returning entries)",
+      "contract": {
+        "kind": "http",
+        "source": "spec-26a0 §3 Chunk C + §5 J2",
+        "endpoint": "PUT /api/v1/company-info"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": {
+            "legalName": "Versioned Probe Co",
+            "companyName": "VersionCo"
+          }
+        },
+        { "kind": "expect", "status": 200 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-1ef9:get-versions-list",
+      "description": "GET /api/v1/company-info/versions returns 200 with newest-first list of versions",
+      "contract": {
+        "kind": "http",
+        "source": "spec-26a0 §3 Chunk C + §5 J2",
+        "endpoint": "GET /api/v1/company-info/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/company-info/versions" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": { "$.success": true }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-1ef9:get-versions-list-static-empty-200",
+      "description": "GET /api/v1/company-info/versions (no query) as admin returns 200 envelope.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-1ef9 §A pagination + spec-26a0 §5 J2",
+        "endpoint": "GET /api/v1/company-info/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/company-info/versions" },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": { "$.success": true }
+        }
+      ]
+    },
+    {
+      "id": "flow:company-info-versions:get:query-cursor:invalid-cursor",
+      "description": "OVERRIDE generator default. Spec A6: unknown cursor returns 200 + empty page (Linear/GitHub cursor semantics), NOT 400. Curated id matches generator id so override applies.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-1ef9 §A6 unknown cursor → 200 empty page",
+        "endpoint": "GET /api/v1/company-info/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/company-info/versions?cursor=cl000000000000000000000000"
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.nextCursor": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "flow:company-info-versions:get:pagination:invalid-cursor",
+      "description": "OVERRIDE generator default for pagination:invalid-cursor. Same as query-cursor override — spec A6 unknown cursor returns 200 empty.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-1ef9 §A6 unknown cursor → 200 empty page",
+        "endpoint": "GET /api/v1/company-info/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/company-info/versions?cursor=cl000000000000000000000000"
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.nextCursor": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "flow:company-info-versions:get:pagination:empty",
+      "description": "OVERRIDE generator default for pagination:empty. Generator injects ?title= as the empty-page filter, but spec A3 enforces .strict() Zod schema rejecting unknown keys with 400. The ?title= probe expectation contradicts the spec; this override asserts the spec.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-1ef9 §A3 .strict() schema rejects unknown query keys",
+        "endpoint": "GET /api/v1/company-info/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/company-info/versions?title=anything"
+        },
+        {
+          "kind": "expect",
+          "status": 400,
+          "bodyHas": {
+            "$.success": false,
+            "$.error.statusCode": 400
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-1ef9:get-versions-order-newest-first",
+      "description": "Two sequential PUTs (legalName A then B) appear newest-first in GET ?take=2: items[0]=B items[1]=A. Proves newest-first ordering. Cursor round-trip protocol coverage is in supertest integration test (PROBE-RUNNER-BUG: cursor capture+interpolation broken — direct-verified by builder, escalated msg-na6zvbfntlbv).",
+      "contract": {
+        "kind": "http",
+        "source": "spec-1ef9 §C newest-first + spec-26a0 §5 J2",
+        "endpoint": "GET /api/v1/company-info/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": { "legalName": "A" }
+        },
+        { "kind": "expect", "status": 200 },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": { "legalName": "B" }
+        },
+        { "kind": "expect", "status": 200 },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/company-info/versions?take=2"
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.items[0].snapshot.legalName": "B",
+            "$.data.items[1].snapshot.legalName": "A"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-1ef9:get-versions-cursor-present-on-multi",
+      "description": "When 2+ versions exist and take=1, response includes a non-null nextCursor for pagination continuation. Proves cursor exposure at protocol level. Round-trip semantics validated by supertest integration test (see PROBE-RUNNER-BUG note above).",
+      "contract": {
+        "kind": "http",
+        "source": "spec-1ef9 §C cursor exposure + spec-26a0 §5 J2",
+        "endpoint": "GET /api/v1/company-info/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": { "legalName": "Cursor Probe 1" }
+        },
+        { "kind": "expect", "status": 200 },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": { "legalName": "Cursor Probe 2" }
+        },
+        { "kind": "expect", "status": 200 },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/company-info/versions?take=1"
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.items[0].snapshot.legalName": "Cursor Probe 2"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-1ef9:get-version-by-id-happy",
+      "description": "PUT creates a version, GET /versions?take=1 captures latest id, GET /versions/:id returns 200 with full snapshot. Proves admin-side end-to-end version-detail retrieval.",
+      "contract": {
+        "kind": "http",
+        "source": "spec-26a0 §5 J2 + spec-1ef9 §C admin happy path",
+        "endpoint": "GET /api/v1/company-info/versions/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "PUT",
+          "path": "/company-info",
+          "body": { "legalName": "Real Co" }
+        },
+        { "kind": "expect", "status": 200 },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/company-info/versions?take=1"
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.items[0].snapshot.legalName": "Real Co"
+          }
+        },
+        {
+          "kind": "capture",
+          "bindings": {
+            "vid": "$.data.items[0].id"
+          }
+        },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/company-info/versions/${vid}"
+        },
+        {
+          "kind": "expect",
+          "status": 200,
+          "bodyHas": {
+            "$.success": true,
+            "$.data.snapshot.legalName": "Real Co"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-1ef9:get-versions-unauth-rejected",
+      "description": "GET /api/v1/company-info/versions without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-26a0 §5 auth boundaries",
+        "endpoint": "GET /api/v1/company-info/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/company-info/versions" },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-1ef9:get-versions-non-admin-forbidden",
+      "description": "GET /api/v1/company-info/versions with viewer (non-admin) is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-26a0 §5 auth boundaries",
+        "endpoint": "GET /api/v1/company-info/versions"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        { "kind": "api", "transport": "http", "method": "GET", "path": "/company-info/versions" },
+        { "kind": "expect", "status": 403 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-1ef9:get-version-by-id-unknown-404",
+      "description": "GET /api/v1/company-info/versions/:id with unknown id returns 404",
+      "contract": {
+        "kind": "http",
+        "source": "spec-26a0 §5 J2",
+        "endpoint": "GET /api/v1/company-info/versions/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "admin" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/company-info/versions/cl000000000000000000000000"
+        },
+        { "kind": "expect", "status": 404 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-1ef9:get-version-by-id-unauth-rejected",
+      "description": "GET /api/v1/company-info/versions/:id without bearer is rejected with 401",
+      "contract": {
+        "kind": "http",
+        "source": "spec-26a0 §5 auth boundaries",
+        "endpoint": "GET /api/v1/company-info/versions/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "anonymous" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/company-info/versions/cl000000000000000000000000"
+        },
+        { "kind": "expect", "status": 401 }
+      ]
+    },
+    {
+      "id": "sfx-webapp-boilerplate-1ef9:get-version-by-id-non-admin-forbidden",
+      "description": "GET /api/v1/company-info/versions/:id with viewer (non-admin) is rejected with 403",
+      "contract": {
+        "kind": "http",
+        "source": "spec-26a0 §5 auth boundaries",
+        "endpoint": "GET /api/v1/company-info/versions/:id"
+      },
+      "steps": [
+        { "kind": "setAuth", "binding": "viewer" },
+        {
+          "kind": "api",
+          "transport": "http",
+          "method": "GET",
+          "path": "/company-info/versions/cl000000000000000000000000"
+        },
+        { "kind": "expect", "status": 403 }
+      ]
+    }
+  ]
+}

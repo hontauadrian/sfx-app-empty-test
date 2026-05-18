@@ -128,6 +128,21 @@ describe('zodToOpenApi', () => {
       expect(registered.required ?? []).not.toContain('description');
     });
 
+    it('spreads opts.extensions onto the returned ApiBody object', () => {
+      const schema = z.object({ name: z.string().min(1) });
+      const result = zodApiBody(schema, 'WithExt', {
+        extensions: { 'x-probe-unique-fields': ['name'] },
+      }) as { schema: { $ref: string }; 'x-probe-unique-fields'?: string[] };
+      expect(result.schema.$ref).toBe('#/components/schemas/WithExt');
+      expect(result['x-probe-unique-fields']).toEqual(['name']);
+    });
+
+    it('omits extension keys when opts.extensions is not provided', () => {
+      const schema = z.object({ name: z.string() });
+      const result = zodApiBody(schema, 'NoExt') as Record<string, unknown>;
+      expect(Object.keys(result)).toEqual(['schema']);
+    });
+
     it('eliminates the dangling-$ref class of bug', () => {
       // The bug class: hand-written `{ $ref: '...' }` without a paired
       // `zodToOpenApi(schema, { ref })`. Using the helper, that path is

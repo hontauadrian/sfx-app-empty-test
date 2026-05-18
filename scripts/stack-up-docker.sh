@@ -22,16 +22,24 @@ write_web_env_local() {
   local _api_port="$1"
   local _project_dir="${2:-$PROJECT_DIR}"
   local _env_file="$_project_dir/apps/web/.env.local"
-  # Detect canonical vs worker stack:
-  #   - Canonical (app-dev-host, default port 3001) → http://api.localhost
-  #     (nginx-routed domain, host browser-friendly, production-like)
-  #   - Worker stack (per-worktree, dynamic port) → host.docker.internal:PORT
-  #     (so panel-container Playwright can reach the worker's isolated API)
+  # Browser-facing API URL. Single source of truth: the NEXT_PUBLIC_API_URL
+  # env exported earlier in this script. It already encodes the correct entry
+  # point per stack:
+  #   - Canonical (app-dev-host) → http://api.localhost  (nginx-routed)
+  #   - Worker (per-worktree)    → http://app.localtest.me:${APP_PROXY_PORT}
+  #     (oauth2-proxy entry — injects bearer token for /api/v1/*)
+  # Worker stacks MUST go through the proxy port, not the api port — direct
+  # api access bypasses oauth2-proxy and every authed request returns 401.
+  # Always route through the proxy port — both canonical and worker stacks.
+  # Legacy `http://api.localhost` nginx route bypasses oauth2-proxy → bearer
+  # token never injected → /api/v1/auth/me returns 401 → execute-request.ts
+  # redirects to /oauth2/sign_in → oauth2-proxy already has session →
+  # callback → admin page → 401 again → endless redirect loop.
   local _new_url
-  if [ "${PROJECT_NAME:-}" = "app-dev-host" ] || [ "$_api_port" = "3001" ]; then
-    _new_url="${NEXT_PUBLIC_API_URL_CANONICAL:-http://api.localhost}"
+  if [ -n "${NEXT_PUBLIC_API_URL:-}" ]; then
+    _new_url="$NEXT_PUBLIC_API_URL"
   else
-    _new_url="http://${WEB_ORIGIN_WORKER_HOST:-host.docker.internal}:${_api_port}"
+    _new_url="http://app.localtest.me:${APP_PROXY_PORT:-$_api_port}"
   fi
   [ -d "$_project_dir/apps/web" ] || return 0
   mkdir -p "$_project_dir/apps/web"
@@ -88,7 +96,7 @@ write_web_env_local() {
   local _api_env="$_project_dir/apps/api/.env"
   local _new_origin
   if [ "${PROJECT_NAME:-}" = "app-dev-host" ] || [ "$_api_port" = "3001" ]; then
-    _new_origin="${WEB_ORIGIN_CANONICAL:-http://app.localhost}"
+    _new_origin="${WEB_ORIGIN_CANONICAL:-http://app.localhost,http://app.localtest.me:${APP_PROXY_PORT}}"
   else
     # Find this worker's web port from .stack.json (post-up) OR derive from
     # NEXT_PORT (during fresh boot). Worker host is overridable via
@@ -293,7 +301,7 @@ KEYCLOAK_PORT="${KEYCLOAK_PORT:-$(find_free_port "$(( 37000 + index ))" 37999)}"
 # per-worker stack, blocking CORS for browser requests from the worker port.
 unset WEB_ORIGIN
 if [ "${PROJECT_NAME:-app-${basename_dir}}" = "app-dev-host" ] || [ "${NEXT_PORT}" = "3000" ]; then
-  WEB_ORIGIN="${WEB_ORIGIN_CANONICAL:-http://app.localhost}"
+  WEB_ORIGIN="${WEB_ORIGIN_CANONICAL:-http://app.localhost,http://app.localtest.me:${APP_PROXY_PORT}}"
 else
   WEB_ORIGIN="http://${WEB_ORIGIN_WORKER_HOST:-host.docker.internal}:${NEXT_PORT}"
 fi
@@ -342,8 +350,22 @@ if [ "$SHOULD_REWRITE_OAUTH_URLS" = "true" ]; then
   NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID="${REALM_NAME}-dev-proxy"
 fi
 OAUTH2_PROXY_WHITELIST_DOMAIN="${OAUTH2_PROXY_WHITELIST_DOMAIN:-keycloak.localtest.me:${KEYCLOAK_PORT}}"
+# Browser-facing API URL. MUST point at the oauth2-proxy entry so the browser's
+# authenticated requests get bearer-token injection. Canonical uses nginx
+# (http://api.localhost); workers go through their per-stack proxy port.
+# Both canonical AND worker stacks route browser API calls through the
+# per-stack oauth2-proxy so the bearer token is injected into /api/v1/*.
+# The legacy `http://api.localhost` nginx route bypasses oauth2-proxy and
+# returns 401 on every authed request → the browser then redirects to
+# /oauth2/sign_in which already has a session → callback redirects back
+# → endless 401-redirect loop. Avoid by sending /api/* through the proxy
+# entry on the same host the browser already trusts.
+# Respect an existing env override so callers (panel-bridge env-watcher,
+# ad-hoc shells) can pin a different host without script edits.
+NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://app.localtest.me:${APP_PROXY_PORT}}"
 export PG_PORT API_PORT NEXT_PORT APP_PROXY_PORT KEYCLOAK_PORT
 export OAUTH_ISSUER_URL OAUTH_JWKS_URL OAUTH2_PROXY_REDIRECT_URL OAUTH2_PROXY_WHITELIST_DOMAIN
+export NEXT_PUBLIC_API_URL
 export NEXT_PUBLIC_POST_LOGOUT_REDIRECT_URI NEXT_PUBLIC_OIDC_LOGOUT_ENDPOINT NEXT_PUBLIC_OAUTH2_PROXY_CLIENT_ID
 PROJECT_NAME_FROM_ENV="${PROJECT_NAME:-}"
 PROJECT_NAME="${PROJECT_NAME:-app-${basename_dir}}"
@@ -663,7 +685,16 @@ if [ "$NEEDS_INSTALL" = "1" ]; then
   # If you see the timeout fire, run `pnpm install` manually to investigate
   # — the cap is on the watchdog, not on a legitimate cold install.
   STACK_INSTALL_TIMEOUT="${STACK_INSTALL_TIMEOUT:-300}"
-  if ! (cd "$PROJECT_DIR" && timeout "${STACK_INSTALL_TIMEOUT}" sh -c 'NODE_ENV=development pnpm install --frozen-lockfile --prefer-offline --config.confirm-modules-purge=false' 2>&1) | tee -a "$LOG"; then
+  TIMEOUT_BIN=""
+  if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_BIN="timeout"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_BIN="gtimeout"
+  fi
+  if [ -z "$TIMEOUT_BIN" ]; then
+    echo "[stack-up-docker] WARN: no timeout/gtimeout on PATH — pnpm install will run uncapped (install brew coreutils for macOS host invocation)" | tee -a "$LOG"
+  fi
+  if ! (cd "$PROJECT_DIR" && ${TIMEOUT_BIN:+$TIMEOUT_BIN "$STACK_INSTALL_TIMEOUT"} sh -c 'NODE_ENV=development pnpm install --frozen-lockfile --prefer-offline --config.confirm-modules-purge=false' 2>&1) | tee -a "$LOG"; then
     install_exit=${PIPESTATUS[0]}
     if [ "$install_exit" = "124" ]; then
       echo "ERROR: pnpm install timed out after ${STACK_INSTALL_TIMEOUT}s in $PROJECT_DIR — investigate registry / lockfile / pnpm-store before re-trying." | tee -a "$LOG"
@@ -728,6 +759,23 @@ fi
 # the bundle is baked with whatever .env.local existed before, and a
 # post-up rewrite is ignored until container restart).
 write_web_env_local "${API_PORT}" "$PROJECT_DIR"
+
+# Pre-flight: remove orphan-renamed containers from prior failed recreates.
+# When docker compose recreates, it renames each old container with a 12-char
+# hex prefix (e.g. 709db780d189_app-dev-host-api-1) to free the canonical
+# name for the replacement. If a prior recreate crashed mid-way (OOM, OrbStack
+# blip, signal, etc.), those renamed orphans persist and the next recreate
+# hits "Conflict. The container name is already in use" -> recreate aborts
+# midway -> fresh canonical-name container stuck in Created state -> api/web
+# never start. Nuke them preemptively. Idempotent: no-op when none exist.
+ORPHAN_PATTERN="^[a-f0-9]{12}_${PROJECT_NAME}-"
+ORPHANS=$(docker ps -a --format '{{.Names}}' | grep -E "$ORPHAN_PATTERN" || true)
+if [ -n "$ORPHANS" ]; then
+  echo "[stack-up-docker] removing orphan-renamed containers from prior recreate:" | tee -a "$LOG"
+  echo "$ORPHANS" | sed 's/^/  /' | tee -a "$LOG"
+  echo "$ORPHANS" | xargs -r docker rm -f >/dev/null 2>&1 || true
+fi
+
 docker compose -p "$PROJECT_NAME" -f "$PROJECT_DIR/docker-compose.yml" $COMPOSE_OVERLAY_ARG up -d $BUILD_FLAG $FORCE_RECREATE_FLAG 2>&1 | tee -a "$LOG"
 
 # Inside the panel container the worker stack lives on the HOST docker
